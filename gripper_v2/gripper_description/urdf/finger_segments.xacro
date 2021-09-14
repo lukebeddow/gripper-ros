@@ -51,7 +51,7 @@
           </geometry>
         </collision>
         <gazebo reference="${prefix}_segment_link_${number}">
-          <material>Gazebo/White</material>
+          <material>Gazebo/Orange</material>
           <mu1>100</mu1>
           <mu2>100</mu2>
           <kp>100</kp>
