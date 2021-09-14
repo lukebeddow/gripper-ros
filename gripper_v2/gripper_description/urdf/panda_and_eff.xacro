@@ -18,7 +18,7 @@
     <xacro:my_gripper/>
 
     <!-- <link name="base_link"/> -->
-    <xacro:panda_arm arm_id="panda" mesh_folder="gripper_test/meshes_panda" connected_to="base_link" xyz="0 0 0" rpy="0 0 0"/>
+    <xacro:panda_arm arm_id="panda" mesh_folder="gripper_description/meshes_panda" connected_to="base_link" xyz="0 0 0" rpy="0 0 0"/>
     <!-- attach panda arm to the ground for gazebo -->
     <link name="world"/>
     <joint name="world_to_base" type="fixed">

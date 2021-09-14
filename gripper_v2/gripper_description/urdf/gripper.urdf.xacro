@@ -40,12 +40,12 @@
       <xacro:default_inertial mass="1.0"/>
       <visual>
         <geometry>
-          <mesh filename="package://gripper_test/meshes/main body visual.STL"/>
+          <mesh filename="package://gripper_description/meshes/main body visual.STL"/>
         </geometry>
       </visual>
       <collision>
         <geometry>
-          <mesh filename="package://gripper_test/meshes/main body collision.STL"/>
+          <mesh filename="package://gripper_description/meshes/main body collision.STL"/>
         </geometry>
       </collision>
     </link>
@@ -70,12 +70,12 @@
         <xacro:default_inertial mass="0.03"/>
         <visual>
           <geometry>
-            <mesh filename="package://gripper_test/meshes/nut visual.STL"/>
+            <mesh filename="package://gripper_description/meshes/nut visual.STL"/>
           </geometry>
         </visual>
         <collision>
           <geometry>
-            <mesh filename="package://gripper_test/meshes/nut collision.STL"/>
+            <mesh filename="package://gripper_description/meshes/nut collision.STL"/>
           </geometry>
         </collision>
       </link>
@@ -84,12 +84,12 @@
         <xacro:default_inertial mass="0.3"/>
         <visual>
           <geometry>
-            <mesh filename="package://gripper_test/meshes/finger platform visual.STL"/>
+            <mesh filename="package://gripper_description/meshes/finger platform visual.STL"/>
           </geometry>
         </visual>
         <!-- <collision>
           <geometry>
-            <mesh filename="package://gripper_test/meshes/finger platform collision.STL"/>
+            <mesh filename="package://gripper_description/meshes/finger platform collision.STL"/>
           </geometry>
         </collision> -->
       </link>
@@ -130,12 +130,12 @@
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-          <mesh filename="package://gripper_test/meshes/palm visual.STL" />
+          <mesh filename="package://gripper_description/meshes/palm visual.STL" />
         </geometry>
       </visual>
       <collision>
         <geometry>
-          <mesh filename="package://gripper_test/meshes/palm collision.STL" />
+          <mesh filename="package://gripper_description/meshes/palm collision.STL" />
         </geometry>
       </collision>
     </link>
