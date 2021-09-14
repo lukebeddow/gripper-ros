@@ -26,8 +26,6 @@
     <!-- Define arbritray joint damping for Gazebo -->
     <xacro:property name="joint_damping" value="1.0"/>
 
-    <!-- arbritrary change-->
-
 	  <!-- Simplistic inertia macro for Gazebo -->
     <xacro:macro name="default_inertial" params="mass">
       <inertial>
