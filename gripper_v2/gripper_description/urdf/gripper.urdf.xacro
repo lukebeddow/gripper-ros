@@ -1,0 +1,157 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:macro name="my_gripper">
+
+    <!-- Constants for specifying finger start position, no need to change -->
+    <xacro:property name="radius" value="0.0"/>
+    <xacro:property name="angle" value="0.0"/>
+    
+    <!-- Define motion limits of each joint -->
+    <xacro:property name="finger_displacement_min" value="0.053"/>
+    <xacro:property name="finger_displacement_max" value="0.141"/>
+    <xacro:property name="finger_angle_min" value="-0.7"/>
+    <xacro:property name="finger_angle_max" value="0.7"/>
+    <xacro:property name="palm_displacement_min" value="0.0"/>
+    <xacro:property name="palm_displacement_max" value="0.16"/>
+    
+    <!-- Define limits of each joint -->
+    <xacro:property name="finger_displacement_velocity" value="0.015"/>
+    <xacro:property name="finger_angle_velocity" value="0.1"/>
+    <xacro:property name="palm_velocity" value="0.036"/>
+    <xacro:property name="limit_effort_prismatic" value="40.0"/>
+    <xacro:property name="limit_effort_revolute" value="40.0"/>
+    <xacro:property name="limit_effort_palm" value="40.0"/>
+    
+    <!-- Define arbritray joint damping for Gazebo -->
+    <xacro:property name="joint_damping" value="1.0"/>
+
+	  <!-- Simplistic inertia macro for Gazebo -->
+    <xacro:macro name="default_inertial" params="mass">
+      <inertial>
+        <mass value="${mass}"/>
+        <inertia ixx="1e-3" iyy="1e-3" izz="1e-3"
+                ixy="0.00" iyz="0.00" ixz="0.00" />
+      </inertial>
+    </xacro:macro>
+
+    <!-- BASE LINK -->
+    <link name="gripper_base_link">
+      <xacro:default_inertial mass="1.0"/>
+      <visual>
+        <geometry>
+          <mesh filename="package://gripper_test/meshes/main body visual.STL"/>
+        </geometry>
+      </visual>
+      <collision>
+        <geometry>
+          <mesh filename="package://gripper_test/meshes/main body collision.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Finger position macros -->
+    <xacro:macro name="finger_intermediate_origin" params="number">
+      <origin xyz="${radius * sin((number-1)*((2*pi)/3))}
+                   ${radius * cos((number-1)*((2*pi)/3))}
+                   0"
+              rpy="${3*pi/2}
+                   ${3*pi/2}
+                   ${(pi/2) - (number-1)*(2*pi/3)}" />
+    </xacro:macro>
+    <xacro:macro name="finger_origin" params="number">
+      <origin xyz="0 0 0" rpy="0 0 ${angle}" />
+    </xacro:macro>
+
+    <!-- Finger Macro -->
+    <xacro:macro name="finger" params="number">
+      <!-- Intermediate link for prismatic joint -->
+      <link name="finger_${number}_intermediate">
+        <xacro:default_inertial mass="0.03"/>
+        <visual>
+          <geometry>
+            <mesh filename="package://gripper_test/meshes/nut visual.STL"/>
+          </geometry>
+        </visual>
+        <collision>
+          <geometry>
+            <mesh filename="package://gripper_test/meshes/nut collision.STL"/>
+          </geometry>
+        </collision>
+      </link>
+      <!-- Main finger link -->
+      <link name="finger_${number}">
+        <xacro:default_inertial mass="0.3"/>
+        <visual>
+          <geometry>
+            <mesh filename="package://gripper_test/meshes/finger platform visual.STL"/>
+          </geometry>
+        </visual>
+        <!-- <collision>
+          <geometry>
+            <mesh filename="package://gripper_test/meshes/finger platform collision.STL"/>
+          </geometry>
+        </collision> -->
+      </link>
+      <!-- Prismatic joint -->
+      <joint name="finger_${number}_prismatic_joint" type="prismatic">
+        <axis xyz="0 1 0" rpy="0 0 0"/>
+        <parent link="gripper_base_link"/>
+        <child link="finger_${number}_intermediate"/>
+        <xacro:finger_intermediate_origin number="${number}"/>
+        <limit effort="${limit_effort_prismatic}" 
+        			 lower="${finger_displacement_min}"
+        			 upper="${finger_displacement_max}"
+        			 velocity="${finger_displacement_velocity}"/>
+        <dynamics damping="${joint_damping}"/>
+      </joint>
+      <!-- Revolute joint -->
+      <joint name="finger_${number}_revolute_joint" type="revolute">
+        <axis xyz="0 0 1" rpy="0 0 0"/>
+        <parent link="finger_${number}_intermediate"/>
+        <child link="finger_${number}"/>
+        <xacro:finger_origin number="${number}"/>
+        <limit effort="${limit_effort_revolute}" 
+        			 lower="${finger_angle_min}"
+        			 upper="${finger_angle_max}"
+        			 velocity="${finger_angle_velocity}"/>
+        <dynamics damping="${joint_damping}"/>
+      </joint>
+    </xacro:macro>
+
+    <!-- FINGERS -->
+    <xacro:finger number="1"/>
+    <xacro:finger number="2"/>
+    <xacro:finger number="3"/>
+
+    <!-- PALM -->
+    <link name="palm">
+      <xacro:default_inertial mass="0.05" />
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://gripper_test/meshes/palm visual.STL" />
+        </geometry>
+      </visual>
+      <collision>
+        <geometry>
+          <mesh filename="package://gripper_test/meshes/palm collision.STL" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="palm_prismatic_joint" type="prismatic">
+      <axis xyz="1 0 0" rpy="0 0 0" />
+      <parent link="gripper_base_link"/>
+      <child link="palm"/>
+      <origin xyz="0 0 0" rpy="0 ${-pi/2} 0"/>
+      <limit effort="${limit_effort_palm}" 
+      			 lower="${palm_displacement_min}" 
+      			 upper="${palm_displacement_max}" 
+      			 velocity="${palm_velocity}"/>
+      <dynamics damping="${joint_damping}"/>
+    </joint>
+
+  </xacro:macro>
+
+</robot>
+        

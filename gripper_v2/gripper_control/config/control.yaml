@@ -1,0 +1,68 @@
+# Publish all joint states
+joint_state_controller:
+  type: "joint_state_controller/JointStateController"
+  publish_rate: 50
+
+# Control all panda joints
+gripper_controller:
+  type: "gripper_control/JointTrajectoryController"
+  joints:
+    - panda_joint1
+    - panda_joint2
+    - panda_joint3
+    - panda_joint4
+    - panda_joint5
+    - panda_joint6
+    - panda_joint7
+    - finger_1_prismatic_joint
+    - finger_1_revolute_joint
+    - finger_2_prismatic_joint
+    - finger_2_revolute_joint
+    - finger_3_prismatic_joint
+    - finger_3_revolute_joint
+    - palm_prismatic_joint
+
+  gains:
+    panda_joint1: {p: 100,  d: 10}
+    panda_joint2: {p: 100,  d: 10}
+    panda_joint3: {p: 100,  d: 10}
+    panda_joint4: {p: 100,  d: 10}
+    panda_joint5: {p: 100,  d: 10}
+    panda_joint6: {p: 100,  d: 10}
+    panda_joint7: {p: 100,  d: 10}
+    finger_1_prismatic_joint: {p: 100,  d: 10}
+    finger_1_revolute_joint: {p: 100,  d: 10}
+    finger_2_prismatic_joint: {p: 100,  d: 10}
+    finger_2_revolute_joint: {p: 100,  d: 10}
+    finger_3_prismatic_joint: {p: 100,  d: 10}
+    finger_3_revolute_joint: {p: 100,  d: 10}
+    palm_prismatic_joint: {p: 100,  d: 10}
+ 
+#gripper_test/gazebo_ros_control/pid_gains:
+#    panda_joint1: {p: 100,  d: 10}
+#    panda_joint2: {p: 100,  d: 10}
+#    panda_joint3: {p: 100,  d: 10}
+#    panda_joint4: {p: 100,  d: 10}
+#    panda_joint5: {p: 100,  d: 10}
+#    panda_joint6: {p: 100,  d: 10}
+#    panda_joint7: {p: 100,  d: 10}
+#    finger_1_prismatic_joint: {p: 100,  d: 10}
+#    finger_1_revolute_joint: {p: 100,  d: 10}
+#    finger_2_prismatic_joint: {p: 100,  d: 10}
+#    finger_2_revolute_joint: {p: 100,  d: 10}
+#    finger_3_prismatic_joint: {p: 100,  d: 10}
+#    finger_3_revolute_joint: {p: 100,  d: 10}
+#    palm_prismatic_joint: {p: 100,  d: 10}
+#    
+#gazebo_ros_control/pid_gains:
+#  joint1_position_controller:
+#    type: position_controllers/JointPositionController
+#    joint: joint1
+#    pid: {p: 100.0, i: 0.01, d: 10.0}
+  
+  
+  
+  
+  
+  
+    

@@ -1,0 +1,24 @@
+<launch>
+
+  <!-- Launch the Gazebo simulation with my custom plugin -->
+  <include file="$(find gz_link)/launch/gazebo.launch"/>
+
+  <!-- Launch the joint trajectory controller -->
+  <!--<include file="$(find gripper_control)/launch/control.launch"/>-->
+  
+  
+  <!-- TESTING launch the new segmented_controller -->
+  <!--
+  <include file="$(find segmented_controller)/launch/control.launch"/>
+  -->
+
+  <!-- Launch the MoveIt! move group -->
+  <include file="$(find gripper_control)/launch/moveit.launch"/>
+  
+  <!-- Launch RViz -->
+  <include file="$(find gripper_control)/launch/rviz.launch"/>
+  
+  <!-- Launch my ROS node test -->
+  <include file="$(find grasp_test)/launch/grasp_test.launch"/>
+
+</launch>

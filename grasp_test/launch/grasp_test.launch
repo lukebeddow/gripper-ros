@@ -1,0 +1,12 @@
+<launch>
+
+  <node pkg="grasp_test"
+        name="grasp_test_node"
+        type="grasp_test_node"
+        respawn="false"
+        output="screen"
+        cwd="node"
+        args="grasp_test_node" >
+  </node>
+
+</launch>

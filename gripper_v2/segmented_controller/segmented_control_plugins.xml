@@ -1,0 +1,11 @@
+<library path="lib/libsegmented_controller">
+
+  <class name="segmented_controller/JointTrajectoryController"
+  			 type="segmented_controller::JointTrajectoryController"
+  			 base_class_type="controller_interface::ControllerBase">
+    <description>
+      The JointTrajectoryController description.
+    </description>
+  </class>
+
+</library>

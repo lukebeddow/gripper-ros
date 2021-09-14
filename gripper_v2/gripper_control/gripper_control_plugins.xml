@@ -1,0 +1,11 @@
+<library path="lib/libgripper_control">
+
+  <class name="gripper_control/JointTrajectoryController"
+   			 type="gripper_control::JointTrajectoryController"
+   			 base_class_type="controller_interface::ControllerBase">
+    <description>
+      The JointTrajectoryController description.
+    </description>
+  </class>
+
+</library>

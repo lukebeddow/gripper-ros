@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<robot name="gripper" xmlns:xacro="http://wiki.ros.org/xacro">
+  
+  <!-- include macros for the panda arm and end effector -->
+  <xacro:include filename="$(find gripper_description)/urdf/panda_arm_macroed.xacro"/>
+  <xacro:include filename="$(find gripper_description)/urdf/gripper.urdf.xacro"/>
+  <xacro:include filename="$(find gripper_description)/urdf/panda.gazebo.xacro"/>
+  <xacro:include filename="$(find gripper_description)/urdf/panda.control.xacro"/>
+
+  <!-- TESTING segmented finger -->
+  <xacro:include filename="$(find gripper_description)/urdf/finger_segments.xacro"/>
+
+  <!-- create arm + eef combo itself as a macro-->
+  <xacro:macro name="panda_with_eff">
+
+    <!-- create instances of panda and eef models -->
+    <!-- <xacro:panda_arm safety_distance="0.03"/> -->
+    <xacro:my_gripper/>
+
+    <!-- <link name="base_link"/> -->
+    <xacro:panda_arm arm_id="panda" mesh_folder="gripper_test/meshes_panda" connected_to="base_link" xyz="0 0 0" rpy="0 0 0"/>
+    <!-- attach panda arm to the ground for gazebo -->
+    <link name="world"/>
+    <joint name="world_to_base" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <parent link="world"/>
+      <child link="panda_link0"/>
+    </joint>
+
+    <!-- attach eef to panda model via base link of eef -->
+    <joint name="panda_to_eef_base_link" type="fixed">
+      <origin xyz="0 0 0.25" rpy="0 0 ${-pi/4}" />
+      <parent link="panda_link7"/>
+      <child link="gripper_base_link"/>
+    </joint>
+
+    <!-- setup controllers and gazebo -->
+    <xacro:panda_gazebo arm_id="panda"/>
+    <xacro:panda_control arm_id="panda"/>
+
+  </xacro:macro>
+
+  <!-- execute the macro -->
+  <xacro:panda_with_eff/>
+
+  <!-- TESTING segmented finger -->
+  <xacro:macro name="add_fingers">
+    <!-- Create the fingers -->
+    <xacro:property name="segments" value="10"/>
+    <xacro:segmented_finger prefix="finger_1" num_segments="${segments}"/>
+    <xacro:segmented_finger prefix="finger_2" num_segments="${segments}"/>
+    <xacro:segmented_finger prefix="finger_3" num_segments="${segments}"/>
+
+    <!-- attach them to the gripper -->
+    <joint name="to_segmented_finger_1" type="fixed">
+      <origin xyz="0.129 -0.007 0" rpy="${pi/2} 0 0"/>
+      <parent link="finger_1"/>
+      <child link="finger_1_segment_link_1"/>
+    </joint>
+    <joint name="to_segmented_finger_2" type="fixed">
+      <origin xyz="0.129 -0.007 0" rpy="${pi/2} 0 0"/>
+      <parent link="finger_2"/>
+      <child link="finger_2_segment_link_1"/>
+    </joint>
+    <joint name="to_segmented_finger_3" type="fixed">
+      <origin xyz="0.129 -0.007 0" rpy="${pi/2} 0 0"/>
+      <parent link="finger_3"/>
+      <child link="finger_3_segment_link_1"/>
+    </joint>
+
+    <!-- disable collisions -->
+    <!-- <disable_collisions link1="finger_1"
+                        link2="finger_1_segment_link_1"
+                        reason="Adjacent"/>
+    <disable_collisions link1="finger_2"
+                        link2="finger_2_segment_link_1"
+                        reason="Adjacent"/>
+    <disable_collisions link1="finger_3"
+                        link2="finger_3_segment_link_1"
+                        reason="Adjacent"/> -->
+
+    <!-- create groups -->
+    <!-- <xacro:build_group prefix="finger_1" i="${segments}"/>
+    <xacro:build_group prefix="finger_2" i="${segments}"/>
+    <xacro:build_group prefix="finger_3" i="${segments}"/> -->
+
+    <!-- <xacro:disable_finger_collisions prefix="finger_1" imax="2"/>
+	<xacro:disable_finger_collisions prefix="finger_2" imax="2"/>
+	<xacro:disable_finger_collisions prefix="finger_3" imax="2"/> -->
+
+  </xacro:macro>
+
+  <xacro:add_fingers/>
+
+</robot>

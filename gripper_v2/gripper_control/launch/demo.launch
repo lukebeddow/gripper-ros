@@ -1,0 +1,15 @@
+<launch>
+
+  <!-- Launch the Gazebo simulation -->
+  <include file="$(find gripper_gazebo)/launch/empty_world.launch"/>
+
+  <!-- Launch the joint trajectory controller -->
+  <!--<include file="$(find gripper_control)/launch/control.launch"/>-->
+
+  <!-- Launch the MoveIt! move group -->
+  <include file="$(find gripper_control)/launch/moveit.launch"/>
+  
+  <!-- Launch RViz -->
+  <include file="$(find gripper_control)/launch/rviz.launch"/>
+
+</launch>

@@ -1,0 +1,20 @@
+controller_list:
+  - name: gripper_controller
+    action_ns: follow_joint_trajectory
+    type: FollowJointTrajectory
+    default: true
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+      - finger_1_prismatic_joint
+      - finger_1_revolute_joint
+      - finger_2_prismatic_joint
+      - finger_2_revolute_joint
+      - finger_3_prismatic_joint
+      - finger_3_revolute_joint
+      - palm_prismatic_joint

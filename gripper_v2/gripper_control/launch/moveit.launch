@@ -1,0 +1,18 @@
+<launch>
+
+  <!-- Debug mode -->
+  <arg name="debug" default="false" />
+
+  <!-- Load the SRDF and other configuration files -->
+  <!-- don't do this, as move_group.launch already does this
+  <include file="$(find gripper_moveit)/launch/planning_context.launch"/>
+  -->
+
+  <!-- Run the main MoveIt executable -->
+  <include file="$(find gripper_moveit)/launch/move_group.launch">
+    <arg name="allow_trajectory_execution" value="true"/>
+    <arg name="debug" value="$(arg debug)"/>
+    <arg name="info" value="true"/>
+  </include>
+
+</launch>

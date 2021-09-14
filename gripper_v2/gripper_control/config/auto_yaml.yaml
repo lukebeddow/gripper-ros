@@ -1,0 +1,237 @@
+finger_1_controller:
+  joints:
+  - finger_1_segment_joint1
+  - finger_1_segment_joint2
+  - finger_1_segment_joint3
+  - finger_1_segment_joint4
+  - finger_1_segment_joint5
+  - finger_1_segment_joint6
+  - finger_1_segment_joint7
+  - finger_1_segment_joint8
+  - finger_1_segment_joint9
+  state_publisher_rate: 50
+  type: segmented_controller/JointTrajectoryController
+finger_2_controller:
+  joints:
+  - finger_2_segment_joint1
+  - finger_2_segment_joint2
+  - finger_2_segment_joint3
+  - finger_2_segment_joint4
+  - finger_2_segment_joint5
+  - finger_2_segment_joint6
+  - finger_2_segment_joint7
+  - finger_2_segment_joint8
+  - finger_2_segment_joint9
+  state_publisher_rate: 50
+  type: segmented_controller/JointTrajectoryController
+finger_3_controller:
+  joints:
+  - finger_3_segment_joint1
+  - finger_3_segment_joint2
+  - finger_3_segment_joint3
+  - finger_3_segment_joint4
+  - finger_3_segment_joint5
+  - finger_3_segment_joint6
+  - finger_3_segment_joint7
+  - finger_3_segment_joint8
+  - finger_3_segment_joint9
+  state_publisher_rate: 50
+  type: segmented_controller/JointTrajectoryController
+finger_controller:
+  constraints:
+    finger_2_segment_joint_1:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_2:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_3:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_4:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_5:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_6:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_7:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_8:
+      goal: 0
+      trajectory: 0
+    finger_2_segment_joint_9:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_1:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_2:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_3:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_4:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_5:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_6:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_7:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_8:
+      goal: 0
+      trajectory: 0
+    finger_3_segment_joint_9:
+      goal: 0
+      trajectory: 0
+    goal_time: 2.0
+    state_publisher_rate: 50
+  joints:
+  - finger_2_segment_joint_1
+  - finger_2_segment_joint_2
+  - finger_2_segment_joint_3
+  - finger_2_segment_joint_4
+  - finger_2_segment_joint_5
+  - finger_2_segment_joint_6
+  - finger_2_segment_joint_7
+  - finger_2_segment_joint_8
+  - finger_2_segment_joint_9
+  - finger_3_segment_joint_1
+  - finger_3_segment_joint_2
+  - finger_3_segment_joint_3
+  - finger_3_segment_joint_4
+  - finger_3_segment_joint_5
+  - finger_3_segment_joint_6
+  - finger_3_segment_joint_7
+  - finger_3_segment_joint_8
+  - finger_3_segment_joint_9
+  type: position_controllers/JointTrajectoryController
+joint_state_controller:
+  publish_rate: 50
+  type: joint_state_controller/JointStateController
+panda_arm_controller:
+  gains:
+    panda_joint1:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+    panda_joint2:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+    panda_joint3:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+    panda_joint4:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+    panda_joint5:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+    panda_joint6:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+    panda_joint7:
+      d: 10
+      i: 1
+      i_clamp: 1
+      p: 500
+  joints:
+  - panda_joint1
+  - panda_joint2
+  - panda_joint3
+  - panda_joint4
+  - panda_joint5
+  - panda_joint6
+  - panda_joint7
+  state_publish_rate: 50
+  type: position_controllers/JointTrajectoryController
+panda_hand_controller:
+  constraints:
+    finger_1_prismatic_joint:
+      goal: 0
+      trajectory: 0
+    finger_1_revolute_joint:
+      goal: 0
+      trajectory: 0
+    finger_2_prismatic_joint:
+      goal: 0
+      trajectory: 0
+    finger_2_revolute_joint:
+      goal: 0
+      trajectory: 0
+    finger_3_prismatic_joint:
+      goal: 0
+      trajectory: 0
+    finger_3_revolute_joint:
+      goal: 0
+      trajectory: 0
+    goal_time: 2.0
+    palm_prismatic_joint:
+      goal: 0
+      trajectory: 0
+  gains:
+    finger_1_prismatic_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+    finger_1_revolute_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+    finger_2_prismatic_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+    finger_2_revolute_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+    finger_3_prismatic_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+    finger_3_revolute_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+    palm_prismatic_joint:
+      d: 100
+      i: 0.1
+      i_clamp: 1
+      p: 100
+  joints:
+  - finger_1_prismatic_joint
+  - finger_1_revolute_joint
+  - finger_2_prismatic_joint
+  - finger_2_revolute_joint
+  - finger_3_prismatic_joint
+  - finger_3_revolute_joint
+  - palm_prismatic_joint
+  state_publish_rate: 50
+  type: position_controllers/JointTrajectoryController

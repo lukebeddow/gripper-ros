@@ -1,0 +1,7 @@
+<launch>
+
+	<!-- create a node to parse panda.srdf using xacro, and save a new file called test_panda.srdf -->
+  <node name="xacro" pkg="xacro" type="xacro"
+  			args="--inorder -o $(find gripper_moveit)/config/test_panda.srdf $(find gripper_moveit)/config/panda.srdf"/>
+  			
+</launch>
