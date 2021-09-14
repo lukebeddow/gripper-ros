@@ -50,14 +50,14 @@
             <box size="${segment_length} ${segment_width} ${segment_thickness}"/>
           </geometry>
         </collision>
-        <gazebo reference="${prefix}_segment_link_${number}">
-          <material>Gazebo/Orange</material>
-          <mu1>100</mu1>
-          <mu2>100</mu2>
-          <kp>100</kp>
-          <kd>1</kd>
-        </gazebo>
       </link>
+      <gazebo reference="${prefix}_segment_link_${number}">
+        <material>Gazebo/Orange</material>
+        <!-- <mu1>100</mu1>
+        <mu2>100</mu2>
+        <kp>100</kp>
+        <kd>1</kd> -->
+      </gazebo>
     </xacro:macro>
 
     <!-- Macro to add a segment joint -->

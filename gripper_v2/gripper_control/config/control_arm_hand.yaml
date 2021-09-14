@@ -1,0 +1,69 @@
+# Publish joint states
+joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50
+
+panda_arm_controller:
+    type: position_controllers/JointTrajectoryController
+#   type: gripper_control/JointTrajectoryController
+#   type: effort_controllers/JointTrajectoryController
+    joints:
+        - panda_joint1
+        - panda_joint2
+        - panda_joint3
+        - panda_joint4
+        - panda_joint5
+        - panda_joint6
+        - panda_joint7
+
+    gains:
+        panda_joint1: {p: 500, d: 10, i: 1, i_clamp: 1}
+        panda_joint2: {p: 500, d: 10, i: 1, i_clamp: 1}
+        panda_joint3: {p: 500, d: 10, i: 1, i_clamp: 1}
+        panda_joint4: {p: 500, d: 10, i: 1, i_clamp: 1}
+        panda_joint5: {p: 500, d: 10, i: 1, i_clamp: 1}
+        panda_joint6: {p: 500, d: 10, i: 1, i_clamp: 1}
+        panda_joint7: {p: 500, d: 10, i: 1, i_clamp: 1}
+
+    state_publish_rate: 50
+
+panda_hand_controller:
+    type: position_controllers/JointTrajectoryController
+#    type: gripper_control/JointTrajectoryController
+#    type: effort_controllers/JointTrajectoryController
+    joints:
+      - finger_1_prismatic_joint
+      - finger_1_revolute_joint
+      - finger_2_prismatic_joint
+      - finger_2_revolute_joint
+      - finger_3_prismatic_joint
+      - finger_3_revolute_joint
+      - palm_prismatic_joint
+
+    constraints:
+        goal_time: 2.0
+        # trajectory and goal tolerances, I think goal=0 disables this
+        finger_1_prismatic_joint: {trajectory: 0, goal: 0}
+        finger_1_revolute_joint: {trajectory: 0, goal: 0}
+        finger_2_prismatic_joint: {trajectory: 0, goal: 0}
+        finger_2_revolute_joint: {trajectory: 0, goal: 0}
+        finger_3_prismatic_joint: {trajectory: 0, goal: 0}
+        finger_3_revolute_joint: {trajectory: 0, goal: 0}
+        palm_prismatic_joint: {trajectory: 0, goal: 0}
+       
+    gains:
+        # this doesn't fix the error message...
+        finger_1_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        finger_1_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        finger_2_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        finger_2_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        finger_3_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        finger_3_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        palm_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+        
+    state_publish_rate: 50
+      
+      
+      
+      
+      
