@@ -51,7 +51,7 @@ public:
         // Extract chain from KDL tree.
         KDL::Chain chain;
 
-        // testing as we know we want one controller per finger
+        // which finger are we controlling
         static bool finger_1 = false;
         static bool finger_2 = false;
         static bool finger_3 = false;
@@ -84,7 +84,6 @@ public:
           ROS_ERROR("finger_1, 2 and 3 all = true in segmented_control.h");
         }
 
-
         // Init effort command publisher.
         publisher.reset(new EffortsPublisher(nh, "efforts", 10));
 
@@ -92,9 +91,8 @@ public:
         joints_efforts = &(publisher->msg_.data);
 
         // Reset and resize joint states/controls.
-        unsigned int n_joints = chain.getNrOfJoints();
-        // inner_loop_control.resize(n_joints);
-        // outer_loop_control.resize(n_joints);
+        n_joints = chain.getNrOfJoints();
+
         joints_effort_limits.resize(n_joints);
         (*joints_efforts).resize(n_joints);
         joints_state.resize(n_joints);
@@ -102,29 +100,6 @@ public:
         joint_positions.resize(n_joints);
         joint_velocities.resize(n_joints);
         joint_efforts.resize(n_joints);
-
-        /*
-        for (unsigned int idx = 0; idx < chain.getNrOfJoints(); idx++) {
-            // Get joint name.
-            std::string name = chain.getSegment(idx).getJoint().getName();
-
-            // Extract joint effort limits from urdf.
-            if (!(urdf_model.getJoint(name)) ||
-                !(urdf_model.getJoint(name)->limits) ||
-                !(urdf_model.getJoint(name)->limits->effort)) {
-                ROS_ERROR("No effort limit specified for joint '%s'", name.c_str());
-                return false;
-            }
-            joints_effort_limits.data[idx] = urdf_model.getJoint(name)->limits->effort;
-        }
-        ROS_INFO("Extracted joint effort limits");
-        */
-
-        /*
-        // Init inverse dynamics solver.
-        id_solver.reset(new KDL::ChainIdSolver_RNE(chain, KDL::Vector(0, 0, -9.81)));
-        ROS_INFO("Initialized kdl inverse dynamics solver");
-        */
 
         return true;
     }
@@ -149,51 +124,15 @@ public:
     {
         if (!joint_handles_ptr) { return; }
 
-        /*
-        for (size_t idx = 0; idx < joint_handles_ptr->size(); ++idx) {
+        // key dynamics parameters
+        double total_stiffness = 12.0;
+        double total_damping = 0.0;
 
-            // Update joint state with current position (q) and velocity (qdot).
-            joints_state.q.data[idx] = (*joint_handles_ptr)[idx].getPosition();
-            joints_state.qdot.data[idx] = (*joint_handles_ptr)[idx].getVelocity();
-
-            // Compute outer loop control.
-            // todo: dynamic reconfigure parameters.
-            outer_loop_control.data[idx] = 100 * state_error.position[idx] + 10 * state_error.velocity[idx];
-        }
-
-        // No external forces (except gravity).
-        KDL::Wrenches external_forces(joint_handles_ptr->size());
-
-        // Solve inverse dynamics (inner loop control).
-        if (id_solver->CartToJnt(
-                joints_state.q,
-                joints_state.qdot,
-                outer_loop_control,
-                external_forces,
-                inner_loop_control) != 0) {
-            ROS_ERROR("error solving inverse dynamics");
-            return;
-        };
-
-        for (unsigned int idx = 0; idx < joint_handles_ptr->size(); ++idx) {
-            (*joints_efforts)[idx] = inner_loop_control.data[idx];
-
-            // Limit based on min/max efforts.
-            (*joints_efforts)[idx] = std::min((*joints_efforts)[idx], joints_effort_limits.data[idx]);
-            (*joints_efforts)[idx] = std::max((*joints_efforts)[idx], -joints_effort_limits.data[idx]);
-
-            // Write joint effort command.
-            (*joint_handles_ptr)[idx].setCommand((*joints_efforts)[idx]);
-
-        }
-        */
-
-        double joint_stiffness = 100.0;
+        // springs in series
+        double joint_stiffness = total_stiffness * (n_joints);
         double joint_damping = 0.0;
 
         for (unsigned int idx = 0; idx < joint_handles_ptr->size(); ++idx) {
-
-            // (*joints_efforts)[idx] = inner_loop_control.data[idx];
 
             // get joints current position and velocity data
             joint_positions[idx] = (*joint_handles_ptr)[idx].getPosition();
@@ -201,7 +140,7 @@ public:
 
             // calculate the control force
             joint_efforts[idx] = -joint_positions[idx] * joint_stiffness
-              + joint_velocities[idx] * joint_damping;
+              - joint_velocities[idx] * joint_damping;
 
             /*
             // Limit based on min/max efforts.
@@ -212,16 +151,9 @@ public:
             // *joints_efforts is linked to the publisher msg currently
             (*joints_efforts)[idx] = joint_efforts[idx];
             
-            // Write joint effort command.
+            // Write joint effort command to the effort msg
             (*joint_handles_ptr)[idx].setCommand(joint_efforts[idx]);
-
-            // ROS_INFO_STREAM("Joint " << idx << " has effort " << joint_efforts[idx]
-            //   << " and position " << joint_positions[idx] << " and velocity "
-            //   << joint_velocities[idx]);
         }
-
-      
-
 
         // Publish efforts.
         if (publisher->trylock()) {
@@ -257,4 +189,6 @@ private:
     std::vector<double> joint_positions;
     std::vector<double> joint_velocities;
     std::vector<double> joint_efforts;
+
+    unsigned int n_joints;
 };

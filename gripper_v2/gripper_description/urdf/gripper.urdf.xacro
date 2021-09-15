@@ -22,6 +22,11 @@
     <xacro:property name="limit_effort_prismatic" value="40.0"/>
     <xacro:property name="limit_effort_revolute" value="40.0"/>
     <xacro:property name="limit_effort_palm" value="40.0"/>
+
+    <!-- retrieve info about the gripper -->
+    <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
+    <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
+    <xacro:property name="is_segmented" value="${dictionary['is_segmented']}"/>
     
     <!-- Define arbritray joint damping for Gazebo -->
     <xacro:property name="joint_damping" value="1.0"/>
@@ -82,16 +87,27 @@
       <!-- Main finger link -->
       <link name="finger_${number}">
         <xacro:default_inertial mass="0.3"/>
-        <visual>
-          <geometry>
-            <mesh filename="package://gripper_description/meshes/finger platform visual.STL"/>
-          </geometry>
-        </visual>
-        <!-- <collision>
-          <geometry>
-            <mesh filename="package://gripper_description/meshes/finger platform collision.STL"/>
-          </geometry>
-        </collision> -->
+        <!-- If we are using rigid fingers -->
+        <xacro:if value="${not is_segmented}">
+          <visual>
+            <geometry>
+              <mesh filename="package://gripper_description/meshes/finger platform visual.STL"/>
+            </geometry>
+          </visual>
+          <collision>
+            <geometry>
+              <mesh filename="package://gripper_description/meshes/finger platform collision.STL"/>
+            </geometry>
+          </collision>
+        </xacro:if>
+        <!-- If we are using segmented fingers -->
+        <xacro:if value="${is_segmented}">
+          <visual>
+            <geometry>
+              <mesh filename="package://gripper_description/meshes/finger platform visual.STL"/>
+            </geometry>
+          </visual>
+        </xacro:if>
       </link>
       <!-- Prismatic joint -->
       <joint name="finger_${number}_prismatic_joint" type="prismatic">

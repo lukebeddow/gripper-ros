@@ -4,17 +4,30 @@
     A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
 -->
 <robot name="panda" xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <!-- retrieve info about the gripper -->
+    <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
+    <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
+    <xacro:property name="is_segmented" value="${dictionary['is_segmented']}"/>
+    <xacro:property name="num_segments" value="${dictionary['num_segments']}"/>
+
+    <!-- are we using a segmented finger -->
+    <xacro:if value="${is_segmented}">
 		
-	<xacro:include filename="$(find gripper_description)/urdf/finger_segments.xacro"/>
-	<xacro:property name="num_segments" value="10"/>
-	
-	<xacro:build_group prefix="finger_1" i="${num_segments}"/>
-	<xacro:build_group prefix="finger_2" i="${num_segments}"/>
-	<xacro:build_group prefix="finger_3" i="${num_segments}"/>
-	
-	<xacro:disable_finger_collisions prefix="finger_1" imax="${num_segments}"/>
-	<xacro:disable_finger_collisions prefix="finger_2" imax="${num_segments}"/>
-	<xacro:disable_finger_collisions prefix="finger_3" imax="${num_segments}"/>
+        <!-- import gripper macros -->
+        <xacro:include filename="$(find gripper_description)/urdf/finger_segments.xacro"/>
+
+        <!-- create move groups for each finger -->
+        <xacro:build_group prefix="finger_1" i="${num_segments}"/>
+        <xacro:build_group prefix="finger_2" i="${num_segments}"/>
+        <xacro:build_group prefix="finger_3" i="${num_segments}"/>
+
+        <!-- disable all possible finger self-collisions -->
+        <xacro:disable_finger_collisions prefix="finger_1" imax="${num_segments}"/>
+        <xacro:disable_finger_collisions prefix="finger_2" imax="${num_segments}"/>
+        <xacro:disable_finger_collisions prefix="finger_3" imax="${num_segments}"/>
+
+    </xacro:if>
 
     <!--GROUPS: Representation of a set of joints and links. This can be useful for specifying DOF to plan for, defining arms, end effectors, etc-->
     <!--LINKS: When a link is specified, the parent joint of that link (if it exists) is automatically included-->
@@ -168,68 +181,6 @@
     <disable_collisions link1="panda_link5" link2="panda_link6" reason="Adjacent" />
     <disable_collisions link1="panda_link5" link2="panda_link7" reason="Never" />
     <disable_collisions link1="panda_link6" link2="panda_link7" reason="Adjacent" />
-    
-    <!-- disable collisions
-    <disable_collisions link1="finger_1"
-                        link2="finger_1_segment_link_1"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_2"
-                        link2="finger_2_segment_link_1"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_3"
-                        link2="finger_3_segment_link_1"
-                        reason="Adjacent"/>
-                        
-    <disable_collisions link1="finger_1_segment_link_1"
-                        link2="finger_1_segment_link_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_2_segment_link_1"
-                        link2="finger_2_segment_link_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_3_segment_link_1"
-                        link2="finger_3_segment_link_2"
-                        reason="Adjacent"/>
-                        
-    <disable_collisions link1="finger_1"
-                        link2="finger_1_segment_link_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_2"
-                        link2="finger_2_segment_link_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_3"
-                        link2="finger_3_segment_link_2"
-                        reason="Adjacent"/>
-                        
-    <disable_collisions link1="finger_1_finger_hook_link"
-                        link2="finger_1_segment_link_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_2_finger_hook_link"
-                        link2="finger_2_segment_link_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_3_finger_hook_link"
-                        link2="finger_3_segment_link_2"
-                        reason="Adjacent"/>
-                        
-    <disable_collisions link1="finger_1_finger_hook_link"
-                        link2="finger_1"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_2_finger_hook_link"
-                        link2="finger_2"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_3_finger_hook_link"
-                        link2="finger_3"
-                        reason="Adjacent"/>
-                        
-    <disable_collisions link1="finger_1_finger_hook_link"
-                        link2="finger_1_segment_link_1"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_2_finger_hook_link"
-                        link2="finger_2_segment_link_1"
-                        reason="Adjacent"/>
-    <disable_collisions link1="finger_3_finger_hook_link"
-                        link2="finger_3_segment_link_1"
-                        reason="Adjacent"/>
-                        -->
                         
 </robot>
 

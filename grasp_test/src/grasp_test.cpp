@@ -11,6 +11,8 @@ GraspTest::GraspTest(ros::NodeHandle& nh)
   // for testing
   addCollsion();
 
+  ROS_INFO("Grasp test initialisation finished, ready to go");
+
 }
 
 void GraspTest::callback(const std_msgs::String msg)

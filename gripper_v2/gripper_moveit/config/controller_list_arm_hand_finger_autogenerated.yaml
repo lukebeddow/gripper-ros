@@ -24,7 +24,7 @@ controller_list:
   name: panda_hand_controller
   type: FollowJointTrajectory
 - action_ns: follow_joint_trajectory
-  joint_names:
+  joints:
   - finger_1_segment_joint_1
   - finger_1_segment_joint_2
   - finger_1_segment_joint_3
@@ -37,7 +37,7 @@ controller_list:
   name: finger_1_controller
   type: FollowJointTrajectory
 - action_ns: follow_joint_trajectory
-  joint_names:
+  joints:
   - finger_2_segment_joint_1
   - finger_2_segment_joint_2
   - finger_2_segment_joint_3
@@ -50,7 +50,7 @@ controller_list:
   name: finger_2_controller
   type: FollowJointTrajectory
 - action_ns: follow_joint_trajectory
-  joint_names:
+  joints:
   - finger_3_segment_joint_1
   - finger_3_segment_joint_2
   - finger_3_segment_joint_3
