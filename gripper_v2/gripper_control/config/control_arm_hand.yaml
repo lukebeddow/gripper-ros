@@ -16,14 +16,26 @@ panda_arm_controller:
         - panda_joint6
         - panda_joint7
 
-    gains:
-        panda_joint1: {p: 500, d: 10, i: 1, i_clamp: 1}
-        panda_joint2: {p: 500, d: 10, i: 1, i_clamp: 1}
-        panda_joint3: {p: 500, d: 10, i: 1, i_clamp: 1}
-        panda_joint4: {p: 500, d: 10, i: 1, i_clamp: 1}
-        panda_joint5: {p: 500, d: 10, i: 1, i_clamp: 1}
-        panda_joint6: {p: 500, d: 10, i: 1, i_clamp: 1}
-        panda_joint7: {p: 500, d: 10, i: 1, i_clamp: 1}
+    # currently most constraints are disabled, this is DANGEROUS if driving any real hardware
+    constraints:
+        # goal_time: 5.0                               # defaults to disabled (0) if not set
+        stopped_velocity_tolerance: 0                  # defaults to 0.01
+        panda_joint1: {trajectory: 0, goal: 0}         # 0 = disabled (defaults to 0)
+        panda_joint2: {trajectory: 0, goal: 0}
+        panda_joint3: {trajectory: 0, goal: 0}
+        panda_joint4: {trajectory: 0, goal: 0}
+        panda_joint5: {trajectory: 0, goal: 0}
+        panda_joint6: {trajectory: 0, goal: 0}
+        panda_joint7: {trajectory: 0, goal: 0}    
+    
+    # gains:
+    #     panda_joint1: {p: 500, d: 10, i: 1, i_clamp: 1}
+    #     panda_joint2: {p: 500, d: 10, i: 1, i_clamp: 1}
+    #     panda_joint3: {p: 500, d: 10, i: 1, i_clamp: 1}
+    #     panda_joint4: {p: 500, d: 10, i: 1, i_clamp: 1}
+    #     panda_joint5: {p: 500, d: 10, i: 1, i_clamp: 1}
+    #     panda_joint6: {p: 500, d: 10, i: 1, i_clamp: 1}
+    #     panda_joint7: {p: 500, d: 10, i: 1, i_clamp: 1}
 
     state_publish_rate: 50
 
@@ -41,7 +53,8 @@ panda_hand_controller:
       - palm_prismatic_joint
 
     constraints:
-        goal_time: 2.0
+        #goal_time: 5.0
+        stopped_velocity_tolerance: 0
         # trajectory and goal tolerances, I think goal=0 disables this
         finger_1_prismatic_joint: {trajectory: 0, goal: 0}
         finger_1_revolute_joint: {trajectory: 0, goal: 0}
@@ -51,15 +64,15 @@ panda_hand_controller:
         finger_3_revolute_joint: {trajectory: 0, goal: 0}
         palm_prismatic_joint: {trajectory: 0, goal: 0}
        
-    gains:
-        # this doesn't fix the error message...
-        finger_1_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
-        finger_1_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
-        finger_2_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
-        finger_2_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
-        finger_3_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
-        finger_3_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
-        palm_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    # gains:
+    #     # this doesn't fix the error message...
+    #     finger_1_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    #     finger_1_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    #     finger_2_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    #     finger_2_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    #     finger_3_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    #     finger_3_revolute_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
+    #     palm_prismatic_joint: {p: 100, d: 100, i: 0.1, i_clamp: 1}
         
     state_publish_rate: 50
       

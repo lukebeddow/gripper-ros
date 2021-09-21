@@ -1,6 +1,19 @@
 <?xml version="1.0" ?>
 <sdf version="1.4">
     <world name="empty">
+    
+    		<!-- physics  -->
+    		<physics type="ode">
+				  <max_step_size>0.001</max_step_size>
+				  <ode>
+				  	<solver>
+				  		<iters>50</iters>
+				  	</solver>
+				  	<constraints>
+				  		<cfm>0</cfm>
+				  	</constraints>
+				  </ode>
+				</physics>
 
         <!-- basics -->
         <include>

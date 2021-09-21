@@ -4,38 +4,67 @@
   <xacro:macro name="segmented_finger" params="prefix num_segments">
 
     <!-- User defined variables -->
-    <!-- <xacro:property name="num_segments" value="10"/> -->
     <xacro:property name="finger_length_mm" value="190.0"/>
     <xacro:property name="hook_length_mm" value="35.0"/>
     <xacro:property name="finger_width_mm" value="28.0"/>
     <xacro:property name="finger_thickness_mm" value="0.9"/>
     <xacro:property name="hook_angle_d" value="90.0"/>
-    <xacro:property name="bending_stiffness" value="100.0"/>
-    <xacro:property name="torsional_stiffness" value="1000.0"/>
-    <xacro:property name="bending_damping" value="0.1"/>
-    <xacro:property name="torsional_damping" value="0.1"/>
+    <xacro:property name="finger_mass_g" value="75.0"/>
+
+    <!-- set to zero, as handled in segmented_control.h -->
+    <xacro:property name="bending_damping" value="0.0"/> 
+    <xacro:property name="torsional_damping" value="0.0"/>
+
+    <xacro:property name="total_friction" value="0.0"/>
+    <xacro:property name="total_damping" value="0.0001"/>
 
     <!-- Automatially calculated variables -->
+    <xacro:property name="finger_length" value="${finger_length_mm * 0.001}"/>
     <xacro:property name="segment_length" value="${(finger_length_mm / num_segments) * 0.001}"/>
     <xacro:property name="segment_width" value="${finger_width_mm * 0.001}"/>
     <xacro:property name="segment_thickness" value="${finger_thickness_mm * 0.001}"/>
     <xacro:property name="hook_length" value="${hook_length_mm * 0.001}"/>
     <xacro:property name="hook_angle" value="${(hook_angle_d / 180.0) * 3.1415926535897}"/>
-    <xacro:property name="segment_number" value="0"/>
+    <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
+    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/>
+
+    <!-- find inertia of each segment -->
+    <xacro:property name="finger_mass" value="${finger_mass_g * 0.001}"/>
+    <xacro:property name="segment_mass" 
+      value="${(finger_mass * segment_length) / (finger_length + hook_length)}"/>
+    <!-- x axis along finger length, no axis displacement-->
+    <xacro:property name="segment_ixx"
+      value="${(1.0/12.0) * segment_mass * (segment_thickness ** 2 + segment_width ** 2)}"/>
+    <!-- y axis is joint axis, has axis displacment from centre of mass -->
+    <xacro:property name="segment_iyy"
+      value="${(1.0/12.0) * segment_mass * (segment_length ** 2 + segment_thickness ** 2)
+              + segment_mass * (segment_length / 2.0) ** 2}"/>
+    <!-- z axis is out of the segment, has axis displacement-->
+    <xacro:property name="segment_izz"
+      value="${(1.0/12.0) * segment_mass * (segment_length ** 2 + segment_width ** 2)
+              + segment_mass * (segment_length / 2.0) ** 2}"/>
+
+    <xacro:property name="stability_factor" value="1"/>
 
     <!-- Simplistic inertia macro for Gazebo -->
-    <xacro:macro name="segment_inertial" params="mass">
+    <xacro:macro name="segment_inertial" params="mass num">
       <inertial>
-        <mass value="${mass}"/>
-        <inertia ixx="1e-3" iyy="1e-3" izz="1e-3"
+        <mass value="${segment_mass}"/>
+        <inertia ixx="${segment_ixx * stability_factor}"
+                 iyy="${segment_iyy * stability_factor}"
+                 izz="${segment_izz * stability_factor}"
                 ixy="0.00" iyz="0.00" ixz="0.00" />
+        <!-- <inertia ixx="${1e-6 * stability_factor}"
+                 iyy="${1e-6 * stability_factor}"
+                 izz="${1e-6 * stability_factor}"
+                ixy="0.00" iyz="0.00" ixz="0.00" /> -->
       </inertial>
     </xacro:macro>
 
     <!-- Macro to add a segment link -->
     <xacro:macro name="add_segment_link" params="number">
       <link name="${prefix}_segment_link_${number}">
-        <xacro:segment_inertial mass="${(75 * 0.001) / num_segments}"/>
+        <xacro:segment_inertial mass="${(75 * 0.001) / num_segments}" num="${number}"/>
         <visual>
           <origin xyz="${segment_length / 2} 0 0"
                   rpy="0 0 0"/>
@@ -53,9 +82,9 @@
       </link>
       <gazebo reference="${prefix}_segment_link_${number}">
         <material>Gazebo/Orange</material>
-        <!-- <mu1>100</mu1>
-        <mu2>100</mu2>
-        <kp>100</kp>
+        <mu1>0.1</mu1>
+        <mu2>0.1</mu2>
+        <!-- <kp>100</kp>
         <kd>1</kd> -->
       </gazebo>
     </xacro:macro>
@@ -72,33 +101,28 @@
                lower="-1.0"
                upper="1.0"
                velocity="1.0"/>
-        <dynamics damping="${bending_damping}"/>
-        <gazebo reference="${prefix}_segment_joint_${number - 1}">
-          <spring_reference>0.0</spring_reference>
-          <!-- note series springs have reduced stiffness 10+10+10 = 10/3 -->
-          <spring_stiffness>1000000.0</spring_stiffness>
-          <implicitSpringDamper>1</implicitSpringDamper>
-          <!-- <stopCfm>0.1</stopCfm>
-          <stopErp>0.1</stopErp>
-          <dampingFactor>0.1</dampingFactor> -->
-        </gazebo>
+        <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
       </joint>
+      <!-- Tags for gazebo, see: http://gazebosim.org/tutorials?tut=ros_urdf -->
+      <xacro:macro name="add_gazebo">
+        <gazebo reference="${prefix}_segment_joint_${number - 1}">
+          <provideFeedback>1</provideFeedback>
+          <springStiffness>0.75</springStiffness>
+          <springReference>0.0</springReference>
+          <implicitSpringDamper>1</implicitSpringDamper>
+        </gazebo>
+      </xacro:macro>
+      <xacro:add_gazebo/>
       <transmission name="${prefix}_segment_tran_${number - 1}">
-          <type>transmission_interface/SimpleTransmission</type>
-          <joint name="${prefix}_segment_joint_${number - 1}">
-
-                <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-
-          </joint>
-          <actuator name="${prefix}_segment_motor_${number - 1}">
-
-                <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-
-              <!-- <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface> -->
-              <!-- <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface> -->
-              <mechanicalReduction>1</mechanicalReduction>
-          </actuator>
-        </transmission>
+        <type>transmission_interface/SimpleTransmission</type>
+        <joint name="${prefix}_segment_joint_${number - 1}">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        </joint>
+        <actuator name="${prefix}_segment_motor_${number - 1}">
+          <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+        </actuator>
+      </transmission>
     </xacro:macro>
 
     <!-- Create the base link -->
@@ -124,7 +148,7 @@
 
     <!-- Add the finger hook link -->
     <link name="${prefix}_finger_hook_link">
-      <xacro:segment_inertial mass="${(75 * 0.001) / num_segments}"/>
+      <xacro:segment_inertial mass="${(75 * 0.001) / num_segments}" num="${num_segments}"/>
       <visual>
         <origin xyz="${hook_length / 2} 0 0"
                 rpy="0 0 0"/>
@@ -140,6 +164,13 @@
         </geometry>
       </collision>
     </link>
+    <gazebo reference="${prefix}_finger_hook_link">
+      <material>Gazebo/Orange</material>
+      <!-- <mu1>100</mu1>
+      <mu2>100</mu2>
+      <kp>100</kp>
+      <kd>1</kd> -->
+    </gazebo>
 
     <!-- Connect the finger hook via a fixed joint -->
     <joint name="${prefix}_finger_hook_joint" type="fixed">
@@ -148,11 +179,6 @@
       <origin xyz="${segment_length} 0 0"
               rpy="0 ${-hook_angle} 0"/>
     </joint>
-
-    <!-- disable collisions between link and hook -->
-    <disable_collisions link1="${prefix}_segment_link_${num_segments}"
-                        link2="${prefix}_finger_hook_link"
-                        reason="Adjacent"/>
 
   </xacro:macro>
 
@@ -217,6 +243,13 @@
     <!-- execute the top level macro to loop through entire chain -->
     <xacro:loop_chain i="${imax}"/>
 
+  </xacro:macro>
+
+  <!-- macro to include gazebo plugins -->
+  <xacro:macro name="gazebo_plugin">
+    <gazebo>
+      <plugin name="finger_controller_plugin" filename="libfinger_controller_plugin.so"/>
+    </gazebo>
   </xacro:macro>
     
 </robot>

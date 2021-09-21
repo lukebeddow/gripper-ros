@@ -357,7 +357,7 @@ void GraspTest::pickObject(geometry_msgs::Pose objectCentre, double objectHeight
 
   // set the gripper configuration (110, 8, 30 works for my test grasp)
   double radius_mm = 110;
-  double angle_d = 10;
+  double angle_d = 9;
   double palm_mm = 30;
 
   setGripper(grasps[0].pre_grasp_posture, 140, 0, 0);

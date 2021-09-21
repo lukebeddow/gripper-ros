@@ -26,7 +26,7 @@
     <!-- retrieve info about the gripper -->
     <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
     <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
-    <xacro:property name="is_segmented" value="${dictionary['is_segmented']}"/>
+    <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
     
     <!-- Define arbritray joint damping for Gazebo -->
     <xacro:property name="joint_damping" value="1.0"/>
@@ -35,14 +35,64 @@
     <xacro:macro name="default_inertial" params="mass">
       <inertial>
         <mass value="${mass}"/>
-        <inertia ixx="1e-3" iyy="1e-3" izz="1e-3"
+        <inertia ixx="1e-4" iyy="1e-4" izz="1e-4"
                 ixy="0.00" iyz="0.00" ixz="0.00" />
       </inertial>
     </xacro:macro>
 
+    <!-- inertias from solidworks -->
+    <xacro:macro name="set_inertia" params="key">
+      <!-- Base-->
+      <xacro:if value="${key == 1}">
+        <inertial>
+          <mass value="1.5"/>
+          <origin xyz="0 0 ${25*0.001}" rpy="${pi} 0 0"/>
+          <inertia ixx="9.95e-3" iyy="10.08e-3" izz="5.13e-3"
+                   ixy="2.73e-6" ixz="-14.32e-6" iyz="121.38e-6"/>
+        </inertial>
+      </xacro:if>
+      <!-- finger intermidiate -->
+      <xacro:if value="${key == 2}">
+        <inertial>
+          <mass value="0.1"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <inertia ixx="55.59e-6" iyy="146.36e-6" izz="154.18e-6"
+                   ixy="-47.23e-6" ixz="1.16e-6" iyz="1.00e-6"/>
+        </inertial>
+      </xacro:if>
+      <!-- finger platform no finger (CURRENTLY COPY OF ABOVE) -->
+      <xacro:if value="${key == 3}">
+        <inertial>
+          <mass value="0.1"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <inertia ixx="55.59e-6" iyy="146.36e-6" izz="154.18e-6"
+                   ixy="-47.23e-6" ixz="1.16e-6" iyz="1.00e-6"/>
+        </inertial>
+      </xacro:if>
+      <!-- finger platform with finger -->
+      <xacro:if value="${key == 4}">
+        <inertial>
+          <mass value="0.2"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <inertia ixx="283.44e-6" iyy="1.38e-3" izz="1.60e-3"
+                   ixy="-567.23e-6" ixz="-6.59e-6" iyz="2.40e-6"/>
+        </inertial>
+      </xacro:if>
+      <!-- palm (CURRENTLY GUESSED)-->
+      <xacro:if value="${key == 5}">
+        <inertial>
+          <mass value="0.05"/>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <inertia ixx="10.0e-6" iyy="10.0e-6" izz="10.0e-6"
+                   ixy="0.0" ixz="0.0" iyz="0.0"/>
+        </inertial>
+      </xacro:if>
+    </xacro:macro>
+
     <!-- BASE LINK -->
     <link name="gripper_base_link">
-      <xacro:default_inertial mass="1.0"/>
+      <!-- <xacro:default_inertial mass="1.0"/> -->
+      <xacro:set_inertia key="1"/>
       <visual>
         <geometry>
           <mesh filename="package://gripper_description/meshes/main body visual.STL"/>
@@ -72,7 +122,8 @@
     <xacro:macro name="finger" params="number">
       <!-- Intermediate link for prismatic joint -->
       <link name="finger_${number}_intermediate">
-        <xacro:default_inertial mass="0.03"/>
+        <!-- <xacro:default_inertial mass="0.03"/> -->
+        <xacro:set_inertia key="2"/>
         <visual>
           <geometry>
             <mesh filename="package://gripper_description/meshes/nut visual.STL"/>
@@ -86,9 +137,10 @@
       </link>
       <!-- Main finger link -->
       <link name="finger_${number}">
-        <xacro:default_inertial mass="0.3"/>
         <!-- If we are using rigid fingers -->
         <xacro:if value="${not is_segmented}">
+          <!-- <xacro:default_inertial mass="0.3"/> -->
+          <xacro:set_inertia key="4"/>
           <visual>
             <geometry>
               <mesh filename="package://gripper_description/meshes/finger platform visual.STL"/>
@@ -102,11 +154,18 @@
         </xacro:if>
         <!-- If we are using segmented fingers -->
         <xacro:if value="${is_segmented}">
+          <!-- <xacro:default_inertial mass="0.3"/> -->
+          <xacro:set_inertia key="3"/>
           <visual>
             <geometry>
-              <mesh filename="package://gripper_description/meshes/finger platform visual.STL"/>
+              <mesh filename="package://gripper_description/meshes/platform only visual.STL"/>
             </geometry>
           </visual>
+          <collision>
+            <geometry>
+              <mesh filename="package://gripper_description/meshes/platform only collision.STL"/>
+            </geometry>
+          </collision>
         </xacro:if>
       </link>
       <!-- Prismatic joint -->
@@ -142,7 +201,8 @@
 
     <!-- PALM -->
     <link name="palm">
-      <xacro:default_inertial mass="0.05" />
+      <!-- <xacro:default_inertial mass="0.05" /> -->
+      <xacro:set_inertia key="5"/>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>

@@ -41,42 +41,29 @@ joint_state_controller:
   publish_rate: 50
   type: joint_state_controller/JointStateController
 panda_arm_controller:
-  gains:
+  constraints:
     panda_joint1:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
     panda_joint2:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
     panda_joint3:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
     panda_joint4:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
     panda_joint5:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
     panda_joint6:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
     panda_joint7:
-      d: 10
-      i: 1
-      i_clamp: 1
-      p: 500
+      goal: 0
+      trajectory: 0
+    stopped_velocity_tolerance: 0
   joints:
   - panda_joint1
   - panda_joint2
@@ -107,46 +94,10 @@ panda_hand_controller:
     finger_3_revolute_joint:
       goal: 0
       trajectory: 0
-    goal_time: 2.0
     palm_prismatic_joint:
       goal: 0
       trajectory: 0
-  gains:
-    finger_1_prismatic_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
-    finger_1_revolute_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
-    finger_2_prismatic_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
-    finger_2_revolute_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
-    finger_3_prismatic_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
-    finger_3_revolute_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
-    palm_prismatic_joint:
-      d: 100
-      i: 0.1
-      i_clamp: 1
-      p: 100
+    stopped_velocity_tolerance: 0
   joints:
   - finger_1_prismatic_joint
   - finger_1_revolute_joint

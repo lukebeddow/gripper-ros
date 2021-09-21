@@ -101,6 +101,21 @@ public:
         joint_velocities.resize(n_joints);
         joint_efforts.resize(n_joints);
 
+        // key dynamics parameters
+        total_stiffness = 0.120 * 2 * 0;
+        total_damping = 0.0;
+        static_friction = 0.0;
+
+        velocity_threshold = 0.5;
+        threshold_damping = 0.5;
+
+        // springs/dampers in series
+        joint_stiffness = total_stiffness * n_joints;
+        joint_damping = total_damping * n_joints;
+
+        // effort limit is max displacement * joint_stiffness
+        effort_limit = joint_stiffness * 1;
+
         return true;
     }
 
@@ -117,6 +132,26 @@ public:
     void stopping(const ros::Time & /*time*/)
     {}
 
+    double abs(double input)
+    {
+      if (input < 0) {
+        return input * -1;
+      }
+      else {
+        return input;
+      }
+    }
+
+    int sign(double input)
+    {
+      if (input < 0) {
+        return -1;
+      }
+      else {
+        return 1;
+      }
+    }
+
     void updateCommand(const ros::Time &     /*time*/,
                        const ros::Duration & /*period*/,
                        const joint_trajectory_controller::State &desired_state,
@@ -124,13 +159,7 @@ public:
     {
         if (!joint_handles_ptr) { return; }
 
-        // key dynamics parameters
-        double total_stiffness = 12.0;
-        double total_damping = 0.0;
-
-        // springs in series
-        double joint_stiffness = total_stiffness * (n_joints);
-        double joint_damping = 0.0;
+        // ROS_INFO("Joint variables: -------------------------------");
 
         for (unsigned int idx = 0; idx < joint_handles_ptr->size(); ++idx) {
 
@@ -139,8 +168,23 @@ public:
             joint_velocities[idx] = (*joint_handles_ptr)[idx].getVelocity();
 
             // calculate the control force
-            joint_efforts[idx] = -joint_positions[idx] * joint_stiffness
+            joint_efforts[idx] = -joint_stiffness * joint_positions[idx]
               - joint_velocities[idx] * joint_damping;
+
+            // apply static friction
+            if (abs(joint_efforts[idx]) < static_friction) {
+              joint_efforts[idx] = 0.0;
+            }
+
+            // apply limits
+            if (abs(joint_efforts[idx]) > effort_limit) {
+              joint_efforts[idx] = effort_limit * sign(joint_efforts[idx]);
+            }
+
+
+            // ROS_INFO_STREAM("Joint " << idx << " has position " << joint_positions[idx]
+            //   << ", velocity " << joint_velocities[idx] << ", effort "
+            //   << joint_efforts[idx]);
 
             /*
             // Limit based on min/max efforts.
@@ -148,11 +192,31 @@ public:
             (*joints_efforts)[idx] = std::max((*joints_efforts)[idx], -joints_effort_limits.data[idx]);
             */
 
-            // *joints_efforts is linked to the publisher msg currently
-            (*joints_efforts)[idx] = joint_efforts[idx];
+            // // *joints_efforts is linked to the publisher msg currently
+            // (*joints_efforts)[idx] = joint_efforts[idx];
             
-            // Write joint effort command to the effort msg
-            (*joint_handles_ptr)[idx].setCommand(joint_efforts[idx]);
+            // // Write joint effort command to the effort msg
+            // (*joint_handles_ptr)[idx].setCommand(joint_efforts[idx]);
+        }
+
+        for (unsigned int idx = 0; idx < joint_efforts.size(); idx++) {
+
+            double effort = joint_efforts[idx];
+            double test_damping = 0.0;
+
+            // for (int i = 0; i < idx; i++) {
+            //   effort += joint_efforts[i] * (i/9);
+            // }
+
+            if (idx != 0) {
+              effort = -joint_stiffness * (joint_positions[idx] - joint_positions[idx - 1])
+                - test_damping * (joint_velocities[idx] - joint_velocities[idx - 1]);
+            }
+
+            (*joints_efforts)[idx] = effort;
+            (*joint_handles_ptr)[idx].setCommand(effort);
+            // (*joints_efforts)[idx] = -(*joint_handles_ptr)[idx].getEffort();
+            // (*joint_handles_ptr)[idx].setCommand(-(*joint_handles_ptr)[idx].getEffort());
         }
 
         // Publish efforts.
@@ -191,4 +255,15 @@ private:
     std::vector<double> joint_efforts;
 
     unsigned int n_joints;
+
+    double total_stiffness;
+    double total_damping;
+
+    double static_friction;
+    double effort_limit;
+    double velocity_threshold;
+    double threshold_damping;
+
+    double joint_stiffness;
+    double joint_damping;
 };

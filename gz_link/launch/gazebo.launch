@@ -8,6 +8,7 @@
           <arg name="gui" value="true"/>
           <arg name="recording" value="false"/>
           <arg name="debug" value="false"/>
+          <arg name="verbose" value="false"/>
       </include>
 
       <!-- Generate/Load robot description file -->
