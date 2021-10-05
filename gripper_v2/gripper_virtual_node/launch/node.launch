@@ -1,0 +1,11 @@
+<launch>
+  
+  <node pkg="gripper_virtual_node"
+        name="gripper_virtual_node"
+        type="gripper_virtual_node"
+        respawn="false"
+        output="screen"
+        cwd="node"
+        args="gripper_virtual_node">
+  </node>
+</launch>

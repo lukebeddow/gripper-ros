@@ -20,5 +20,8 @@
   
   <!-- Launch my ROS node test -->
   <include file="$(find grasp_test)/launch/grasp_test.launch"/>
+  
+  <!-- launch gripper virtual node -->
+  <include file="$(find gripper_virtual_node)/launch/node.launch"/>
 
 </launch>

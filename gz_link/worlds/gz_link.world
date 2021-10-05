@@ -9,9 +9,11 @@
 				  	<solver>
 				  		<iters>50</iters>
 				  	</solver>
+				  	<!--
 				  	<constraints>
 				  		<cfm>0</cfm>
 				  	</constraints>
+				  	-->
 				  </ode>
 				</physics>
 
