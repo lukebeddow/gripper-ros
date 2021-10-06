@@ -13,7 +13,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Scalar.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <tf2_eigen/tf2_eigen.h>
+// #include <tf2_eigen/tf2_eigen.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf/transform_listener.h>
 
@@ -31,7 +31,6 @@ class GraspTest
 {
 public:
 
-  // FOR TESTING
   // box structure from which to make collision objects
     struct Box {
 
@@ -68,9 +67,11 @@ public:
     float pitch, float yaw);
   geometry_msgs::Quaternion rotateQuaternion(geometry_msgs::Quaternion msg1,
     geometry_msgs::Quaternion msg2);
+  geometry_msgs::Quaternion vecToQuat(geometry_msgs::Vector3& vector);
   bool moveGripper(double radium_mm, double angle_d, double palm_mm);
   bool moveGripper(gripper gripper_pose);
   bool moveArm(float x, float y, float z, float roll, float pitch, float yaw);
+  bool moveArm(geometry_msgs::Pose target_pose);
   bool moveRobot(double x, double y, double z, double roll, double pitch, double yaw,
     double radius_mm, double angle_d, double palm_mm);
   bool moveRobot(geometry_msgs::Pose desired_pose, gripper gripper_pose);
@@ -80,8 +81,13 @@ public:
   void pickObject(geometry_msgs::Pose objectCentre, double objectHeight,
     double objectDiameter);
   void placeObject(geometry_msgs::Pose dropPoint);
-  void moveStraight(double distance, geometry_msgs::Quaternion q);
-  bool myPick(geometry_msgs::Pose grasp_pose,
+  void moveStraight(double distance);
+  void moveStraight(double distance, geometry_msgs::Quaternion direction);
+  void moveStraight(double distance, geometry_msgs::Quaternion direction,
+    bool is_global_direction);
+  bool myPick(geometry_msgs::Point grasp_point,
+    geometry_msgs::Vector3 approach_vector);
+  bool myPlace(geometry_msgs::Point place_point,
     geometry_msgs::Vector3 approach_vector);
 
   void waitForGripper();
@@ -98,6 +104,9 @@ public:
   moveit::planning_interface::MoveGroupInterface hand_group_{"gripper"};
   moveit::planning_interface::MoveGroupInterface robot_group_{"all"};
   moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+
+  static constexpr double approach_distance_ = 0.2;   // should exceed gripper length
+  static constexpr double offset_distance_ = 0.47;    // from panda_link8 to fingertip
 
   geometry_msgs::Pose targetPose_;
 

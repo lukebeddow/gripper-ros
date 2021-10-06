@@ -90,21 +90,27 @@ void GraspTest::executeCommand(const std_msgs::String msg)
     moveStraight(distance, q);
   }
   else if (msg.data == "m") {
-    geometry_msgs::Pose pose = createPose(0.5, 0.0, 0.47, 3.14159 / 2.0, 0, 0);
+    geometry_msgs::Point p;
+    p.x = 0.5;
+    p.y = 0;
+    p.z = 0;
     geometry_msgs::Vector3 v;
     v.x = 0;
     v.y = 0;
     v.z = -1;
-    myPick(pose, v);
-    gripper gripper_pose{100, 7, 70};
-    moveGripper(gripper_pose);
+    myPick(p, v);
   }
-  // else if (msg.data == "8") {
-  //   moveRobot(0, 0, 0, -0.7588, 0, 1, 0, 0.14, 0, 0);
-  // }
-  // else if (msg.data == "8") {
-  //   moveRobot(0, 0, 0, -0.7588, 0, 1, 0, 0.14, 0, 0);
-  // }
+  else if (msg.data == "n") {
+    geometry_msgs::Point p;
+    p.x = 0;
+    p.y = -0.5;
+    p.z = 0.1;
+    geometry_msgs::Vector3 v;
+    v.x = 0;
+    v.y = 0;
+    v.z = -1;
+    myPlace(p, v);
+  }
 }
 
 geometry_msgs::Pose GraspTest::createPose(float x, float y, float z, float roll,
@@ -190,17 +196,23 @@ bool GraspTest::moveGripper(gripper gripper_pose)
 
   hand_group_.move();
 
+  // if hand is moving, wait for it to finish before returning from this function
+  if (success) {
+    waitForGripper();
+  }
+
   return success;
 }
 
 bool GraspTest::moveArm(float x, float y, float z, float roll, float pitch, float yaw)
 {
-  /* This function moves the move_group to the target position */
+  /* overloaded inputs for moveArm */
 
   // setup the goal position
-  targetPose_.position.x = x;
-  targetPose_.position.y = y;
-  targetPose_.position.z = z;
+  geometry_msgs::Pose target_pose;
+  target_pose.position.x = x;
+  target_pose.position.y = y;
+  target_pose.position.z = z;
 
   // setup the goal orientation
   tf2::Quaternion q;
@@ -208,11 +220,18 @@ bool GraspTest::moveArm(float x, float y, float z, float roll, float pitch, floa
   q.setRPY(roll, pitch, yaw);
   q.normalize();
   q_msg = tf2::toMsg(q);
-  targetPose_.orientation = q_msg;
+  target_pose.orientation = q_msg;
+
+  return moveArm(target_pose);
+}
+
+bool GraspTest::moveArm(geometry_msgs::Pose target_pose)
+{
+  /* This function moves the move_group to the target position */
 
   // setup the target pose
   ROS_INFO("Setting pose target");
-  arm_group_.setPoseTarget(targetPose_);
+  arm_group_.setPoseTarget(target_pose);
 
   // move_group.setEndEffectorLink("panda_link8");
   // move_group.setEndEffector("gripper");
@@ -233,11 +252,6 @@ bool GraspTest::moveArm(float x, float y, float z, float roll, float pitch, floa
 
   return success;
 }
-
-// void GraspTest::jointTarget(std::vector<double> jointTargets)
-// {
-
-// }
 
 bool GraspTest::moveRobot(double x, double y, double z, double roll, double pitch, double yaw,
   double radius_mm, double angle_d, double palm_mm)
@@ -344,6 +358,11 @@ bool GraspTest::moveRobot(geometry_msgs::Pose desired_pose, gripper gripper_pose
   ROS_INFO("Visualising plan %s", success?"":"FAILED");
 
   robot_group_.move();
+
+  // if robot is moving, wait for the gripper before returning
+  if (success) {
+    waitForGripper();
+  }
 
   return success;
 }
@@ -637,7 +656,32 @@ geometry_msgs::Quaternion GraspTest::rotateQuaternion(geometry_msgs::Quaternion 
   return tf2::toMsg(q1);
 }
 
-void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion q)
+void GraspTest::moveStraight(double distance)
+{
+  /* overload for move straight where direction is just the same as the ee */
+
+  geometry_msgs::Quaternion q_identity;
+  q_identity.x = 0;
+  q_identity.y = 0;
+  q_identity.z = 0;
+  q_identity.w = 1;
+
+  bool is_global_direction = false;
+
+  moveStraight(distance, q_identity, is_global_direction);
+}
+
+void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion direction)
+{
+  /* overload for move straight where direction is given in local co-ordinates */
+
+  bool is_global_direction = false;
+
+  moveStraight(distance, direction, is_global_direction);
+}
+
+void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion direction,
+  bool is_global_direction)
 {
   /* This function moves the end effector in a straight line in the given direction */
 
@@ -651,6 +695,10 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion q)
   geometry_msgs::Pose destination_pose;
   geometry_msgs::TransformStamped start_tf;
 
+  // create vector to hold waypoints for cartesian path
+  std::vector<geometry_msgs::Pose> waypoints;
+
+  // get the transform from base to end of panda arm
   try {
     start_tf = tf_buffer_.lookupTransform("panda_link0", "panda_link8", ros::Time(0));
   }
@@ -665,44 +713,36 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion q)
   start_pose.position.z = start_tf.transform.translation.z;
   start_pose.orientation = start_tf.transform.rotation;
 
-  // create vector to hold waypoints
-  std::vector<geometry_msgs::Pose> waypoints;
-  // waypoints.push_back(start_pose);
-
-  // convert quaternion messages into tf2 quaternions
-  tf2::Quaternion start_q;
-  tf2::Quaternion rotate_q;
-  tf2::fromMsg(start_pose.orientation, start_q);
-  tf2::fromMsg(q, rotate_q);
-
-  // apply the rotation
-  start_q *= rotate_q;
-
-  // convert the final rotation back to a quaternion message
-  q = tf2::toMsg(start_q);
-
-  // create two vectors to be rotated
-  geometry_msgs::Point vectorA;
-  geometry_msgs::Point vectorB;
-
-  // [0, 0, distance]
-  vectorA.z = distance;
-
-  // create transform to adjust start pose with, and apply rotation
+  // put this orientation into a transform so we can rotate a vector later
   geometry_msgs::TransformStamped adjust_tf;
   adjust_tf.transform.translation.x = 0;
   adjust_tf.transform.translation.y = 0;
   adjust_tf.transform.translation.z = 0;
-  // adjust_tf.transform.rotation = q;
-  adjust_tf.transform.rotation = rotateQuaternion(start_pose.orientation, q);
 
-  // apply the rotation
-  tf2::doTransform(vectorA, vectorB, adjust_tf);
+  // is our direction command in global frame or local frame
+  if (is_global_direction) {
+    // set direction as global travel direction
+    adjust_tf.transform.rotation = direction;
+  }
+  else {
+    // apply direction rotation to existing start pose orientation
+    adjust_tf.transform.rotation = rotateQuaternion(start_pose.orientation, direction);
+  }
+  
+  // create two vectors, we will rotate reference into resultant
+  geometry_msgs::Point reference;
+  geometry_msgs::Point resultant;
 
-  // input the result into the destination pose
-  destination_pose.position.x = start_pose.position.x + vectorB.x;
-  destination_pose.position.y = start_pose.position.y + vectorB.y;
-  destination_pose.position.z = start_pose.position.z + vectorB.z;
+  // [0, 0, distance]
+  reference.z = distance;
+
+  // apply the rotation to get the vector for the movement
+  tf2::doTransform(reference, resultant, adjust_tf);
+
+  // input the result into the destination pose, now we know where we are going
+  destination_pose.position.x = start_pose.position.x + resultant.x;
+  destination_pose.position.y = start_pose.position.y + resultant.y;
+  destination_pose.position.z = start_pose.position.z + resultant.z;
   destination_pose.orientation = start_pose.orientation;
 
   // insert target pose
@@ -716,8 +756,8 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion q)
   double eef_step = 0.001;     // could do distance / 10 since 10 is min steps
 
   // computeCartesianPath requires at least 10 steps
-  if (eef_step > distance / 10) {
-    eef_step = distance / 10;
+  if (eef_step > abs(distance) / 10) {
+    eef_step = abs(distance) / 10;
   }
   
   // compute the trajectory
@@ -737,7 +777,6 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion q)
 
   // execute the trajecotry
   arm_group_.execute(trajectory);
-  // move_group_interface.execute(trajectory)
 }
 
 void GraspTest::waitForGripper()
@@ -757,7 +796,62 @@ void GraspTest::waitForGripper()
   ROS_INFO("Leaving the waitForGripper function");
 }
 
-bool GraspTest::myPick(geometry_msgs::Pose grasp_pose,
+geometry_msgs::Quaternion GraspTest::vecToQuat(geometry_msgs::Vector3& vector)
+{
+  /* This function creates a quaternion from a vector using [0,0,1] as reference.
+    This function also normalises the approach vector! */
+
+  // create identity quaternion and one for 180deg rotation about x-axis
+  tf2::Quaternion q_identity(0, 0, 0, 1);
+  tf2::Quaternion q_x180deg(-1, 0, 0, 0);
+
+  // /* infer the grasp direction from the approach vector */
+  // Eigen::Quaterniond q_grasp_eigen;
+  // Eigen::Vector3d A(0, 0, 1);
+  // Eigen::Vector3d B(approach_vector.x, approach_vector.y, approach_vector.z);
+  // B = B.normalized();
+  // q_grasp_eigen.setFromTwoVectors(A, B);
+  // geometry_msgs::Quaternion q_grasp_msg = tf2::toMsg(q_grasp_eigen);
+
+  // create a quaternion from the approach vector
+  tf2::Vector3 reference(0, 0, 1);
+  tf2::Vector3 resultant(vector.x, vector.y, vector.z);
+  reference.normalize();
+  resultant.normalize();
+
+  // cross product, dot product, and norm
+  tf2::Vector3 crossed = reference.cross(resultant);
+  tf2Scalar dotted = reference.dot(resultant);
+  tf2Scalar norm = sqrt(reference.length2() * resultant.length2());
+
+  // create the quaternion
+  tf2::Quaternion quaternion(crossed.getX(), crossed.getY(), crossed.getZ(),
+    norm + dotted);
+  quaternion.normalize();
+
+  // if the two vectors were parallel
+  constexpr double tol = 1e-7;
+  if (abs(crossed.getX()) < tol and abs(crossed.getY()) < tol 
+    and abs(crossed.getZ()) < tol) {
+    // check if they are in opposite directions
+    if (abs(reference.getZ() + resultant.getZ()) < tol) {
+      // set as 180deg rotation about y-axis
+      quaternion = q_x180deg;
+    }
+    else {
+      quaternion = q_identity;
+    }
+  }
+
+  // NORMALISE THE APPROACH VECTOR
+  vector.x = resultant.getX();
+  vector.y = resultant.getY();
+  vector.z = resultant.getZ();
+
+  return tf2::toMsg(quaternion);
+}
+
+bool GraspTest::myPick(geometry_msgs::Point grasp_point,
   geometry_msgs::Vector3 approach_vector)
 {
   /* This function attempts to perform a pick action */
@@ -772,94 +866,101 @@ bool GraspTest::myPick(geometry_msgs::Pose grasp_pose,
       7. Complete
   */
 
-  // construct from eigen
-  Eigen::Vector3d A(0, 0, 1);
-  Eigen::Vector3d B(approach_vector.x, approach_vector.y, approach_vector.z);
-  B = B.normalized();
-  Eigen::Quaterniond q_eigen;
-  q_eigen.setFromTwoVectors(A, B);
-  geometry_msgs::Quaternion q_fromEigen = tf2::toMsg(q_eigen);
-  ROS_INFO_STREAM("q_eigen is: " << q_fromEigen);
-
-  // construct from axis and angle
-  tf2Scalar angle(0.0);
-  // tf2::Vector3 axis(approach_vector.x, approach_vector.y, approach_vector.z);
-  tf2::Vector3 axis(0.0, 0.0, -1.0);
-  axis.normalize();
-
-  tf2Scalar qx = 0;
-  tf2Scalar qy = 0;
-  tf2Scalar qz = -0.7071068;
-  tf2Scalar qw = -0.7071068;
-  tf2::Quaternion q_ninety(qx, qy, qz, qw);
-
-  tf2::Quaternion q_test(axis, angle);
-  q_test *= q_ninety;
-
-  geometry_msgs::Quaternion q_print = tf2::toMsg(q_test);
-  ROS_INFO_STREAM("q_test is: " << q_print);
-  
-  // define the approach distance before grasp (needs to exceed gripper finger length)
-  double approach_distance = 0.2;
-
   // define the closed state of the gripper
   gripper closed_gripper;
   closed_gripper.x = 120;
   closed_gripper.th = 12;
   closed_gripper.z = 20;
 
-  // define a quaternion that flips another quaternion 180deg about y axis
-  geometry_msgs::Quaternion q_backwards;
-  q_backwards.x = 0;
-  q_backwards.y = 1;
-  q_backwards.z = 0;
-  q_backwards.w = 0;
+  // create quaternion from approach vector (and normalise approach vector by ref)
+  geometry_msgs::Quaternion orientation = vecToQuat(approach_vector);
 
   // define the pre-pick pose
   geometry_msgs::Pose pre_pick_pose;
-  pre_pick_pose.position.x = grasp_pose.position.x - B.x() * approach_distance;
-  pre_pick_pose.position.y = grasp_pose.position.y - B.y() * approach_distance;
-  pre_pick_pose.position.z = grasp_pose.position.z - B.z() * approach_distance;
-  pre_pick_pose.orientation = q_fromEigen;
+  pre_pick_pose.position.x = grasp_point.x - approach_vector.x * approach_distance_;
+  pre_pick_pose.position.y = grasp_point.y - approach_vector.y * approach_distance_;
+  pre_pick_pose.position.z = grasp_point.z - approach_vector.z * approach_distance_
+    + offset_distance_;
+  pre_pick_pose.orientation = vecToQuat(approach_vector);
 
-  ROS_INFO_STREAM("pre_pick_pose is " << pre_pick_pose.position.x
-    << ", " << pre_pick_pose.position.y << ", " << pre_pick_pose.position.z);
-  ROS_INFO_STREAM("grasp_pose is " << grasp_pose.position.x
-    << ", " << grasp_pose.position.y << ", " << grasp_pose.position.z);
-
-  bool succeeded = false;
+  /* Now we perform the pick operation */
 
   /* 1. Move to pre-pick point */
-  succeeded = moveRobot(pre_pick_pose, gripper_default_);
-
-  if (!succeeded) return false;
-
-  waitForGripper();
-
+  if (!moveRobot(pre_pick_pose, gripper_default_)) return false;
   ROS_INFO("Robot moved to pre-pick pose");
 
   /* 2. Configure the gripper correctly */
   // moveRobot does not return until gripper reaches desired positions
 
-  /* 3. Move along approach vector to object */
-  moveStraight(approach_distance, pre_pick_pose.orientation);
-
+  /* 3. Move forwards, we are already in the correct orientation */
+  moveStraight(approach_distance_);
   ROS_INFO("Robot moved to grasping pose");
 
   /* 4. Close the gripper */
-  succeeded = moveGripper(closed_gripper);
-
-  if (!succeeded) return false;
-
-  waitForGripper();
-
+  if (!moveGripper(closed_gripper)) return false;
+  ROS_INFO("Gripper closed");
+  
   /* 5. Feedback loop */
   // not currently implemented
 
-  /* 6. Move backwards along approach vector */
-  moveStraight(approach_distance, rotateQuaternion(pre_pick_pose.orientation, q_backwards));
+  /* 6. Move backwards */
+  moveStraight(-approach_distance_);
+  ROS_INFO("Robot returned to pre-pick pose");
 
   /* 7. Complete */
   // check if object is still in grasp?
 
+  return true;
+}
+
+bool GraspTest::myPlace(geometry_msgs::Point place_point,
+  geometry_msgs::Vector3 approach_vector)
+{
+  /* This function releases an object in a certain place */
+
+  // define the open state of the gripper
+  gripper open_gripper;
+  open_gripper.x = 120;
+  open_gripper.th = -10;
+  open_gripper.z = 0;
+
+  // create quaternion from approach vector (and normalise approach vector by ref)
+  geometry_msgs::Quaternion orientation = vecToQuat(approach_vector);
+
+  // define the pre-pick pose
+  geometry_msgs::Pose pre_place_pose;
+  pre_place_pose.position.x = place_point.x - approach_vector.x * approach_distance_;
+  pre_place_pose.position.y = place_point.y - approach_vector.y * approach_distance_;
+  pre_place_pose.position.z = place_point.z - approach_vector.z * approach_distance_
+    + offset_distance_;
+  pre_place_pose.orientation = vecToQuat(approach_vector);
+
+  /* Now we perform the pick operation */
+
+  /* 1. Move to pre-place point */
+  if (!moveArm(pre_place_pose)) return false;
+  ROS_INFO("Robot moved to pre-place pose");
+
+  /* 2. Configure the gripper correctly */
+  // moveRobot does not return until gripper reaches desired positions
+
+  /* 3. Move forwards, we are already in the correct orientation */
+  moveStraight(approach_distance_);
+  ROS_INFO("Robot moved to placing pose");
+
+  /* 4. Close the gripper */
+  if (!moveGripper(open_gripper)) return false;
+  ROS_INFO("Gripper opened to release object");
+  
+  /* 5. Feedback loop */
+  // not currently implemented
+
+  /* 6. Move backwards */
+  moveStraight(-approach_distance_);
+  ROS_INFO("Robot returned to pre-place pose");
+
+  /* 7. Complete */
+  // check if object is still in grasp?
+
+  return true;
 }

@@ -38,8 +38,6 @@ void GripperVirtual::demand_callback(const gripper_virtual_node::gripper_state m
 
   // calculate y leadscrew position
   set_y(gripper_demand_);
-
-  ROS_ERROR("good job");
 }
 
 void GripperVirtual::joints_callback(const sensor_msgs::JointState msg)

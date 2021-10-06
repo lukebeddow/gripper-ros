@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
 
-  <xacro:macro name="segmented_finger" params="prefix num_segments">
+  <xacro:macro name="segmented_finger" params="prefix num_segments torsion">
 
     <!-- User defined variables -->
     <xacro:property name="finger_length_mm" value="190.0"/>
@@ -11,12 +11,32 @@
     <xacro:property name="hook_angle_d" value="90.0"/>
     <xacro:property name="finger_mass_g" value="75.0"/>
 
-    <!-- set to zero, as handled in segmented_control.h -->
-    <xacro:property name="bending_damping" value="0.0"/> 
-    <xacro:property name="torsional_damping" value="0.0"/>
+    <!-- macros to set the sdf elements, all here together for convienience -->
+    <!-- Tags for gazebo, see: http://gazebosim.org/tutorials?tut=ros_urdf -->
+    <xacro:macro name="link_properties">
+        <material>Gazebo/Orange</material>
+        <mu1>0.1</mu1>
+        <mu2>0.1</mu2>
+        <maxVel>0.0</maxVel>
+        <minDepth>0.001</minDepth>
+        <!-- <kp>100</kp>
+        <kd>1</kd> -->
+    </xacro:macro>
+    <xacro:macro name="joint_properties">
+      <provideFeedback>1</provideFeedback>
+      <springReference>0.0</springReference>
+      <implicitSpringDamper>1</implicitSpringDamper>
+    </xacro:macro>
+    <xacro:macro name="bending_stiffness">
+      <springStiffness>3.0</springStiffness>
+    </xacro:macro>
+    <xacro:macro name="torsional_stiffness">
+      <springStiffness>10.0</springStiffness>
+    </xacro:macro>
 
-    <xacro:property name="total_friction" value="0.0"/>
-    <xacro:property name="total_damping" value="0.0001"/>
+    <!-- these are implemented in the <dynamics> tags in each joint -->
+    <xacro:property name="joint_friction" value="0.0"/>
+    <xacro:property name="joint_damping" value="0.001"/>
 
     <!-- Automatially calculated variables -->
     <xacro:property name="finger_length" value="${finger_length_mm * 0.001}"/>
@@ -25,8 +45,8 @@
     <xacro:property name="segment_thickness" value="${finger_thickness_mm * 0.001}"/>
     <xacro:property name="hook_length" value="${hook_length_mm * 0.001}"/>
     <xacro:property name="hook_angle" value="${(hook_angle_d / 180.0) * 3.1415926535897}"/>
-    <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
-    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/>
+    <!-- <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
+    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/> -->
 
     <!-- find inertia of each segment -->
     <xacro:property name="finger_mass" value="${finger_mass_g * 0.001}"/>
@@ -81,40 +101,53 @@
         </collision>
       </link>
       <gazebo reference="${prefix}_segment_link_${number}">
-        <material>Gazebo/Orange</material>
-        <mu1>0.1</mu1>
-        <mu2>0.1</mu2>
-        <maxVel>0.0</maxVel>
-        <minDepth>0.001</minDepth>
-        <!-- <kp>100</kp>
-        <kd>1</kd> -->
+        <xacro:link_properties/>
       </gazebo>
     </xacro:macro>
 
     <!-- Macro to add a segment joint -->
     <xacro:macro name="add_segment_joint" params="number">
-      <joint name="${prefix}_segment_joint_${number - 1}" type="revolute">
-        <axis xyz="0 1 0" rpy="0 0 0"/>
-        <parent link="${prefix}_segment_link_${number - 1}"/>
-        <child link="${prefix}_segment_link_${number}"/>
-        <origin xyz="${segment_length} 0 0"
-                rpy="0 0 0"/>
-        <limit effort="1000.0"
-               lower="-1.0"
-               upper="1.0"
-               velocity="1.0"/>
-        <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
-      </joint>
-      <!-- Tags for gazebo, see: http://gazebosim.org/tutorials?tut=ros_urdf -->
-      <xacro:macro name="add_gazebo">
+      <!-- if torsion=true, every other joint is torisonal, else all are bending-->
+      <xacro:if value="${(number % 2 * torsion) + (1 - torsion)}">
+        <!-- bending joint -->
+        <joint name="${prefix}_segment_joint_${number - 1}" type="revolute">
+          <axis xyz="0 1 0" rpy="0 0 0"/>
+          <parent link="${prefix}_segment_link_${number - 1}"/>
+          <child link="${prefix}_segment_link_${number}"/>
+          <origin xyz="${segment_length} 0 0"
+                  rpy="0 0 0"/>
+          <limit effort="1000.0"
+                lower="-1.0"
+                upper="1.0"
+                velocity="1.0"/>
+          <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+        </joint>
         <gazebo reference="${prefix}_segment_joint_${number - 1}">
-          <provideFeedback>1</provideFeedback>
-          <springStiffness>2.0</springStiffness> <!-- 0.75 seems decent for 10-->
-          <springReference>0.0</springReference>
-          <implicitSpringDamper>1</implicitSpringDamper>
+          <xacro:joint_properties/>
+          <xacro:bending_stiffness/>
         </gazebo>
-      </xacro:macro>
-      <xacro:add_gazebo/>
+      </xacro:if>
+      <!-- only use torsional joints if torsion=true -->
+      <xacro:if value="${((number - 1) % 2) * torsion}">
+        <!-- torsional joint -->
+        <joint name="${prefix}_segment_joint_${number - 1}" type="revolute">
+          <axis xyz="1 0 0" rpy="0 0 0"/>
+          <parent link="${prefix}_segment_link_${number - 1}"/>
+          <child link="${prefix}_segment_link_${number}"/>
+          <origin xyz="${segment_length} 0 0"
+                  rpy="0 0 0"/>
+          <limit effort="1000.0"
+                lower="-1.0"
+                upper="1.0"
+                velocity="1.0"/>
+          <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+        </joint>
+        <gazebo reference="${prefix}_segment_joint_${number - 1}">
+          <xacro:joint_properties/>
+          <xacro:torsional_stiffness/>
+        </gazebo>
+      </xacro:if>
+      <!-- set transmission for gazebo ROS controllers-->
       <transmission name="${prefix}_segment_tran_${number - 1}">
         <type>transmission_interface/SimpleTransmission</type>
         <joint name="${prefix}_segment_joint_${number - 1}">
@@ -167,13 +200,7 @@
       </collision>
     </link>
     <gazebo reference="${prefix}_finger_hook_link">
-      <material>Gazebo/Orange</material>
-      <mu1>0.1</mu1>
-      <mu2>0.1</mu2>
-      <maxVel>0.0</maxVel>
-      <minDepth>0.001</minDepth>
-      <!-- <kp>100</kp>
-      <kd>1</kd> -->
+      <xacro:link_properties/>
     </gazebo>
 
     <!-- Connect the finger hook via a fixed joint -->

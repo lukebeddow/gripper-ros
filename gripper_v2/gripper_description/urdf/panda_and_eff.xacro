@@ -6,7 +6,9 @@
   <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
   <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
   <xacro:property name="num_segments" value="${dictionary['gripper_config']['num_segments']}"/>
-  
+  <xacro:property name="torsion" value="${dictionary['gripper_config']['torsion']}"/>
+
+
   <!-- include macros for the panda arm and end effector -->
   <xacro:include filename="$(find gripper_description)/urdf/panda_arm_macroed.xacro"/>
   <xacro:include filename="$(find gripper_description)/urdf/gripper.urdf.xacro"/>
@@ -53,9 +55,12 @@
   <xacro:macro name="add_fingers" params="segments">
     <!-- Create the fingers -->
     <!-- <xacro:property name="segments" value="10"/> -->
-    <xacro:segmented_finger prefix="finger_1" num_segments="${segments}"/>
-    <xacro:segmented_finger prefix="finger_2" num_segments="${segments}"/>
-    <xacro:segmented_finger prefix="finger_3" num_segments="${segments}"/>
+    <xacro:segmented_finger prefix="finger_1" num_segments="${segments}"
+      torsion="${torsion}"/>
+    <xacro:segmented_finger prefix="finger_2" num_segments="${segments}"
+      torsion="${torsion}"/>
+    <xacro:segmented_finger prefix="finger_3" num_segments="${segments}"
+      torsion="${torsion}"/>
     
     <xacro:gazebo_plugin/>
 

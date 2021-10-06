@@ -4,3 +4,5 @@ gripper_config:
   previous_update:
     old_is_segmented: true
     old_num_segments: 10
+    torsion: false
+  torsion: false
