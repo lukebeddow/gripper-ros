@@ -1,4 +1,4 @@
-# luke_gripper
+# luke-gripper-ros
 
 This repository contains ros and gazebo integration for my gripper design.
 
