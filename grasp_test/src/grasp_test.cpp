@@ -13,11 +13,14 @@ GraspTest::GraspTest(ros::NodeHandle& nh)
   // for testing
   addCollsion();
 
-  gripper_pub_ = nh_.advertise<gripper_virtual_node::gripper_state>("/gripper/demand", 10);
-  gripper_sub_ = nh_.subscribe<gripper_virtual_node::gripper_msg>("/gripper/status", 10,
-    &GraspTest::gripper_msg_callback, this);
+  gripper_pub_ = nh_.advertise<gripper_virtual_node::gripper_state>
+    ("/gripper/demand", 10);
+  virtual_sub_ = nh_.subscribe<gripper_virtual_node::gripper_msg>
+    ("/gripper/virtual/status", 10, &GraspTest::virtual_msg_callback, this);
+  real_sub_ = nh_.subscribe<gripper_virtual_node::gripper_msg>
+    ("/gripper/real/status", 10, &GraspTest::real_msg_callback, this);
 
-  gripper_default_.x = 140;
+  gripper_default_.x = 130;
   gripper_default_.th = 0;
   gripper_default_.z = 0;
 
@@ -34,11 +37,18 @@ void GraspTest::callback(const std_msgs::String msg)
   executeCommand(msg);
 }
 
-void GraspTest::gripper_msg_callback(const gripper_virtual_node::gripper_msg msg)
+void GraspTest::virtual_msg_callback(const gripper_virtual_node::gripper_msg msg)
 {
   /* This function records the status of the gripper from the virtual node */
 
-  gripper_status_msg_ = msg;
+  gripper_virtual_status_ = msg;
+}
+
+void GraspTest::real_msg_callback(const gripper_virtual_node::gripper_msg msg)
+{
+  /* This function records the status of the real gripper */
+
+  gripper_real_status_ = msg;
 }
 
 void GraspTest::executeCommand(const std_msgs::String msg)
@@ -788,8 +798,7 @@ void GraspTest::waitForGripper()
 
   ros::Duration(0.1).sleep();
 
-  while (!gripper_status_msg_.is_target_reached) {
-    // ros::spinOnce();
+  while (!gripper_virtual_status_.is_target_reached) {
     ros::Duration(0.01).sleep();
   }
 
@@ -872,7 +881,7 @@ bool GraspTest::myPick(geometry_msgs::Point grasp_point,
   closed_gripper.th = 12;
   closed_gripper.z = 20;
 
-  // create quaternion from approach vector (and normalise approach vector by ref)
+  // create quaternion from approach vector (and normalise approach vector)
   geometry_msgs::Quaternion orientation = vecToQuat(approach_vector);
 
   // define the pre-pick pose
@@ -881,7 +890,7 @@ bool GraspTest::myPick(geometry_msgs::Point grasp_point,
   pre_pick_pose.position.y = grasp_point.y - approach_vector.y * approach_distance_;
   pre_pick_pose.position.z = grasp_point.z - approach_vector.z * approach_distance_
     + offset_distance_;
-  pre_pick_pose.orientation = vecToQuat(approach_vector);
+  pre_pick_pose.orientation = orientation;
 
   /* Now we perform the pick operation */
 
@@ -889,26 +898,22 @@ bool GraspTest::myPick(geometry_msgs::Point grasp_point,
   if (!moveRobot(pre_pick_pose, gripper_default_)) return false;
   ROS_INFO("Robot moved to pre-pick pose");
 
-  /* 2. Configure the gripper correctly */
-  // moveRobot does not return until gripper reaches desired positions
-
-  /* 3. Move forwards, we are already in the correct orientation */
+  /* 2. Move forwards, we are already in the correct orientation */
   moveStraight(approach_distance_);
   ROS_INFO("Robot moved to grasping pose");
 
-  /* 4. Close the gripper */
+  /* 3. Close the gripper */
   if (!moveGripper(closed_gripper)) return false;
   ROS_INFO("Gripper closed");
   
-  /* 5. Feedback loop */
+  /* 4. Feedback loop */
   // not currently implemented
 
-  /* 6. Move backwards */
+  /* 5. Move backwards */
   moveStraight(-approach_distance_);
   ROS_INFO("Robot returned to pre-pick pose");
 
-  /* 7. Complete */
-  // check if object is still in grasp?
+  /* Complete */
 
   return true;
 }
@@ -933,34 +938,30 @@ bool GraspTest::myPlace(geometry_msgs::Point place_point,
   pre_place_pose.position.y = place_point.y - approach_vector.y * approach_distance_;
   pre_place_pose.position.z = place_point.z - approach_vector.z * approach_distance_
     + offset_distance_;
-  pre_place_pose.orientation = vecToQuat(approach_vector);
+  pre_place_pose.orientation = orientation;
 
   /* Now we perform the pick operation */
 
-  /* 1. Move to pre-place point */
+  /* 1. Move to pre-place pose */
   if (!moveArm(pre_place_pose)) return false;
   ROS_INFO("Robot moved to pre-place pose");
 
-  /* 2. Configure the gripper correctly */
-  // moveRobot does not return until gripper reaches desired positions
-
-  /* 3. Move forwards, we are already in the correct orientation */
+  /* 2. Move forwards, we are already in the correct orientation */
   moveStraight(approach_distance_);
   ROS_INFO("Robot moved to placing pose");
 
-  /* 4. Close the gripper */
+  /* 3. Open the gripper */
   if (!moveGripper(open_gripper)) return false;
   ROS_INFO("Gripper opened to release object");
   
-  /* 5. Feedback loop */
+  /* 4. Verify object ejected */
   // not currently implemented
 
-  /* 6. Move backwards */
+  /* 5. Move backwards */
   moveStraight(-approach_distance_);
   ROS_INFO("Robot returned to pre-place pose");
 
-  /* 7. Complete */
-  // check if object is still in grasp?
+  /* Complete */
 
   return true;
 }

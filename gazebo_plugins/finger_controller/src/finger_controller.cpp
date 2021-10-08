@@ -15,9 +15,9 @@ namespace gazebo
     model = _model;
 
     nh = ros::NodeHandle("FingerPlugin");
-    pub_g1 = nh.advertise<std_msgs::Float64>("/Finger/gauge1", 10);
-    pub_g2 = nh.advertise<std_msgs::Float64>("/Finger/gauge2", 10);
-    pub_g3 = nh.advertise<std_msgs::Float64>("/Finger/gauge3", 10);
+    pub_g1 = nh.advertise<std_msgs::Float64>("/gripper/virtual/gauge1", 10);
+    pub_g2 = nh.advertise<std_msgs::Float64>("/gripper/virtual/gauge2", 10);
+    pub_g3 = nh.advertise<std_msgs::Float64>("/gripper/virtual/gauge3", 10);
 
     // get the publishing rate
     if (!_sdf->HasElement("sdf_parameter_update_rate")) {

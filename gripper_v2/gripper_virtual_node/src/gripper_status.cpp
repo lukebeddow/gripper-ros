@@ -11,7 +11,8 @@ GripperVirtual::GripperVirtual()
   joints_sub_ = nh_.subscribe("/joint_states", 10, &GripperVirtual::joints_callback, this);
 
   // publisher for gripper status
-  status_pub_ = nh_.advertise<gripper_virtual_node::gripper_msg>("/gripper/status", 10);
+  status_pub_ = nh_.advertise<gripper_virtual_node::gripper_msg>
+    ("/gripper/virtual/status", 10);
 
 }
 

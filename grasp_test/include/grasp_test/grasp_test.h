@@ -61,7 +61,8 @@ public:
   /* Member functions */
   GraspTest(ros::NodeHandle& nh);
   void callback(const std_msgs::String msg);
-  void gripper_msg_callback(const gripper_virtual_node::gripper_msg msg);
+  void virtual_msg_callback(const gripper_virtual_node::gripper_msg msg);
+  void real_msg_callback(const gripper_virtual_node::gripper_msg msg);
   void executeCommand(std_msgs::String instruction);
   geometry_msgs::Pose createPose(float x, float y, float z, float roll,
     float pitch, float yaw);
@@ -121,10 +122,12 @@ public:
   double min_distance_ = 0.2;
   double desired_distance_ = 0.25;
 
-  ros::Subscriber gripper_sub_;
+  ros::Subscriber virtual_sub_;
+  ros::Subscriber real_sub_;
   ros::Publisher gripper_pub_;
 
   gripper_virtual_node::gripper_state gripper_demand_msg_;
-  gripper_virtual_node::gripper_msg gripper_status_msg_;
+  gripper_virtual_node::gripper_msg gripper_virtual_status_;
+  gripper_virtual_node::gripper_msg gripper_real_status_;
 
 };
