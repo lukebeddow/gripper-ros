@@ -23,7 +23,7 @@ def callback(data):
 if __name__ == "__main__":
   try:
     # establish connection with the gripper
-    com_port = "/dev/rfcomm2"
+    com_port = "/dev/rfcomm0"
     mygripper = Gripper()
     mygripper.connect(com_port)
 
