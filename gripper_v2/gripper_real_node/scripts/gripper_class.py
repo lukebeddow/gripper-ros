@@ -10,30 +10,16 @@ def to_byte(x):
 class Gripper:
     '''This class is used to control the 2nd prototype gripper'''
 
-    
-
     # define bytes for communication instructions
-    # sendCommandByte = bytes([100])
-    # homeByte = bytes([101])
-    # getTargetStatusByte = bytes([102])
-    # requestGaugeByte = bytes([103])
-
+    # sendCommandByte = bytes([100]) python 3+
     sendCommandByte = to_byte(100)
     homeByte = to_byte(101)
-    getTargetStatusByte = to_byte(102)
-    requestGaugeByte = to_byte(103)
-    handshakeByte = to_byte(104)
+    powerSavingOnByte = to_byte(102)
+    powerSavingOffByte = to_byte(103)
+    stopByte = to_byte(104)
+    resumeByte = to_byte(105)
     
     # define bytes for communication protocol
-    # messageReceivedByte = bytes([200])
-    # messageFailedByte = bytes([201])
-    # targetNotReachedByte = bytes([202])
-    # targetReachedByte = bytes([203])
-    
-    # specialByte = bytes([253])
-    # startMarkerByte = bytes([254])
-    # endMarkerByte = bytes([255])
-
     messageReceivedByte = to_byte(200)
     messageFailedByte = to_byte(201)
     targetNotReachedByte = to_byte(202)
@@ -95,7 +81,7 @@ class Gripper:
     def get_state(self):
       return self.state
 
-    def send_message(self, type):
+    def send_message(self, type="command"):
         """This method publishes a method of the specified type"""
 
         byte_msg = bytearray()
@@ -106,16 +92,25 @@ class Gripper:
 
         # fill in the main message
         if type == "command":
-            byte_msg += bytearray(instructionByte)
+            byte_msg += bytearray(self.instructionByte)
             command_list = self.command.listed()
             for i in range(len(command_list)):
                 byte_msg += bytearray(struct.pack("f", command_list[i]))
-        
-        elif type == "handshake":
-            byte_msg += bytearray(self.handshakeByte)
 
         elif type == "home":
             byte_msg += bytearray(self.homeByte)
+
+        elif type == "power_saving_off":
+            byte_msg += bytearray(self.powerSavingOffByte)
+
+        elif type == "power_saving_on":
+            byte_msg += bytearray(self.powerSavingOnByte)
+
+        elif type == "stop":
+            byte_msg += bytearray(self.stopByte)
+
+        elif type == "resume":
+            byte_msg += bytearray(self.resumeByte)
 
         else:
             print("incorrect type given to send_message")

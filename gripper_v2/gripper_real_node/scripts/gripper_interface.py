@@ -12,13 +12,31 @@ from std_msgs.msg import Bool
 def callback(data):
   """callback function for when command is received for the gripper"""
 
+  # send in units of mm and radians
   mygripper.command.radius = data.x * 1000.0
-  mygripper.command.angle = data.th * (-180.0 / 3.141592)
+  mygripper.command.angle = data.th * -1
   mygripper.command.palm = data.z * 1000.0
 
   mygripper.send_command()
 
+  # global test
 
+  # if test % 4 == 0:
+  #   mygripper.send_message("power_saving_on")
+  #   print("power saving ON")
+  # elif test % 4 == 1:
+  #   mygripper.send_message("power_saving_off")
+  #   print("power saving OFF")
+  # elif test % 4 == 2:
+  #   mygripper.send_message("stop")
+  #   print("gripper stopped")
+  # elif test % 4 == 3:
+  #   mygripper.send_message("resume")
+  #   print("gripper resumed")
+
+  # test += 1
+
+# test = 0
 
 if __name__ == "__main__":
   try:
@@ -48,10 +66,11 @@ if __name__ == "__main__":
       state = mygripper.get_state()
 
       # extract the finger positions
-      msg.x = state.x_mm
-      msg.y = state.y_mm
-      msg.z = state.z_mm
-      msg.th = sin((msg.x - msg.y) / 35.0)
+      msg.is_target_reached = state.is_target_reached
+      msg.x = state.x_mm# / 1000.0
+      msg.y = state.y_mm# / 1000.0
+      msg.z = state.z_mm# / 1000.0
+      msg.th = sin((state.x_mm - state.y_mm) / 35.0)
 
       # publish data
       state_pub.publish(msg)
@@ -64,6 +83,7 @@ if __name__ == "__main__":
   except rospy.ROSInterruptException:
     pass
 
+  mygripper.send_message("stop")
   rospy.logerr("gripper connection node has shut down")
   # except:
   #   # keep broadcasting that the gripper is disconnected for 10 seconds
