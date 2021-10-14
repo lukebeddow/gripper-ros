@@ -121,6 +121,18 @@ void GraspTest::executeCommand(const std_msgs::String msg)
     v.z = -1;
     myPlace(p, v);
   }
+  else if (msg.data == "o") {
+    geometry_msgs::Pose pose = getPose("orange");
+    geometry_msgs::Point p;
+    p.x = pose.position.x;
+    p.y = pose.position.y;
+    p.z = pose.position.z;
+    geometry_msgs::Vector3 v;
+    v.x = 0;
+    v.y = 0;
+    v.z = -1;
+    myPick(p, v);
+  }
 }
 
 geometry_msgs::Pose GraspTest::createPose(float x, float y, float z, float roll,
@@ -142,6 +154,29 @@ geometry_msgs::Pose GraspTest::createPose(float x, float y, float z, float roll,
   q.normalize();
   q_msg = tf2::toMsg(q);
   pose.orientation = q_msg;
+
+  return pose;
+}
+
+geometry_msgs::Pose GraspTest::getPose(std::string name)
+{
+  /* Gets the pose of a named object */
+
+  geometry_msgs::Pose pose;
+  geometry_msgs::TransformStamped transform;
+
+  try {
+    transform = tf_buffer_.lookupTransform("panda_link0", name, ros::Time(0));
+  }
+  catch (tf2::TransformException &ex) {
+    ROS_WARN("%s", ex.what());
+    ros::Duration(1.0).sleep();
+  }
+
+  pose.position.x = transform.transform.translation.x;
+  pose.position.y = transform.transform.translation.y;
+  pose.position.z = transform.transform.translation.z;
+  pose.orientation = transform.transform.rotation;
 
   return pose;
 }

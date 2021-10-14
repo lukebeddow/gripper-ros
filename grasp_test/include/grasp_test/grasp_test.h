@@ -66,6 +66,7 @@ public:
   void executeCommand(std_msgs::String instruction);
   geometry_msgs::Pose createPose(float x, float y, float z, float roll,
     float pitch, float yaw);
+  geometry_msgs::Pose getPose(std::string name);
   geometry_msgs::Quaternion rotateQuaternion(geometry_msgs::Quaternion msg1,
     geometry_msgs::Quaternion msg2);
   geometry_msgs::Quaternion vecToQuat(geometry_msgs::Vector3& vector);
