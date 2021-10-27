@@ -1,0 +1,89 @@
+<?xml version="1.0" ?>
+<!--This does not replace URDF, and is not an extension of URDF.
+    This is a format for representing semantic information about the robot structure.
+    A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+	<xacro:macro name="add_gripper_config">
+
+		  <!-- retrieve info about the gripper -->
+		  <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
+		  <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
+		  <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
+		  <xacro:property name="num_segments" value="${dictionary['gripper_config']['num_segments']}"/>
+
+		  <!-- are we using a segmented finger -->
+		  <xacro:if value="${is_segmented}">
+			
+		      <!-- import gripper macros -->
+		      <xacro:include filename="$(find gripper_description)/urdf/finger_segments.xacro"/>
+
+		      <!-- create move groups for each finger -->
+		      <xacro:build_group prefix="finger_1" i="${num_segments}"/>
+		      <xacro:build_group prefix="finger_2" i="${num_segments}"/>
+		      <xacro:build_group prefix="finger_3" i="${num_segments}"/>
+
+		      <!-- disable all possible finger self-collisions -->
+		      <xacro:disable_finger_collisions prefix="finger_1" imax="${num_segments}"/>
+		      <xacro:disable_finger_collisions prefix="finger_2" imax="${num_segments}"/>
+		      <xacro:disable_finger_collisions prefix="finger_3" imax="${num_segments}"/>
+
+		  </xacro:if>
+		  
+		  <!-- Create a group for the gripper joints -->
+		  <group name="gripper">
+		      <link name="gripper_base_link" />
+		      <link name="finger_1_intermediate" />
+		      <link name="finger_1" />
+		      <link name="finger_2_intermediate" />
+		      <link name="finger_2" />
+		      <link name="finger_3_intermediate" />
+		      <link name="finger_3" />
+		      <link name="palm" />
+		  </group>
+		  
+		  <!-- define a pose for this group -->
+		  <group_state name="ready_pose" group="gripper">
+		      <joint name="finger_1_prismatic_joint" value="0.14" />
+		      <joint name="finger_1_revolute_joint" value="0" />
+		      <joint name="finger_2_prismatic_joint" value="0.14" />
+		      <joint name="finger_2_revolute_joint" value="0" />
+		      <joint name="finger_3_prismatic_joint" value="0.14" />
+		      <joint name="finger_3_revolute_joint" value="0" />
+		      <joint name="palm_prismatic_joint" value="0" />
+		  </group_state>
+		  
+		  <!-- disable collision checking in MoveIt for certain pairs of joints -->
+		  <disable_collisions link1="finger_1" link2="finger_1_intermediate" reason="Adjacent" />
+		  <disable_collisions link1="finger_1" link2="finger_2_intermediate" reason="Never" />
+		  <disable_collisions link1="finger_1" link2="finger_3_intermediate" reason="Never" />
+
+		  <disable_collisions link1="finger_1_intermediate" link2="finger_2" reason="Never" />
+		  <disable_collisions link1="finger_1_intermediate" link2="finger_2_intermediate" reason="Never" />
+		  <disable_collisions link1="finger_1_intermediate" link2="finger_3" reason="Never" />
+		  <disable_collisions link1="finger_1_intermediate" link2="finger_3_intermediate" reason="Never" />
+		  <disable_collisions link1="finger_1_intermediate" link2="gripper_base_link" reason="Adjacent" />
+		  <disable_collisions link1="finger_1_intermediate" link2="palm" reason="Never" />
+
+		  <disable_collisions link1="finger_2" link2="finger_2_intermediate" reason="Adjacent" />
+		  <disable_collisions link1="finger_2" link2="finger_3_intermediate" reason="Never" />
+
+		  <disable_collisions link1="finger_2_intermediate" link2="finger_3" reason="Never" />
+		  <disable_collisions link1="finger_2_intermediate" link2="finger_3_intermediate" reason="Never" />
+		  <disable_collisions link1="finger_2_intermediate" link2="gripper_base_link" reason="Adjacent" />
+		  <disable_collisions link1="finger_2_intermediate" link2="palm" reason="Never" />
+
+		  <disable_collisions link1="finger_3" link2="finger_3_intermediate" reason="Adjacent" />
+
+		  <disable_collisions link1="finger_3_intermediate" link2="gripper_base_link" reason="Adjacent" />
+		  <disable_collisions link1="finger_3_intermediate" link2="palm" reason="Never" />
+
+		  <disable_collisions link1="gripper_base_link" link2="palm" reason="Adjacent" />
+		  
+	</xacro:macro>
+</robot>
+    
+    
+    
+    
+    

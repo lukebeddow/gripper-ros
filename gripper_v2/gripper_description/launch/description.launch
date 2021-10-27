@@ -1,9 +1,28 @@
 <launch>
 
+	<!-- are we loading the gripper and/or the panda arm -->
+	<arg name="gripper" default="true"/>
+	<arg name="panda" default="true"/>
+	
+	<!-- are we loading both -->
+	<arg name="both" value="$(eval arg('gripper') * arg('panda'))"/>
+
 	<!-- Load gripper config information -->
   <rosparam file="$(find gripper_description)/config/gripper.yaml" command="load"/>
 
-    <!-- Generate/Load robot description file -->
-    <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find gripper_description)/urdf/panda_and_eff.xacro'" />
+    <!-- Generate/Load robot description file for both the gripper and the panda -->
+    <param name="robot_description" 
+    			 command="$(find xacro)/xacro --inorder '$(find gripper_description)/urdf/panda_and_eff.xacro'" 
+    			 if="$(arg both)"/>
+    			 
+   	<!-- if we are not using both the gripper and the panda -->
+   	<group unless="$(arg both)">
+		  <param name="robot_description" 
+		  			 command="$(find xacro)/xacro --inorder '$(find gripper_description)/urdf/final_gripper.xacro'" 
+		  			 if="$(arg gripper)"/>
+		  <param name="robot_description" 
+		  			 command="$(find xacro)/xacro --inorder '$(find gripper_description)/urdf/final_panda.xacro'" 
+		  			 if="$(arg panda)"/>
+		</group>
 
 </launch>

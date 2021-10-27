@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_ros
   gripper_virtual_node
+  gripper_msgs
 )
 
 ## System dependencies are found with CMake's conventions

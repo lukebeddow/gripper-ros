@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<robot name="panda_and_gripper" xmlns:xacro="http://wiki.ros.org/xacro">
+<robot name="gripper" xmlns:xacro="http://wiki.ros.org/xacro">
 
   <!-- load information from the gripper yaml file -->
   <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
@@ -8,48 +8,23 @@
   <xacro:property name="num_segments" value="${dictionary['gripper_config']['num_segments']}"/>
   <xacro:property name="torsion" value="${dictionary['gripper_config']['torsion']}"/>
 
-
   <!-- include macros for the panda arm and end effector -->
-  <xacro:include filename="$(find gripper_description)/urdf/panda_arm_macroed.xacro"/>
   <xacro:include filename="$(find gripper_description)/urdf/gripper.urdf.xacro"/>
-  <xacro:include filename="$(find gripper_description)/urdf/panda.gazebo.xacro"/>
-  <xacro:include filename="$(find gripper_description)/urdf/panda.control.xacro"/>
 
   <!-- TESTING segmented finger -->
   <xacro:include filename="$(find gripper_description)/urdf/finger_segments.xacro"/>
 
-  <!-- create arm + eef combo itself as a macro-->
-  <xacro:macro name="panda_with_eff">
+  <!-- create instances of panda and eef models -->
+  <!-- <xacro:panda_arm safety_distance="0.03"/> -->
+  <xacro:my_gripper/>
 
-    <!-- create instances of panda and eef models -->
-    <!-- <xacro:panda_arm safety_distance="0.03"/> -->
-    <xacro:my_gripper/>
-
-    <!-- <link name="base_link"/> -->
-    <xacro:panda_arm arm_id="panda" mesh_folder="gripper_description/meshes_panda" connected_to="base_link" xyz="0 0 0" rpy="0 0 0"/>
-    <!-- attach panda arm to the ground for gazebo -->
-    <link name="world"/>
-    <joint name="world_to_base" type="fixed">
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <parent link="world"/>
-      <child link="panda_link0"/>
-    </joint>
-
-    <!-- attach eef to panda model via base link of eef -->
-    <joint name="panda_to_eef_base_link" type="fixed">
-      <origin xyz="0 0 0.25" rpy="0 0 ${-pi/4}" />
-      <parent link="panda_link7"/>
-      <child link="gripper_base_link"/>
-    </joint>
-
-    <!-- setup controllers and gazebo -->
-    <xacro:panda_gazebo arm_id="panda"/>
-    <xacro:panda_control arm_id="panda"/>
-
-  </xacro:macro>
-
-  <!-- execute the macro -->
-  <xacro:panda_with_eff/>
+  <!-- attach gripper to the ground for gazebo -->
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <origin xyz="0 0 1" rpy="0 0 0"/>
+    <parent link="world"/>
+    <child link="gripper_base_link"/>
+  </joint>
 
   <!-- TESTING segmented finger -->
   <xacro:macro name="add_fingers" params="segments">

@@ -11,5 +11,5 @@
   
   <!-- Launch RViz -->
   <include file="$(find gripper_control)/launch/rviz.launch"/>
-
+  
 </launch>

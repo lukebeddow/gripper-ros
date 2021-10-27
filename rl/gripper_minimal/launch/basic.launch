@@ -1,0 +1,10 @@
+<launch>
+
+  <node name = "gripper_env_node"
+        pkg = "gripper_minimal"
+        type = "gripper_env.py"
+        respawn = "false"
+        output = "screen"
+  />
+
+</launch>

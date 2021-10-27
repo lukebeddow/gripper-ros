@@ -20,12 +20,99 @@ GraspTest::GraspTest(ros::NodeHandle& nh)
   real_sub_ = nh_.subscribe<gripper_virtual_node::gripper_msg>
     ("/gripper/real/status", 10, &GraspTest::real_msg_callback, this);
 
+  move_gripper_service_ = nh_.advertiseService("/move_gripper", 
+    &GraspTest::move_gripper_callback, this);
+
   gripper_default_.x = 130;
   gripper_default_.th = 0;
   gripper_default_.z = 0;
 
   ROS_INFO("Grasp test initialisation finished, ready to go");
+}
 
+bool GraspTest::move_gripper_callback(gripper_msgs::move_gripper::Request &req,
+  gripper_msgs::move_gripper::Response &res)
+{
+  /* This callback implements an action call to move the gripper and or robot */
+
+  constexpr double tol = 1e-7;
+  
+  bool job_moveArm = true;      // move straight doesn't return a bool
+  bool job_rotateArm = true;    // code not added yet to do this
+  bool job_moveGripper = true;
+
+  // for moving the arm by cartesian amounts
+  geometry_msgs::Vector3 base_vector;
+  base_vector.x = req.nudge.arm.x;
+  base_vector.y = req.nudge.arm.y;
+  base_vector.z = req.nudge.arm.z;
+
+  // for rotating the arm to a new orientation
+  tf2::Quaternion base_direction_change;
+  base_direction_change.setRPY(req.nudge.arm.roll, req.nudge.arm.pitch, req.nudge.arm.yaw);
+  geometry_msgs::TransformStamped transform;
+  try {
+    transform = tf_buffer_.lookupTransform("panda_link0", "gripper_base_link", ros::Time(0));
+  }
+  catch (tf2::TransformException &ex) {
+    ROS_WARN("%s", ex.what());
+    ros::Duration(1.0).sleep();
+  }
+  tf2::Quaternion base_direction_current;
+  tf2::fromMsg(transform.transform.rotation, base_direction_current);
+  base_direction_current *= base_direction_change;
+
+  // TESTING - changed from base_direction_current to base_direction_change
+  geometry_msgs::Quaternion new_orientation = tf2::toMsg(base_direction_change);
+
+  // find the length of the vector
+  double length = sqrt(pow(base_vector.x, 2) +
+                       pow(base_vector.y, 2) +
+                       pow(base_vector.z, 2));
+
+  if (length > tol or req.nudge.arm.roll > tol or req.nudge.arm.pitch > tol 
+    or req.nudge.arm.yaw > tol) {
+    // for angular changes
+    if (length < tol) {
+      length = 1e-4;
+    }
+    moveStraight(length, base_vector, new_orientation);
+  }
+
+  gripper nudge;
+  nudge.x = req.nudge.gripper.x;
+  // nudge.y = req.gripper_y;
+  nudge.z = req.nudge.gripper.z;
+  nudge.th = req.nudge.gripper.th;
+
+  ROS_INFO_STREAM("gripper nudge x: " << nudge.x 
+    << ", th: " << nudge.th << ", z: " << nudge.z);
+
+  ROS_INFO_STREAM("gripper virtual x: " << gripper_virtual_.x 
+    << ", th: " << gripper_virtual_.th << ", z: " << gripper_virtual_.z);
+
+  gripper resultant = nudge + gripper_virtual_.to_mm_deg();
+
+  ROS_INFO_STREAM("gripper resultant x: " << resultant.x 
+    << ", th: " << resultant.th << ", z: " << resultant.z);
+
+  // no code to change angle currently
+
+  // if we have to move the gripper as well
+  if (abs(nudge.x) > tol or abs(nudge.z) > tol or abs(nudge.th) > tol) {
+    job_moveGripper = moveGripper(nudge + gripper_virtual_.to_mm_deg());
+  }
+
+  // waitForGripper(); // add timeout for wait gripper
+
+  if (job_moveArm and job_rotateArm and job_moveGripper) {
+    res.success = true;
+  }
+  else {
+    res.success = false;
+  }
+
+  return res.success;
 }
 
 void GraspTest::callback(const std_msgs::String msg)
@@ -41,14 +128,26 @@ void GraspTest::virtual_msg_callback(const gripper_virtual_node::gripper_msg msg
 {
   /* This function records the status of the gripper from the virtual node */
 
+  // save message
   gripper_virtual_status_ = msg;
+
+  // input message into data structure
+  gripper_virtual_.x = msg.x;
+  gripper_virtual_.z = msg.z;
+  gripper_virtual_.th = msg.th;
 }
 
 void GraspTest::real_msg_callback(const gripper_virtual_node::gripper_msg msg)
 {
   /* This function records the status of the real gripper */
 
+  // save the message
   gripper_real_status_ = msg;
+
+  // input message into data structure
+  gripper_real_.x = msg.x;
+  gripper_real_.z = msg.z;
+  gripper_real_.th = msg.th;
 }
 
 void GraspTest::executeCommand(const std_msgs::String msg)
@@ -211,8 +310,11 @@ bool GraspTest::moveGripper(gripper gripper_pose)
 
   // convert units
   double radius_m = gripper_pose.x / 1000.0;
-  double angle_r = (gripper_pose.th * 3.1415926535897 * -1) / 180.0;
+  double angle_r = (gripper_pose.th * 3.1415926535897) / 180.0;
   double palm_m = gripper_pose.z / 1000.0;
+
+  ROS_INFO_STREAM("Moving the gripper to target radius: " << gripper_pose.x 
+    << ", target angle: " << gripper_pose.th);
 
   // set symmetric joint targets
   gripperJointTargets[0] = radius_m;
@@ -430,7 +532,7 @@ void GraspTest::setGripper(trajectory_msgs::JointTrajectory& posture,
 
   // convert units
   double radius_m = radius_mm / 1000.0;
-  double angle_r = (angle_d * 3.1415926535897 * -1) / 180.0;
+  double angle_r = (angle_d * 3.1415926535897) / 180.0;
   double palm_m = palm_mm / 1000.0;
 
   // set the positions
@@ -502,7 +604,7 @@ void GraspTest::pickObject(geometry_msgs::Pose objectCentre, double objectHeight
 
   // set the gripper configuration (110, 8, 30 works for my test grasp)
   double radius_mm = 110;
-  double angle_d = 9;
+  double angle_d = -9;
   double palm_mm = 30;
 
   setGripper(grasps[0].pre_grasp_posture, 140, 0, 0);
@@ -564,7 +666,7 @@ void GraspTest::placeObject(geometry_msgs::Pose dropPoint)
 
   // set the gripper configuration
   double radius_mm = 110;
-  double angle_d = -10;
+  double angle_d = 10;
   double palm_mm = 0;
 
   setGripper(places[0].post_place_posture, radius_mm, angle_d, palm_mm);
@@ -711,9 +813,18 @@ void GraspTest::moveStraight(double distance)
   q_identity.z = 0;
   q_identity.w = 1;
 
+  moveStraight(distance, q_identity);
+}
+
+void GraspTest::moveStraight(double distance, geometry_msgs::Vector3 direction)
+{
+  /* overload for direction specified as a vector */
+
+  geometry_msgs::Quaternion q = vecToQuat(direction);
+
   bool is_global_direction = false;
 
-  moveStraight(distance, q_identity, is_global_direction);
+  moveStraight(distance, q, is_global_direction);
 }
 
 void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion direction)
@@ -728,6 +839,40 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion directio
 void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion direction,
   bool is_global_direction)
 {
+  /* overlead for move straight when direction is given in global co-ordinates */
+
+  bool reorientate = false;
+  geometry_msgs::Quaternion empty;
+
+  moveStraight(distance, direction, is_global_direction, reorientate, empty);
+}
+
+void GraspTest::moveStraight(double distance, geometry_msgs::Vector3 direction,
+  geometry_msgs::Quaternion orientation)
+{
+  /* overload for move straight when final orientation is changed locally */
+
+  geometry_msgs::Quaternion q = vecToQuat(direction);
+  bool is_global_direction = false;
+  bool reorientate = true;
+
+  moveStraight(distance, q, is_global_direction, reorientate, orientation);
+}
+
+void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion direction,
+  geometry_msgs::Quaternion orientation)
+{
+  /* overload for move straight when final orientation is changed locally */
+
+  bool is_global_direction = false;
+  bool reorientate = false;
+
+  moveStraight(distance, direction, orientation);
+}
+
+void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion direction,
+  bool is_global_direction, bool reorientate, geometry_msgs::Quaternion orientation)
+{
   /* This function moves the end effector in a straight line in the given direction */
 
   /* see: https://github.com/ros-planning/moveit_tutorials/blob/master/doc/move_group_interface/src/move_group_interface_tutorial.cpp
@@ -739,6 +884,7 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion directio
   geometry_msgs::Pose start_pose;
   geometry_msgs::Pose destination_pose;
   geometry_msgs::TransformStamped start_tf;
+  geometry_msgs::Quaternion final_orientation;
 
   // create vector to hold waypoints for cartesian path
   std::vector<geometry_msgs::Pose> waypoints;
@@ -788,7 +934,19 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion directio
   destination_pose.position.x = start_pose.position.x + resultant.x;
   destination_pose.position.y = start_pose.position.y + resultant.y;
   destination_pose.position.z = start_pose.position.z + resultant.z;
-  destination_pose.orientation = start_pose.orientation;
+
+  // will we reorientate the final pose
+  if (reorientate) {
+    if (is_global_direction) {
+      destination_pose.orientation = orientation;
+    }
+    else {
+      destination_pose.orientation = rotateQuaternion(start_pose.orientation, orientation);
+    }
+  }
+  else {
+     destination_pose.orientation = start_pose.orientation;
+  }
 
   // insert target pose
   waypoints.push_back(destination_pose);
@@ -913,8 +1071,11 @@ bool GraspTest::myPick(geometry_msgs::Point grasp_point,
   // define the closed state of the gripper
   gripper closed_gripper;
   closed_gripper.x = 120;
-  closed_gripper.th = 12;
+  closed_gripper.th = -12;
   closed_gripper.z = 20;
+  // closed_gripper.x = 130;
+  // closed_gripper.th = 10;
+  // closed_gripper.z = 5;
 
   // create quaternion from approach vector (and normalise approach vector)
   geometry_msgs::Quaternion orientation = vecToQuat(approach_vector);
@@ -961,7 +1122,7 @@ bool GraspTest::myPlace(geometry_msgs::Point place_point,
   // define the open state of the gripper
   gripper open_gripper;
   open_gripper.x = 120;
-  open_gripper.th = -10;
+  open_gripper.th = 10;
   open_gripper.z = 0;
 
   // create quaternion from approach vector (and normalise approach vector by ref)

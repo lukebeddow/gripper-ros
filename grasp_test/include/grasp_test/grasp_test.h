@@ -19,6 +19,7 @@
 
 #include <gripper_virtual_node/gripper_state.h>
 #include <gripper_virtual_node/gripper_msg.h>
+#include <gripper_msgs/move_gripper.h>
 
 // #include <moveit_msgs/GetPlanningScene.h>
 // #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -56,6 +57,22 @@ public:
     gripper() {}
     gripper(double x, double th, double z)
     : x(x), th(th), z(z) {}
+
+    // functions
+    gripper to_mm_deg() {
+      return gripper(x * 1e3, th * (180.0 / 3.141592), z * 1e3);
+    }
+    gripper to_m() {
+      return gripper(x * 1e-3, th, z * 1e-3);
+    }
+    
+    // operator overloads
+    gripper operator+(const gripper& a) {
+      return gripper(a.x + x, a.th + th, a.z + z);
+    }
+    gripper operator-(const gripper& a) {
+      return gripper(a.x - x, a.th - th, a.z - z);
+    }
   };
 
   /* Member functions */
@@ -63,6 +80,8 @@ public:
   void callback(const std_msgs::String msg);
   void virtual_msg_callback(const gripper_virtual_node::gripper_msg msg);
   void real_msg_callback(const gripper_virtual_node::gripper_msg msg);
+  bool move_gripper_callback(gripper_msgs::move_gripper::Request &req,
+  gripper_msgs::move_gripper::Response &res);
   void executeCommand(std_msgs::String instruction);
   geometry_msgs::Pose createPose(float x, float y, float z, float roll,
     float pitch, float yaw);
@@ -85,8 +104,15 @@ public:
   void placeObject(geometry_msgs::Pose dropPoint);
   void moveStraight(double distance);
   void moveStraight(double distance, geometry_msgs::Quaternion direction);
+  void moveStraight(double distance, geometry_msgs::Vector3 direction);
   void moveStraight(double distance, geometry_msgs::Quaternion direction,
     bool is_global_direction);
+  void moveStraight(double distance, geometry_msgs::Quaternion direction,
+    geometry_msgs::Quaternion orientation);
+  void moveStraight(double distance, geometry_msgs::Vector3 direction,
+    geometry_msgs::Quaternion orientation);
+  void moveStraight(double distance, geometry_msgs::Quaternion direction,
+    bool is_global_direction, bool reorientate, geometry_msgs::Quaternion orientation);
   bool myPick(geometry_msgs::Point grasp_point,
     geometry_msgs::Vector3 approach_vector);
   bool myPlace(geometry_msgs::Point place_point,
@@ -102,6 +128,7 @@ public:
   ros::NodeHandle nh_;
   ros::Subscriber subscriber_;
   ros::Publisher publisher_;
+  ros::ServiceServer move_gripper_service_;
   moveit::planning_interface::MoveGroupInterface arm_group_{"panda_arm"};
   moveit::planning_interface::MoveGroupInterface hand_group_{"gripper"};
   moveit::planning_interface::MoveGroupInterface robot_group_{"all"};
@@ -113,6 +140,8 @@ public:
   geometry_msgs::Pose targetPose_;
 
   gripper gripper_default_;
+  gripper gripper_virtual_;
+  gripper gripper_real_;
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener{tf_buffer_};

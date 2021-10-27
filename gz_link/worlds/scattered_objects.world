@@ -28,7 +28,7 @@
         <!-- insert the objects -->
         <include>
           <uri>model://cabbage</uri>
-          <pose>0.5 -0.5 0 0 0 0</pose>
+          <pose>0.4 -0.4 0 0 0 0</pose>
         </include>
 
         <include>
@@ -53,7 +53,7 @@
 
         <include>
           <uri>model://watermelon</uri>
-          <pose>0.5 0.5 0 0 0 0</pose>
+          <pose>0.4 0.4 0 0 0 0</pose>
         </include>
 
         <!-- plugin to connect ros and gazebo, my first test -->
