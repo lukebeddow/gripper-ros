@@ -16,7 +16,7 @@
 		  <xacro:if value="${is_segmented}">
 			
 		      <!-- import gripper macros -->
-		      <xacro:include filename="$(find gripper_description)/urdf/finger_segments.xacro"/>
+		      <xacro:include filename="$(find gripper_description)/xacro/gripper.segmented_fingers.xacro"/>
 
 		      <!-- create move groups for each finger -->
 		      <xacro:build_group prefix="finger_1" i="${num_segments}"/>

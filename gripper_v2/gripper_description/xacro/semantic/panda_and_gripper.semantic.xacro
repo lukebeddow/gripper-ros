@@ -6,8 +6,8 @@
 <robot name="panda_and_gripper" xmlns:xacro="http://ros.org/wiki/xacro">
 
 		<!-- load the gripper and panda xacros -->
-		<xacro:include filename="$(find gripper_description)/moveit_xacros/add_gripper_config.xacro"/>
-		<xacro:include filename="$(find gripper_description)/moveit_xacros/add_panda_config.xacro"/>
+		<xacro:include filename="$(find gripper_description)/xacro/semantic/add_gripper_config.xacro"/>
+		<xacro:include filename="$(find gripper_description)/xacro/semantic/add_panda_config.xacro"/>
 		
 		<!-- run the macros -->
 		<xacro:add_gripper_config/>

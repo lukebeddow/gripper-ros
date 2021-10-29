@@ -37,10 +37,10 @@
                 " />
   -->
 
-	
-  <arg name="load_robot_description" default="true" />
-  <!-- load URDF, SRDF and joint_limits configuration -->
+	<!-- will we overwrite the robot description on the rosparam server, default is no -->
+  <arg name="load_robot_description" default="false"/>
   
+  <!-- load URDF, SRDF and joint_limits configuration -->
   <include file="$(find gripper_moveit)/launch/planning_context.launch">
     <arg name="load_robot_description" value="$(arg load_robot_description)" />
   </include>

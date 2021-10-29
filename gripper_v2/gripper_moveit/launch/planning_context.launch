@@ -5,9 +5,9 @@
   <!-- The name of the parameter under which the URDF is loaded -->
   <arg name="robot_description" default="robot_description"/>
 
-  <!-- Load universal robot description format (URDF) -->
+  <!-- Load universal robot description format (URDF) if load_robot_description is true -->
   <param if="$(arg load_robot_description)" name="$(arg robot_description)"
-         command="xacro '$(find gripper_description)/urdf/panda_and_eff.srdf.xacro'"/>
+         command="xacro '$(find gripper_description)/urdf/panda_and_gripper.urdf.xacro'"/>
 
   <!-- The semantic description that corresponds to the URDF -->
   <param name="$(arg robot_description)_semantic" 

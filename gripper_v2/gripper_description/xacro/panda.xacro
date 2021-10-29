@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot name="panda" xmlns:xacro="http://wiki.ros.org/xacro">
+
+	<xacro:macro name="add_panda">
+
+		<!-- include macros for the panda arm -->
+		<xacro:include filename="$(find gripper_description)/xacro/panda.main.xacro"/>
+		<xacro:include filename="$(find gripper_description)/xacro/panda.gazebo.xacro"/>
+		<xacro:include filename="$(find gripper_description)/xacro/panda.control.xacro"/>
+		
+		<xacro:panda_arm arm_id="panda" 
+								 		 mesh_folder="gripper_description/meshes_panda" 
+								 		 connected_to="base_link" 
+								 		 xyz="0 0 0" 
+								 		 rpy="0 0 0"/>
+
+		<!-- setup controllers and gazebo -->
+		<xacro:panda_gazebo arm_id="panda"/>
+		<xacro:panda_control arm_id="panda"/>
+  
+  </xacro:macro>
+
+</robot>

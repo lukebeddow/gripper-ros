@@ -2,7 +2,7 @@ How to generate a final sdf file for gazebo:
 
 In the terminal (and in this directory) type:
 
-$ xacro panda_and_gripper.urdf.xacro > final.urdf
+$ xacro panda_and_eff.xacro > final.urdf
 
 This runs xacro and generates a clean urdf. Next:
 
