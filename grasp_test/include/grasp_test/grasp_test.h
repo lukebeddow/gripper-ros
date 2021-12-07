@@ -19,7 +19,12 @@
 
 #include <gripper_virtual_node/gripper_state.h>
 #include <gripper_virtual_node/gripper_msg.h>
+
+#include <gripper_msgs/pose.h>
 #include <gripper_msgs/move_gripper.h>
+#include <gripper_msgs/set_joints.h>
+#include <gripper_msgs/set_pose.h>
+#include <gripper_msgs/gripper_class.h>
 
 // #include <moveit_msgs/GetPlanningScene.h>
 // #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -77,11 +82,21 @@ public:
 
   /* Member functions */
   GraspTest(ros::NodeHandle& nh);
+
+  // subscriber callbacks
   void callback(const std_msgs::String msg);
   void virtual_msg_callback(const gripper_virtual_node::gripper_msg msg);
   void real_msg_callback(const gripper_virtual_node::gripper_msg msg);
+
+  // service callbacks
   bool move_gripper_callback(gripper_msgs::move_gripper::Request &req,
-  gripper_msgs::move_gripper::Response &res);
+    gripper_msgs::move_gripper::Response &res);
+  bool set_joints_callback(gripper_msgs::set_joints::Request &req,
+    gripper_msgs::set_joints::Response &res);
+  bool set_pose_callback(gripper_msgs::set_pose::Request &req,
+    gripper_msgs::set_pose::Response &res);
+
+  // helper functions
   void executeCommand(std_msgs::String instruction);
   geometry_msgs::Pose createPose(float x, float y, float z, float roll,
     float pitch, float yaw);
@@ -89,19 +104,26 @@ public:
   geometry_msgs::Quaternion rotateQuaternion(geometry_msgs::Quaternion msg1,
     geometry_msgs::Quaternion msg2);
   geometry_msgs::Quaternion vecToQuat(geometry_msgs::Vector3& vector);
+  void waitForGripper();
+  void waitUntilFinished();
+
+  // move the gripper, the panda arm, or both
   bool moveGripper(double radium_mm, double angle_d, double palm_mm);
-  bool moveGripper(gripper gripper_pose);
+  bool moveGripper(Gripper gripper_pose);
   bool moveArm(float x, float y, float z, float roll, float pitch, float yaw);
   bool moveArm(geometry_msgs::Pose target_pose);
   bool moveRobot(double x, double y, double z, double roll, double pitch, double yaw,
     double radius_mm, double angle_d, double palm_mm);
-  bool moveRobot(geometry_msgs::Pose desired_pose, gripper gripper_pose);
+  bool moveRobot(geometry_msgs::Pose desired_pose, Gripper gripper_pose);
 
+  // functions using moveits pick and place built-in
   void setGripper(trajectory_msgs::JointTrajectory& posture,
     double radius_mm, double angle_d, double palm_mm);
   void pickObject(geometry_msgs::Pose objectCentre, double objectHeight,
     double objectDiameter);
   void placeObject(geometry_msgs::Pose dropPoint);
+
+  // cartesian path planning
   void moveStraight(double distance);
   void moveStraight(double distance, geometry_msgs::Quaternion direction);
   void moveStraight(double distance, geometry_msgs::Vector3 direction);
@@ -113,13 +135,14 @@ public:
     geometry_msgs::Quaternion orientation);
   void moveStraight(double distance, geometry_msgs::Quaternion direction,
     bool is_global_direction, bool reorientate, geometry_msgs::Quaternion orientation);
+
+  // functions for my pick and place
   bool myPick(geometry_msgs::Point grasp_point,
     geometry_msgs::Vector3 approach_vector);
   bool myPlace(geometry_msgs::Point place_point,
     geometry_msgs::Vector3 approach_vector);
 
-  void waitForGripper();
-
+  // collisions handling
   moveit_msgs::CollisionObject makeBox(std::string id, std::string frame_id, Box box);
   void addCollsion();
   void disableCollisions(std::string name);
@@ -128,7 +151,11 @@ public:
   ros::NodeHandle nh_;
   ros::Subscriber subscriber_;
   ros::Publisher publisher_;
-  ros::ServiceServer move_gripper_service_;
+
+  ros::ServiceServer move_gripper_srv_;
+  ros::ServiceServer set_joints_srv_;
+  ros::ServiceServer set_pose_srv_;
+
   moveit::planning_interface::MoveGroupInterface arm_group_{"panda_arm"};
   moveit::planning_interface::MoveGroupInterface hand_group_{"gripper"};
   moveit::planning_interface::MoveGroupInterface robot_group_{"all"};
@@ -139,9 +166,9 @@ public:
 
   geometry_msgs::Pose targetPose_;
 
-  gripper gripper_default_;
-  gripper gripper_virtual_;
-  gripper gripper_real_;
+  Gripper gripper_default_{}; // initialise with default values
+  Gripper gripper_virtual_;
+  Gripper gripper_real_;
 
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener{tf_buffer_};

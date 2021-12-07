@@ -5,15 +5,22 @@
   
 <!--  <include file="$(find gripper_moveit)/launch/ros_controllers.launch"/>-->
 
-  <!-- Load the controllers -->
+  <!-- Load the controllers (the order seems to be important!!) -->
   <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="
+  			finger_1_controller
+        finger_2_controller
+        finger_3_controller
+  			joint_state_controller
+  			panda_arm_controller
+        panda_hand_controller
+        "
+        />
+        
+        <!--
         finger_1_controller
         finger_2_controller
         finger_3_controller
-        joint_state_controller
-        panda_arm_controller
-        panda_hand_controller
-        "/>
+        -->
 
   <!-- convert joint states to TF transforms for rviz, etc -->
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="false" output="screen"/>

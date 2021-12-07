@@ -1,7 +1,7 @@
 <launch>
 
 	<!-- are we loading the gripper and/or the panda arm -->
-	<arg name="gripper" default="false"/>
+	<arg name="gripper" default="true"/>
 	<arg name="panda" default="true"/>
 	
 	<!-- are we loading both -->

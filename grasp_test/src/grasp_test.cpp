@@ -20,12 +20,14 @@ GraspTest::GraspTest(ros::NodeHandle& nh)
   real_sub_ = nh_.subscribe<gripper_virtual_node::gripper_msg>
     ("/gripper/real/status", 10, &GraspTest::real_msg_callback, this);
 
-  move_gripper_service_ = nh_.advertiseService("/move_gripper", 
+  move_gripper_srv_ = nh_.advertiseService("/control/move_gripper", 
     &GraspTest::move_gripper_callback, this);
+  
+  set_joints_srv_ = nh_.advertiseService("/control/set_joints",
+    &GraspTest::set_joints_callback, this);
 
-  gripper_default_.x = 130;
-  gripper_default_.th = 0;
-  gripper_default_.z = 0;
+  set_pose_srv_ = nh_.advertiseService("/control/set_pose",
+    &GraspTest::set_pose_callback, this);
 
   ROS_INFO("Grasp test initialisation finished, ready to go");
 }
@@ -76,34 +78,28 @@ bool GraspTest::move_gripper_callback(gripper_msgs::move_gripper::Request &req,
     if (length < tol) {
       length = 1e-4;
     }
+    ROS_WARN_STREAM("Moving arm for length: " << length);
     moveStraight(length, base_vector, new_orientation);
   }
 
-  gripper nudge;
+  Gripper new_gripper = gripper_virtual_;
+  gripper_msgs::pose nudge;
   nudge.x = req.nudge.gripper.x;
-  // nudge.y = req.gripper_y;
+  nudge.y = req.nudge.gripper.y;
   nudge.z = req.nudge.gripper.z;
-  nudge.th = req.nudge.gripper.th;
 
-  ROS_INFO_STREAM("gripper nudge x: " << nudge.x 
-    << ", th: " << nudge.th << ", z: " << nudge.z);
+  new_gripper.add_msg(nudge);
 
-  ROS_INFO_STREAM("gripper virtual x: " << gripper_virtual_.x 
-    << ", th: " << gripper_virtual_.th << ", z: " << gripper_virtual_.z);
-
-  gripper resultant = nudge + gripper_virtual_.to_mm_deg();
-
-  ROS_INFO_STREAM("gripper resultant x: " << resultant.x 
-    << ", th: " << resultant.th << ", z: " << resultant.z);
-
-  // no code to change angle currently
+  // no code to change gripper approach angle currently
 
   // if we have to move the gripper as well
-  if (abs(nudge.x) > tol or abs(nudge.z) > tol or abs(nudge.th) > tol) {
-    job_moveGripper = moveGripper(nudge + gripper_virtual_.to_mm_deg());
+  if (abs(nudge.x) > tol or abs(nudge.z) > tol or abs(nudge.y) > tol) {
+    ROS_WARN("Moving gripper");
+    job_moveGripper = moveGripper(new_gripper);
   }
 
   // waitForGripper(); // add timeout for wait gripper
+  waitUntilFinished();
 
   if (job_moveArm and job_rotateArm and job_moveGripper) {
     res.success = true;
@@ -111,6 +107,106 @@ bool GraspTest::move_gripper_callback(gripper_msgs::move_gripper::Request &req,
   else {
     res.success = false;
   }
+
+  return res.success;
+}
+
+bool GraspTest::set_joints_callback(gripper_msgs::set_joints::Request &req,
+  gripper_msgs::set_joints::Response &res)
+{
+  /* set the joints of the panda and gripper to certain values
+  Joint names in order are:
+     panda_joint1
+     panda_joint2
+     panda_joint3
+     panda_joint4
+     panda_joint5
+     panda_joint6
+     panda_joint7
+     finger_1_prismatic_joint
+     finger_1_revolute_joint
+     finger_2_prismatic_joint
+     finger_2_revolute_joint
+     finger_3_prismatic_joint
+     finger_3_revolute_joint
+     palm_prismatic_joint
+  */
+
+  std::vector<double> jointTargets;
+  jointTargets.resize(14);
+
+  // get the current state of the robot
+  robot_state::RobotStatePtr state = arm_group_.getCurrentState();
+
+  // could use this instead?
+  std::vector<double> currentJoints = robot_group_.getCurrentJointValues();
+
+  // extract the joint positions from the pointers returned by the member fcn
+  jointTargets[0] = *state->getJointPositions("panda_joint1");
+  jointTargets[1] = *state->getJointPositions("panda_joint2");
+  jointTargets[2] = *state->getJointPositions("panda_joint3");
+  jointTargets[3] = *state->getJointPositions("panda_joint4");
+  jointTargets[4] = *state->getJointPositions("panda_joint5");
+  jointTargets[5] = *state->getJointPositions("panda_joint6");
+  jointTargets[6] = *state->getJointPositions("panda_joint7");
+
+  jointTargets[7] = *state->getJointPositions("finger_1_prismatic_joint");
+  jointTargets[8] = *state->getJointPositions("finger_1_revolute_joint");
+  jointTargets[9] = *state->getJointPositions("finger_2_prismatic_joint");
+  jointTargets[10] = *state->getJointPositions("finger_2_revolute_joint");
+  jointTargets[11] = *state->getJointPositions("finger_3_prismatic_joint");
+  jointTargets[12] = *state->getJointPositions("finger_3_revolute_joint");
+  jointTargets[13] = *state->getJointPositions("palm_prismatic_joint");
+
+  // now loop through the joints and if indicated, set a new value
+  for (int i = 0; i < 14; i++) {
+    if (not req.skip_joint[i]) {
+      jointTargets[i] = req.joint_values[i];
+    }
+  }
+
+  ROS_INFO("Setting joint target");
+  robot_group_.setJointValueTarget(jointTargets);
+
+  // move the robot hand
+  ROS_INFO("Attempting to plan the path");
+  moveit::planning_interface::MoveGroupInterface::Plan my_plan;
+  bool success = (robot_group_.plan(my_plan) ==
+    moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+  ROS_INFO("Visualising plan %s", success?"":"FAILED");
+
+  robot_group_.move();
+
+  // if robot is moving, wait for the gripper before returning
+  if (success) {
+    // waitForGripper();
+    waitUntilFinished();
+  }
+
+  res.success = success;
+
+  return res.success;
+}
+
+bool GraspTest::set_pose_callback(gripper_msgs::set_pose::Request &req,
+  gripper_msgs::set_pose::Response &res)
+{
+  /* service to set the pose of the robot */
+
+  Gripper pose;
+  pose.from_msg(req.gripper_pose);
+
+  // gripper pose;
+  // pose.x = req.gripper_pose.x;
+  // // pose.y = req.gripper_pose.y;
+  // pose.z = req.gripper_pose.z;
+  // pose.th = req.gripper_pose.th;
+
+  // adjust the z co-ordinate to apply to the fingers
+  req.panda_pose.position.z += offset_distance_;
+
+  res.success = moveRobot(req.panda_pose, pose);
 
   return res.success;
 }
@@ -132,9 +228,8 @@ void GraspTest::virtual_msg_callback(const gripper_virtual_node::gripper_msg msg
   gripper_virtual_status_ = msg;
 
   // input message into data structure
-  gripper_virtual_.x = msg.x;
-  gripper_virtual_.z = msg.z;
-  gripper_virtual_.th = msg.th;
+  gripper_virtual_.set_xy_m(msg.x, msg.y);
+  gripper_virtual_.set_z_m(msg.z);
 }
 
 void GraspTest::real_msg_callback(const gripper_virtual_node::gripper_msg msg)
@@ -145,9 +240,8 @@ void GraspTest::real_msg_callback(const gripper_virtual_node::gripper_msg msg)
   gripper_real_status_ = msg;
 
   // input message into data structure
-  gripper_real_.x = msg.x;
-  gripper_real_.z = msg.z;
-  gripper_real_.th = msg.th;
+  gripper_real_.set_xy_m(msg.x, msg.y);
+  gripper_real_.set_z_m(msg.z);
 }
 
 void GraspTest::executeCommand(const std_msgs::String msg)
@@ -164,14 +258,14 @@ void GraspTest::executeCommand(const std_msgs::String msg)
     moveGripper(100.0, 0.0, 0.0);
   }
   else if (msg.data == "4") {
-    moveGripper(130.0, 15.0, 100.0);
+    moveGripper(130.0, 10.0, 100.0);
   }
   else if (msg.data == "5") {
     moveGripper(70.0, -15.0, 150.0);
   }
   else if (msg.data == "6") {
     geometry_msgs::Pose pose = createPose(0.2, 0.2, 0.8, 0.0, 0.0, 0.0);
-    gripper gripper_pose{140, 15, 0};
+    Gripper gripper_pose(140e-3, 15e-3, 0);
     // moveRobot(0.2, 0.2, 0.8, 0.0, 0.0, 0.0, 140, 15.0, 0.0);
     moveRobot(pose, gripper_pose);
   }
@@ -232,6 +326,51 @@ void GraspTest::executeCommand(const std_msgs::String msg)
     v.z = -1;
     myPick(p, v);
   }
+  else if (msg.data == "t") {
+
+    ROS_INFO("g1");
+    Gripper g;
+    g.print();
+
+    ROS_INFO("g2");
+    Gripper g2(100e-3, 110e-3, 40e-3);
+    g2.print();
+
+     ROS_INFO("g3");
+    Gripper g3;
+    g3.set_xy_mm(80, 80);
+    g3.set_z_mm(80);
+    g3.print();
+
+    ROS_INFO("g4");
+    Gripper g4;
+    g4.set_xy_m_deg(70e-3, 20);
+    g4.set_z_m(70e-3);
+    g4.print();
+
+    ROS_INFO("g5");
+    Gripper g5(100e-3, 100e-3, 100e-3);
+    gripper_msgs::pose nudge;
+    nudge.x = 10e-3;
+    nudge.y = -10e-3;
+    nudge.z = -100e-3;
+
+    ROS_INFO("g6");
+    g5.add_msg(nudge);
+    g5.print();
+
+    ROS_INFO("g7");
+    Gripper g6(50e-3, 140e-3, 100e-3);
+    g6.print();
+
+    ROS_INFO("g8");
+    Gripper g7(140e-3, 50e-3, 100e-3);
+    g7.print();
+
+    ROS_INFO("g9");
+    Gripper g8(160e-3, 30e-3, 100e-3);
+    g7.print();
+  }
 }
 
 geometry_msgs::Pose GraspTest::createPose(float x, float y, float z, float roll,
@@ -284,15 +423,14 @@ bool GraspTest::moveGripper(double radius_mm, double angle_d, double palm_mm)
 {
   /* overload function with basic inputs */
 
-  gripper gripper_pose;
-  gripper_pose.x = radius_mm;
-  gripper_pose.th = angle_d;
-  gripper_pose.z = palm_mm;
+  Gripper gripper_pose;
+  gripper_pose.set_xy_mm_deg(radius_mm, angle_d);
+  gripper_pose.set_z_mm(palm_mm);
 
   return moveGripper(gripper_pose);
 }
 
-bool GraspTest::moveGripper(gripper gripper_pose)
+bool GraspTest::moveGripper(Gripper gripper_pose)
 {
   /* Set joint targets for the gripper, the order is vital and must be:
       [0] finger_1_prismatic_joint
@@ -308,29 +446,28 @@ bool GraspTest::moveGripper(gripper gripper_pose)
   std::vector<double> gripperJointTargets;
   gripperJointTargets.resize(7);
 
-  // convert units
-  double radius_m = gripper_pose.x / 1000.0;
-  double angle_r = (gripper_pose.th * 3.1415926535897) / 180.0;
-  double palm_m = gripper_pose.z / 1000.0;
-
-  ROS_INFO_STREAM("Moving the gripper to target radius: " << gripper_pose.x 
-    << ", target angle: " << gripper_pose.th);
+  ROS_INFO("Moving the gripper to the pose:");
+  gripper_pose.print();
 
   // set symmetric joint targets
-  gripperJointTargets[0] = radius_m;
-  gripperJointTargets[1] = angle_r;
-  gripperJointTargets[2] = radius_m;
-  gripperJointTargets[3] = angle_r;
-  gripperJointTargets[4] = radius_m;
-  gripperJointTargets[5] = angle_r;
-  gripperJointTargets[6] = palm_m;
+  gripperJointTargets[0] = gripper_pose.get_prismatic_joint();
+  gripperJointTargets[1] = gripper_pose.get_revolute_joint();
+  gripperJointTargets[2] = gripper_pose.get_prismatic_joint();
+  gripperJointTargets[3] = gripper_pose.get_revolute_joint();
+  gripperJointTargets[4] = gripper_pose.get_prismatic_joint();
+  gripperJointTargets[5] = gripper_pose.get_revolute_joint();
+  gripperJointTargets[6] = gripper_pose.get_palm_joint();
+
+  ROS_INFO("Radius target is %f, angle target is %f, palm target is %f",
+    gripper_pose.get_x_m(), gripper_pose.get_th_rad(), gripper_pose.get_z_m());
 
   hand_group_.setJointValueTarget(gripperJointTargets);
 
   // publish the gripper demand
-  gripper_demand_msg_.x = radius_m;
-  gripper_demand_msg_.th = angle_r;
-  gripper_demand_msg_.z = palm_m;
+  gripper_demand_msg_.x = gripper_pose.get_x_m();
+  gripper_demand_msg_.y = gripper_pose.get_y_m();
+  gripper_demand_msg_.z = gripper_pose.get_z_m();
+  gripper_demand_msg_.th = gripper_pose.get_th_rad();
   gripper_pub_.publish(gripper_demand_msg_);
 
   // move the robot hand
@@ -345,7 +482,8 @@ bool GraspTest::moveGripper(gripper gripper_pose)
 
   // if hand is moving, wait for it to finish before returning from this function
   if (success) {
-    waitForGripper();
+    // waitForGripper();
+    waitUntilFinished();
   }
 
   return success;
@@ -406,7 +544,7 @@ bool GraspTest::moveRobot(double x, double y, double z, double roll, double pitc
   /* Function overload with more generic inputs */
 
   geometry_msgs::Pose desired_pose;
-  gripper gripper_pose;
+  Gripper gripper_pose;
 
   // setup the goal position
   desired_pose.position.x = x;
@@ -422,14 +560,13 @@ bool GraspTest::moveRobot(double x, double y, double z, double roll, double pitc
   desired_pose.orientation = q_msg;
 
   // setup the goal gripper pose
-  gripper_pose.x = radius_mm;
-  gripper_pose.th = angle_d;
-  gripper_pose.z = palm_mm;
+  gripper_pose.set_xy_mm_deg(radius_mm, angle_d);
+  gripper_pose.set_z_mm(palm_mm);
 
   return moveRobot(desired_pose, gripper_pose);
 }
 
-bool GraspTest::moveRobot(geometry_msgs::Pose desired_pose, gripper gripper_pose)
+bool GraspTest::moveRobot(geometry_msgs::Pose desired_pose, Gripper gripper_pose)
 {
   /* This function attempts to move the entire robot at the same time.
      Joint names in order are:
@@ -473,27 +610,39 @@ bool GraspTest::moveRobot(geometry_msgs::Pose desired_pose, gripper gripper_pose
   jointTargets[5] = *state.getJointPositions("panda_joint6");
   jointTargets[6] = *state.getJointPositions("panda_joint7");
 
-  // convert units
-  double radius_m = gripper_pose.x / 1000.0;
-  double angle_r = (gripper_pose.th * 3.1415926535897 * -1) / 180.0;
-  double palm_m = gripper_pose.z / 1000.0;
+  // // convert units
+  // double radius_m = gripper_pose.x / 1000.0;
+  // double angle_r = (gripper_pose.th * 3.1415926535897 * -1) / 180.0;
+  // double palm_m = gripper_pose.z / 1000.0;
 
-  // set symmetric joint targets
-  jointTargets[7] = radius_m;
-  jointTargets[8] = angle_r;
-  jointTargets[9] = radius_m;
-  jointTargets[10] = angle_r;
-  jointTargets[11] = radius_m;
-  jointTargets[12] = angle_r;
-  jointTargets[13] = palm_m;
+  // // set symmetric joint targets
+  // jointTargets[7] = radius_m;
+  // jointTargets[8] = angle_r;
+  // jointTargets[9] = radius_m;
+  // jointTargets[10] = angle_r;
+  // jointTargets[11] = radius_m;
+  // jointTargets[12] = angle_r;
+  // jointTargets[13] = palm_m;
+
+  jointTargets[7] = gripper_pose.get_prismatic_joint();
+  jointTargets[8] = gripper_pose.get_revolute_joint();
+  jointTargets[9] = gripper_pose.get_prismatic_joint();
+  jointTargets[10] = gripper_pose.get_revolute_joint();
+  jointTargets[11] = gripper_pose.get_prismatic_joint();
+  jointTargets[12] = gripper_pose.get_revolute_joint();
+  jointTargets[13] = gripper_pose.get_palm_joint();
+
+  ROS_INFO("Radius target is %f, angle target is %f, palm target is %f",
+    gripper_pose.get_x_m(), gripper_pose.get_th_rad(), gripper_pose.get_z_m());
 
   ROS_INFO("Setting joint target");
   robot_group_.setJointValueTarget(jointTargets);
 
   // publish the gripper demand
-  gripper_demand_msg_.x = radius_m;
-  gripper_demand_msg_.th = angle_r;
-  gripper_demand_msg_.z = palm_m;
+  gripper_demand_msg_.x = gripper_pose.get_x_m();
+  gripper_demand_msg_.y = gripper_pose.get_y_m();
+  gripper_demand_msg_.z = gripper_pose.get_z_m();
+  gripper_demand_msg_.th = gripper_pose.get_th_rad();
   gripper_pub_.publish(gripper_demand_msg_);
 
   // move the robot hand
@@ -508,7 +657,8 @@ bool GraspTest::moveRobot(geometry_msgs::Pose desired_pose, gripper gripper_pose
 
   // if robot is moving, wait for the gripper before returning
   if (success) {
-    waitForGripper();
+    // waitForGripper();
+    waitUntilFinished();
   }
 
   return success;
@@ -737,11 +887,11 @@ void GraspTest::addCollsion()
 
   collision_objects.push_back(makeBox("object", "panda_link0", object_box));
 
-  // create a floor
-  Box floor{0, 0, -0.11,
-            0, 0, 0,
-            10, 10, 0.1};
-  collision_objects.push_back(makeBox("floor", "panda_link0", floor));
+  // // create a floor
+  // Box floor{0, 0, -0.11,
+  //           0, 0, 0,
+  //           10, 10, 0.1};
+  // collision_objects.push_back(makeBox("floor", "panda_link0", floor));
 
   planning_scene_interface.applyCollisionObjects(collision_objects);
 
@@ -843,6 +993,10 @@ void GraspTest::moveStraight(double distance, geometry_msgs::Quaternion directio
 
   bool reorientate = false;
   geometry_msgs::Quaternion empty;
+  empty.x = 0;
+  empty.y = 0;
+  empty.z = 0;
+  empty.w = 1;
 
   moveStraight(distance, direction, is_global_direction, reorientate, empty);
 }
@@ -998,6 +1152,46 @@ void GraspTest::waitForGripper()
   ROS_INFO("Leaving the waitForGripper function");
 }
 
+void GraspTest::waitUntilFinished()
+{
+  /* This function is blocking until the robot has finished moving */
+
+  ROS_INFO("Entering the waitUntilFinished function");
+
+  // get the current robot joint values
+  std::vector<double> new_joint_values = robot_group_.getCurrentJointValues();
+
+  // create a vector of the same length, initilised differently (eg all=-1)
+  std::vector<double> old_joint_values(new_joint_values.size(), -1);
+
+  bool done;
+
+  // tolerance to use for float comparison
+  double tol = 1e-7;
+
+  // loop until the robot stops moving
+  while (not done) {
+
+    std::cout << "not finished!\n";
+
+    done = true;
+
+    // retrieve joint values at this new timestep
+    new_joint_values = robot_group_.getCurrentJointValues();
+
+    // check whether all the joint values are the same as the previous timestep
+    for (int i = 0; i < old_joint_values.size(); i++) {
+      done *= (abs(old_joint_values[i] - new_joint_values[i]) < tol);
+      old_joint_values[i] = new_joint_values[i];
+    }
+
+    // pause to give time for joint values to continue to change
+    ros::Duration(0.05).sleep();
+  }
+
+  ROS_INFO("Leaving the waitUntilFinished function");
+}
+
 geometry_msgs::Quaternion GraspTest::vecToQuat(geometry_msgs::Vector3& vector)
 {
   /* This function creates a quaternion from a vector using [0,0,1] as reference.
@@ -1069,13 +1263,15 @@ bool GraspTest::myPick(geometry_msgs::Point grasp_point,
   */
 
   // define the closed state of the gripper
-  gripper closed_gripper;
-  closed_gripper.x = 120;
-  closed_gripper.th = -12;
-  closed_gripper.z = 20;
+  Gripper closed_gripper;
+  // closed_gripper.x = 120;
+  // closed_gripper.th = -12;
+  // closed_gripper.z = 20;
   // closed_gripper.x = 130;
   // closed_gripper.th = 10;
   // closed_gripper.z = 5;
+  closed_gripper.set_xy_mm_deg(120, 12);
+  closed_gripper.set_z_mm(20);
 
   // create quaternion from approach vector (and normalise approach vector)
   geometry_msgs::Quaternion orientation = vecToQuat(approach_vector);
@@ -1120,10 +1316,12 @@ bool GraspTest::myPlace(geometry_msgs::Point place_point,
   /* This function releases an object in a certain place */
 
   // define the open state of the gripper
-  gripper open_gripper;
-  open_gripper.x = 120;
-  open_gripper.th = 10;
-  open_gripper.z = 0;
+  Gripper open_gripper;
+  // open_gripper.x = 120;
+  // open_gripper.th = 10;
+  // open_gripper.z = 0;
+  open_gripper.set_xy_mm_deg(120, 10);
+  open_gripper.set_z_mm(0);
 
   // create quaternion from approach vector (and normalise approach vector by ref)
   geometry_msgs::Quaternion orientation = vecToQuat(approach_vector);

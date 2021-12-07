@@ -8,7 +8,7 @@
 
 		  <!-- retrieve info about the gripper -->
 		  <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
-		  <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
+		  <xacro:property name="dictionary" value="${xacro.load_yaml(filename)}"/>
 		  <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
 		  <xacro:property name="num_segments" value="${dictionary['gripper_config']['num_segments']}"/>
 

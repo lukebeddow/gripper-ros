@@ -3591,7 +3591,8 @@
       </axis>
     </joint>
     <plugin name='gazebo_ros_control' filename='libgazebo_ros_control.so'/>
-    <static>0</static>
     <plugin name='finger_controller_plugin' filename='libfinger_controller_plugin.so'/>
+    <static>0</static>
+    <plugin name='reset_joints_plugin' filename='libreset_joints_plugin.so'/>
   </model>
 </sdf>

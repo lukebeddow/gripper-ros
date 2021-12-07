@@ -1,0 +1,27 @@
+<launch>
+  <arg name="world" default="default.world"/>
+
+  <include file="$(find gz_link)/launch/gazebo.launch">
+<!--    <arg name="world_root" value="$(find gripper_minimal)/worlds/$(arg world)"/>-->
+  </include>
+
+  <!-- launch moveit -->
+  <include file="$(find gripper_control)/launch/moveit.launch"/>
+
+  <!-- launch rviz -->
+<!--  <include file="$(find gripper_control)/launch/rviz.launch"/>-->
+
+  <!-- launch ROS node for moving the arm -->
+  <include file="$(find grasp_test)/launch/grasp_test.launch"/>
+
+  <!-- launch gripper virtual node -->
+  <include file="$(find gripper_virtual_node)/launch/node.launch"/>
+
+  <!-- launch the model publisher node -->
+  <node pkg="gz_link"
+  			name="model_transform_publisher"
+  			type="model_transform_publisher.py"
+  			output="screen"
+  />
+
+</launch>

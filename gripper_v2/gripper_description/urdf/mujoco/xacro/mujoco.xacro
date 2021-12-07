@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<robot name="gripper" xmlns:xacro="http://wiki.ros.org/xacro">
+
+	<xacro:macro name="mujoco_settings">
+<!--		<mujoco>-->
+			<!-- compiler settings: required -->
+<!--			<compiler-->
+<!--				meshdir="./meshes_mujoco/"-->
+<!--				balanceinertia="true"-->
+<!--				discardvisual="false"-->
+<!--			/>-->
+			<!-- defaults 500, 100 need to be adjusted -->
+<!--			<size njmax="1400" nconmax="500"/>-->
+
+			<!-- set inital pose keyframe DOESN'T WORK WITH URDF PARSER -->
+			<!-- <keyframe>
+				<key name="initial pose"
+						time="0"
+						qpos="0 0 0 0 0 0.6 0
+									140e-3 0    0 0 0 0 0 0 0 0 0
+									140e-3 0    0 0 0 0 0 0 0 0 0
+									140e-3 0    0 0 0 0 0 0 0 0 0
+									0"
+				/>
+			</keyframe> -->
+			
+<!--		</mujoco>-->
+	</xacro:macro>
+</robot>

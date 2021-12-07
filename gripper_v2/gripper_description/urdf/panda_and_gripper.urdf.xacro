@@ -19,10 +19,14 @@
 	
 	<!-- connect the gripper to the panda -->
 	<!-- TODO verify these values, change panda_link7 to 8 -->
-  <joint name="panda_to_eef_base_link" type="fixed">
+  <joint name="panda_to_eef_base_joint" type="fixed">
     <origin xyz="0 0 0.25" rpy="0 0 ${-pi/4}" />
     <parent link="panda_link7"/>
     <child link="gripper_base_link"/>
   </joint>
+
+	<gazebo>
+		<plugin name="reset_joints_plugin" filename="libreset_joints_plugin.so"/>
+	</gazebo>
 	
 </robot>

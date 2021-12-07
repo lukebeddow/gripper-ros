@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<robot name="panda_and_gripper" xmlns:xacro="http://wiki.ros.org/xacro">
+
+	<!-- include the mujoco settings xacro -->
+	<xacro:include filename="$(find gripper_description)/urdf/mujoco/xacro/mujoco.xacro"/>
+	<xacro:mujoco_settings/>
+	
+	<!-- rest of file should be identical to panda_and_gripper.urdf.xacro -->
+
+	<!-- Load the macros for building the gripper and the panda -->
+	<xacro:include filename="$(find gripper_description)/xacro/gripper.xacro"/>
+	<xacro:include filename="$(find gripper_description)/xacro/panda.xacro"/>
+	
+	<!-- add both the panda and the gripper -->
+	<xacro:add_panda/>
+	<xacro:add_gripper/>
+	
+	<!-- connect the panda to the ground -->
+	<link name="world"/>
+	<joint name="world_to_base" type="fixed">
+	  <origin xyz="0 0 0" rpy="0 0 0"/>
+	  <parent link="world"/>
+	  <child link="panda_link0"/>
+	</joint>
+	
+	<!-- connect the gripper to the panda -->
+	<!-- TODO verify these values, change panda_link7 to 8 -->
+  <joint name="panda_to_eef_base_joint" type="fixed">
+    <origin xyz="0 0 0.25" rpy="0 0 ${-pi/4}" />
+    <parent link="panda_link7"/>
+    <child link="gripper_base_link"/>
+  </joint>
+
+	<gazebo>
+		<plugin name="reset_joints_plugin" filename="libreset_joints_plugin.so"/>
+	</gazebo>
+	
+</robot>

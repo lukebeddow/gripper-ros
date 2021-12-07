@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  geometry_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -60,6 +61,8 @@ add_message_files(
 add_service_files(
   FILES
   move_gripper.srv
+  set_joints.srv
+  set_pose.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -74,6 +77,7 @@ generate_messages(
   DEPENDENCIES
   std_msgs
   gripper_msgs
+  geometry_msgs
 )
 
 ################################################
@@ -106,8 +110,8 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES gripper_msgs
+  INCLUDE_DIRS include
+  LIBRARIES gripper_class
 #  CATKIN_DEPENDS message_generation roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
@@ -119,14 +123,14 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
 )
 
-## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/gripper_msgs.cpp
-# )
+# Declare a C++ library
+add_library(gripper_class
+  src/gripper_class.cpp
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -148,10 +152,10 @@ include_directories(
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
+# Specify libraries to link a library or executable target against
+target_link_libraries(gripper_class
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##

@@ -1,0 +1,4 @@
+gripper:
+  example_param_1: 10
+  example_param_2: 20
+  ros_ws_abspath: /home/luke/gripper_repo_ws

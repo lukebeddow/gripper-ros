@@ -1,0 +1,18 @@
+<launch>
+
+	<!-- This launch file converts the mujoco xacros to urdf -->
+	
+	<node name="gen_panda_urdf_mujoco" pkg="xacro" type="xacro" respawn="false"
+				args="--inorder -o $(find gripper_description)/urdf/mujoco/panda_mujoco.urdf $(find gripper_description)/urdf/mujoco/xacro/panda_mujoco.urdf.xacro"/>
+				
+	<node name="gen_gripper_urdf_mujoco" pkg="xacro" type="xacro" respawn="false"
+				args="--inorder -o $(find gripper_description)/urdf/mujoco/gripper_mujoco.urdf $(find gripper_description)/urdf/mujoco/xacro/gripper_mujoco.urdf.xacro"/>
+				
+	<!-- delay here and make the last node required so roslaunch quits after it is finished -->
+  <arg name="node_start_delay" default="1.0"/>
+  <node name="gen_both_urdf_mujoco" pkg="xacro" type="xacro" respawn="false"
+				args="--inorder -o $(find gripper_description)/urdf/mujoco/panda_and_gripper_mujoco.urdf $(find gripper_description)/urdf/mujoco/xacro/panda_and_gripper_mujoco.urdf.xacro"
+				launch-prefix="bash -c 'sleep $(arg node_start_delay); $0 $@' "
+				required="true"/>
+				
+</launch>

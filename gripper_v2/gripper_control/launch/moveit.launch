@@ -7,6 +7,9 @@
   <!-- don't do this, as move_group.launch already does this
   <include file="$(find gripper_moveit)/launch/planning_context.launch"/>
   -->
+  
+  <!-- load in controller information -->
+  <include file="$(find gripper_control)/launch/control.launch"/>
 
   <!-- Run the main MoveIt executable -->
   <include file="$(find gripper_moveit)/launch/move_group.launch">

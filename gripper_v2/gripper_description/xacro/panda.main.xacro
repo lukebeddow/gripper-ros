@@ -1,6 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panda">
   <xacro:macro name="panda_arm" params="arm_id:='panda' mesh_folder:='meshes_panda' connected_to:='' xyz:='0 0 0' rpy:='0 0 0'">
+  
     <!-- <link name="world" />
     <xacro:unless value="${not connected_to}">
       <joint name="virtual_joint" type="fixed">
@@ -11,9 +12,16 @@
       </joint>
     </xacro:unless> -->
     
-    <!-- added a 5.0N friction tag in the joint macro below -->
+    <!-- PARAMETERS TO SET BY HAND -->
+    
+    <!-- adjustable properties -->
     <xacro:property name="joint_damping" value="1.0"/>
-    <xacro:property name="joint_friction" value="0.0"/>
+    <xacro:property name="joint_friction" value="0.1"/>
+    <xacro:property name="large_limit_effort" value="87"/>
+    <xacro:property name="small_limit_effort" value="12"/>
+    <xacro:property name="realistic_inertia" value="true"/>
+    
+    <!-- END OF PARAMETERS TO SET BY HAND -->
 
     <!-- written by luke based off: https://github.com/justagist/franka_panda_description/blob/master/robots/panda_arm.xacro -->
     <xacro:macro name="retrieve_inertia" params="link_number">
@@ -65,8 +73,12 @@
         <inertial>
           <origin xyz="0 0 0" rpy="0 0 0" />
           <mass value="${mass}"/>
-          <xacro:retrieve_inertia link_number="${number}"/>
-          <!-- <inertia ixx="3e-1" ixy="0.0" ixz="0.0" iyy="3e-1" iyz="0.0" izz="3e-1" /> -->
+          <xacro:if value="${realistic_inertia}">
+          	<xacro:retrieve_inertia link_number="${number}"/>
+          </xacro:if>
+          <xacro:unless value="${realistic_inertia}">
+          	<inertia ixx="3e-1" ixy="0.0" ixz="0.0" iyy="3e-1" iyz="0.0" izz="3e-1" />
+          </xacro:unless>
         </inertial>
       </link>
     </xacro:macro>
@@ -91,49 +103,70 @@
         <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
       </joint>
     </xacro:macro>
-    <xacro:arm_link number="0" visual_mesh="package://${mesh_folder}/visual/link0.dae"
-      collision_mesh="package://${mesh_folder}/collision/link0.stl" mass="3.06"/>
-    <xacro:arm_link number="1" visual_mesh="package://${mesh_folder}/visual/link1.dae"
-      collision_mesh="package://${mesh_folder}/collision/link1.stl" mass="2.34"/>
-    <xacro:arm_link number="2" visual_mesh="package://${mesh_folder}/visual/link2.dae"
-      collision_mesh="package://${mesh_folder}/collision/link2.stl" mass="2.36"/>
-    <xacro:arm_link number="3" visual_mesh="package://${mesh_folder}/visual/link3.dae"
-      collision_mesh="package://${mesh_folder}/collision/link3.stl" mass="2.38"/>
-    <xacro:arm_link number="4" visual_mesh="package://${mesh_folder}/visual/link4.dae"
-      collision_mesh="package://${mesh_folder}/collision/link4.stl" mass="2.43"/>
-    <xacro:arm_link number="5" visual_mesh="package://${mesh_folder}/visual/link5.dae"
-      collision_mesh="package://${mesh_folder}/collision/link5.stl" mass="3.5"/>
-    <xacro:arm_link number="6" visual_mesh="package://${mesh_folder}/visual/link6.dae"
-      collision_mesh="package://${mesh_folder}/collision/link6.stl" mass="1.47"/>
-    <xacro:arm_link number="7" visual_mesh="package://${mesh_folder}/visual/link7.dae"
-      collision_mesh="package://${mesh_folder}/collision/link7.stl" mass="0.45"/>
+    
+    <!-- original working mesh links -->
+<!--    <xacro:arm_link number="0" visual_mesh="package://${mesh_folder}/visual/link0.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link0.stl" mass="3.06"/>-->
+<!--    <xacro:arm_link number="1" visual_mesh="package://${mesh_folder}/visual/link1.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link1.stl" mass="2.34"/>-->
+<!--    <xacro:arm_link number="2" visual_mesh="package://${mesh_folder}/visual/link2.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link2.stl" mass="2.36"/>-->
+<!--    <xacro:arm_link number="3" visual_mesh="package://${mesh_folder}/visual/link3.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link3.stl" mass="2.38"/>-->
+<!--    <xacro:arm_link number="4" visual_mesh="package://${mesh_folder}/visual/link4.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link4.stl" mass="2.43"/>-->
+<!--    <xacro:arm_link number="5" visual_mesh="package://${mesh_folder}/visual/link5.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link5.stl" mass="3.5"/>-->
+<!--    <xacro:arm_link number="6" visual_mesh="package://${mesh_folder}/visual/link6.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link6.stl" mass="1.47"/>-->
+<!--    <xacro:arm_link number="7" visual_mesh="package://${mesh_folder}/visual/link7.dae"-->
+<!--      collision_mesh="package://${mesh_folder}/collision/link7.stl" mass="0.45"/>-->
+<!--     <xacro:arm_link number="8"/>-->
+
+		<!-- testing new mesh files all being stl and all being in top level of folder for mujoco -->
+		<xacro:arm_link number="0" visual_mesh="package://${mesh_folder}/panda visual link0.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link0.stl" mass="3.06"/>
+    <xacro:arm_link number="1" visual_mesh="package://${mesh_folder}/panda visual link1.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link1.stl" mass="2.34"/>
+    <xacro:arm_link number="2" visual_mesh="package://${mesh_folder}/panda visual link2.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link2.stl" mass="2.36"/>
+    <xacro:arm_link number="3" visual_mesh="package://${mesh_folder}/panda visual link3.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link3.stl" mass="2.38"/>
+    <xacro:arm_link number="4" visual_mesh="package://${mesh_folder}/panda visual link4.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link4.stl" mass="2.43"/>
+    <xacro:arm_link number="5" visual_mesh="package://${mesh_folder}/panda visual link5.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link5.stl" mass="3.5"/>
+    <xacro:arm_link number="6" visual_mesh="package://${mesh_folder}/panda visual link6.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link6.stl" mass="1.47"/>
+    <xacro:arm_link number="7" visual_mesh="package://${mesh_folder}/panda visual link7.stl"
+      collision_mesh="package://${mesh_folder}/panda collision link7.stl" mass="0.45"/>
      <xacro:arm_link number="8"/>
      
      <!-- joint6 limit lower = -0.0175 -->
 
 
     <xacro:arm_joint name="${arm_id}_joint1" type="revolute" soft_lower_limit="-2.8973" soft_upper_limit="2.8973"
-      rpy="0 0 0" xyz="0 0 0.333" parent_link="${arm_id}_link0" child_link="${arm_id}_link1" limit_effort="87"
+      rpy="0 0 0" xyz="0 0 0.333" parent_link="${arm_id}_link0" child_link="${arm_id}_link1" limit_effort="${large_limit_effort}"
       limit_lower="-2.8973" limit_upper="2.8973" limit_velocity="2.1750"/>
     <xacro:arm_joint name="${arm_id}_joint2" type="revolute" soft_lower_limit="-1.7628" soft_upper_limit="1.7628"
-      rpy="${-pi/2} 0 0" xyz="0 0 0" parent_link="${arm_id}_link1" child_link="${arm_id}_link2" limit_effort="87"
+      rpy="${-pi/2} 0 0" xyz="0 0 0" parent_link="${arm_id}_link1" child_link="${arm_id}_link2" limit_effort="${large_limit_effort}"
       limit_lower="-1.7628" limit_upper="1.7628" limit_velocity="2.1750"/>
     <xacro:arm_joint name="${arm_id}_joint3" type="revolute" soft_lower_limit="-2.8973" soft_upper_limit="2.8973"
-      rpy="${pi/2} 0 0" xyz="0 -0.316 0" parent_link="${arm_id}_link2" child_link="${arm_id}_link3" limit_effort="87"
+      rpy="${pi/2} 0 0" xyz="0 -0.316 0" parent_link="${arm_id}_link2" child_link="${arm_id}_link3" limit_effort="${large_limit_effort}"
       limit_lower="-2.8973" limit_upper="2.8973" limit_velocity="2.1750"/>
     <xacro:arm_joint name="${arm_id}_joint4" type="revolute" soft_lower_limit="-3.0718" soft_upper_limit="-0.0698"
-      rpy="${pi/2} 0 0" xyz="0.0825 0 0" parent_link="${arm_id}_link3" child_link="${arm_id}_link4" limit_effort="87"
+      rpy="${pi/2} 0 0" xyz="0.0825 0 0" parent_link="${arm_id}_link3" child_link="${arm_id}_link4" limit_effort="${large_limit_effort}"
       limit_lower="-3.0718" limit_upper="-0.0698" limit_velocity="2.1750"/>
     <xacro:arm_joint name="${arm_id}_joint5" type="revolute" soft_lower_limit="-2.8973" soft_upper_limit="2.8973"
-      rpy="${-pi/2} 0 0" xyz="-0.0825 0.384 0" parent_link="${arm_id}_link4" child_link="${arm_id}_link5" limit_effort="12"
+      rpy="${-pi/2} 0 0" xyz="-0.0825 0.384 0" parent_link="${arm_id}_link4" child_link="${arm_id}_link5" limit_effort="${small_limit_effort}"
       limit_lower="-2.8973" limit_upper="2.8973" limit_velocity="2.6100"/>
       
     <xacro:arm_joint name="${arm_id}_joint6" type="revolute" soft_lower_limit="-0.0175" soft_upper_limit="3.7525"
-      rpy="${pi/2} 0 0" xyz="0 0 0" parent_link="${arm_id}_link5" child_link="${arm_id}_link6" limit_effort="12"
+      rpy="${pi/2} 0 0" xyz="0 0 0" parent_link="${arm_id}_link5" child_link="${arm_id}_link6" limit_effort="${small_limit_effort}"
       limit_lower="-0.0175" limit_upper="3.7525" limit_velocity="2.6100"/>
       
     <xacro:arm_joint name="${arm_id}_joint7" type="revolute" soft_lower_limit="-2.8973" soft_upper_limit="2.8973"
-      rpy="${pi/2} 0 0" xyz="0.088 0 0" parent_link="${arm_id}_link6" child_link="${arm_id}_link7" limit_effort="12"
+      rpy="${pi/2} 0 0" xyz="0.088 0 0" parent_link="${arm_id}_link6" child_link="${arm_id}_link7" limit_effort="${small_limit_effort}"
       limit_lower="-2.8973" limit_upper="2.8973" limit_velocity="2.6100"/>
     <xacro:arm_joint name="${arm_id}_joint8" type="fixed" parent_link="${arm_id}_link7" child_link="${arm_id}_link8"
       rpy="0 0 0" xyz="0 0 0.107"/>

@@ -2,6 +2,8 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
 
   <xacro:macro name="segmented_finger" params="prefix num_segments torsion">
+  
+  	<!-- PARAMETERS TO BE SET BY HAND -->
 
     <!-- User defined variables -->
     <xacro:property name="finger_length_mm" value="190.0"/>
@@ -37,6 +39,8 @@
     <!-- these are implemented in the <dynamics> tags in each joint -->
     <xacro:property name="joint_friction" value="0.0"/>
     <xacro:property name="joint_damping" value="0.001"/>
+    
+    <!-- END OF PARAMETERS TO BE SET BY HAND -->
 
     <!-- Automatially calculated variables -->
     <xacro:property name="finger_length" value="${finger_length_mm * 0.001}"/>

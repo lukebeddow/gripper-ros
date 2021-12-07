@@ -111,7 +111,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES grasp_test
-  CATKIN_DEPENDS gripper_virtual_node
+  CATKIN_DEPENDS gripper_virtual_node gripper_msgs
 #  DEPENDS system_lib
 )
 

@@ -10,8 +10,8 @@
 		<xacro:include filename="$(find gripper_description)/xacro/semantic/add_panda_config.xacro"/>
 		
 		<!-- run the macros -->
-		<xacro:add_gripper_config/>
 		<xacro:add_panda_config/>
+		<xacro:add_gripper_config/>
 
     <!--GROUPS: Representation of a set of joints and links. This can be useful for specifying DOF to plan for, defining arms, end effectors, etc-->
     <!--LINKS: When a link is specified, the parent joint of that link (if it exists) is automatically included-->
@@ -25,7 +25,7 @@
     </group>
     
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
-    <end_effector name="gripper" parent_link="panda_link8" group="gripper" />
+    <end_effector name="mygripper" parent_link="panda_link8" group="gripper" parent_group="panda_arm" />
     
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
     <disable_collisions link1="finger_1_intermediate" link2="panda_link3" reason="Never" />

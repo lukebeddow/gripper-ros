@@ -1,0 +1,57 @@
+# Publish joint states
+joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50
+
+panda_arm_controller:
+    type: effort_controllers/JointTrajectoryController
+    joints:
+        - panda_joint1
+        - panda_joint2
+        - panda_joint3
+        - panda_joint4
+        - panda_joint5
+        - panda_joint6
+        - panda_joint7
+
+    gains:
+        # source: https://sebastianwallkoetter.wordpress.com/2020/03/08/franka-emika-panda-in-gazebo-with-ros-and-docker/
+        panda_joint1: { p: 12000, d: 50, i: 0.0, i_clamp: 10000 }
+        panda_joint2: { p: 30000, d: 100, i: 0.02, i_clamp: 10000 }
+        panda_joint3: { p: 18000, d: 50, i: 0.01, i_clamp: 1 }
+        panda_joint4: { p: 18000, d: 70, i: 0.01, i_clamp: 10000 }
+        panda_joint5: { p: 12000, d: 70, i: 0.01, i_clamp: 1 }
+        panda_joint6: { p: 7000, d: 50, i: 0.01, i_clamp: 1 }
+        panda_joint7: { p: 2000, d: 20, i: 0.0, i_clamp: 1 }
+
+    constraints:
+        goal_time: 2.0
+
+    state_publish_rate: 50
+
+panda_hand_controller:
+    type: effort_controllers/JointTrajectoryController
+    joints:
+      - finger_1_prismatic_joint
+      - finger_1_revolute_joint
+      - finger_2_prismatic_joint
+      - finger_2_revolute_joint
+      - finger_3_prismatic_joint
+      - finger_3_revolute_joint
+      - palm_prismatic_joint
+       
+    gains:
+        finger_1_prismatic_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        finger_1_revolute_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        finger_2_prismatic_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        finger_2_revolute_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        finger_3_prismatic_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        finger_3_revolute_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        palm_prismatic_joint: {p: 500, d: 1, i: 0.01, i_clamp: 1}
+        
+    state_publish_rate: 50
+      
+      
+      
+      
+      

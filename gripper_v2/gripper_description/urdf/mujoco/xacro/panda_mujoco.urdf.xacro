@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<robot name="panda" xmlns:xacro="http://wiki.ros.org/xacro">
+
+	<!-- include the mujoco settings xacro -->
+	<xacro:include filename="$(find gripper_description)/urdf/mujoco/xacro/mujoco.xacro"/>
+	<xacro:mujoco_settings/>
+	
+	<!-- rest of file should be identical to panda_and_gripper.urdf.xacro -->
+
+	<xacro:include filename="$(find gripper_description)/xacro/panda.xacro"/>
+	<xacro:add_panda/>
+	
+	<!-- connect the panda to the ground -->
+	<link name="world"/>
+	<joint name="world_to_base" type="fixed">
+	  <origin xyz="0 0 0" rpy="0 0 0"/>
+	  <parent link="world"/>
+	  <child link="panda_link0"/>
+	</joint>
+	
+</robot>

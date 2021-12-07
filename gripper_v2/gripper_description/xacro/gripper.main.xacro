@@ -2,12 +2,16 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro">
 
   <xacro:macro name="gripper" params="is_segmented">
-
-    <!-- Constants for specifying finger start position, no need to change -->
-    <xacro:property name="radius" value="0.0"/>
-    <xacro:property name="angle" value="0.0"/>
+  
+  	<!-- retrieve info about the gripper
+    <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
+    <xacro:property name="dictionary" value="${xacro.load_yaml(filename)}"/>
+    <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
+    -->
+  
+  	<!-- PARAMETERS TO BE SET BY HAND -->
     
-    <!-- Define motion limits of each joint -->
+    <!-- Define motion limits of each joint, these all in SI units -->
     <xacro:property name="finger_displacement_min" value="0.053"/>
     <xacro:property name="finger_displacement_max" value="0.141"/>
     <xacro:property name="finger_angle_min" value="-0.7"/>
@@ -15,7 +19,7 @@
     <xacro:property name="palm_displacement_min" value="0.0"/>
     <xacro:property name="palm_displacement_max" value="0.16"/>
     
-    <!-- Define limits of each joint -->
+    <!-- Define limits of each joint, these all in SI units -->
     <xacro:property name="finger_displacement_velocity" value="0.015"/>
     <xacro:property name="finger_angle_velocity" value="0.1"/>
     <xacro:property name="palm_velocity" value="0.036"/>
@@ -23,23 +27,8 @@
     <xacro:property name="limit_effort_revolute" value="40.0"/>
     <xacro:property name="limit_effort_palm" value="40.0"/>
 
-    <!-- retrieve info about the gripper
-    <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
-    <xacro:property name="dictionary" value="${load_yaml(filename)}"/>
-    <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
-    -->
-
-    <!-- Define arbritray joint damping for Gazebo -->
+		<!-- Define arbritray joint damping for Gazebo -->
     <xacro:property name="joint_damping" value="1.0"/>
-
-	  <!-- Simplistic inertia macro for Gazebo -->
-    <xacro:macro name="default_inertial" params="mass">
-      <inertial>
-        <mass value="${mass}"/>
-        <inertia ixx="1e-4" iyy="1e-4" izz="1e-4"
-                ixy="0.00" iyz="0.00" ixz="0.00" />
-      </inertial>
-    </xacro:macro>
 
     <!-- inertias from solidworks -->
     <xacro:macro name="set_inertia" params="key">
@@ -88,6 +77,21 @@
                    ixy="0.0" ixz="0.0" iyz="0.0"/>
         </inertial>
       </xacro:if>
+    </xacro:macro>
+    
+    <!-- END OF PARAMETER TO BE SET BY HAND -->
+    
+    <!-- Constants for specifying finger start position, no need to change -->
+    <xacro:property name="radius" value="0.0"/>
+    <xacro:property name="angle" value="0.0"/>
+    
+    <!-- Simplistic inertia macro for Gazebo -->
+    <xacro:macro name="default_inertial" params="mass">
+      <inertial>
+        <mass value="${mass}"/>
+        <inertia ixx="1e-4" iyy="1e-4" izz="1e-4"
+                ixy="0.00" iyz="0.00" ixz="0.00" />
+      </inertial>
     </xacro:macro>
 
     <!-- BASE LINK -->

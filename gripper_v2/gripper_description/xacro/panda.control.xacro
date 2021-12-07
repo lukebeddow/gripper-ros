@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
     <xacro:macro name="panda_control" params="arm_id">
         <xacro:macro name="arm_control" params="transmission joint motor">

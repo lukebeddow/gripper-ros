@@ -1,19 +1,21 @@
 <launch>
 
-	<arg name="world" default="gz_link"/>
-	
-	<arg name="world_root" value="$(find gz_link)/worlds/$(arg world).world"/>
+	<arg name="world" default="gz_link"/>	<!-- set this to use a world in gz_link/worlds -->
+	<arg name="spawn_urdf" default="true"/>	<!-- set this false to not spawn the urdf -->
+	<arg name="world_root" default="$(find gz_link)/worlds/$(arg world).world"/> <!-- set this to customise the entire root of the world file to be used -->
+	<arg name="paused" default="true"/>
+	<arg name="verbose" default="false"/>
 
   <!-- Launch Gazebo paused -->
       <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <!--  <arg name="world_name" value="$(find gz_link)/worlds/gz_link.world"/> -->
     			<arg name="world_name" value="$(arg world_root)"/>
-          <arg name="paused" value="true"/>
+          <arg name="paused" value="$(arg paused)"/>
           <arg name="use_sim_time" value="true"/>
           <arg name="gui" value="true"/>
           <arg name="recording" value="false"/>
           <arg name="debug" value="false"/>
-          <arg name="verbose" value="false"/>
+          <arg name="verbose" value="$(arg verbose)"/>
       </include>
 
       <!-- Generate/Load robot description file -->
@@ -21,14 +23,16 @@
 
       <!-- Spawn urdf into Gazebo whilst paused and update joints to favourable position.
           Then unpause -->
-      <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" 
-        args="-param robot_description 
-            -urdf 
-            -model arm
-            -J panda_joint6 1.0
-            -J finger_1_prismatic_joint 0.140
-            -J finger_2_prismatic_joint 0.140
-            -J finger_3_prismatic_joint 0.140
-            -unpause" />
+      <node if="$(arg spawn_urdf)" 
+      			name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" 
+        		args="-param robot_description 
+						      -urdf 
+						      -model panda_and_gripper
+						      -J panda_joint6 1.0
+						      -J finger_1_prismatic_joint 0.140
+						      -J finger_2_prismatic_joint 0.140
+						      -J finger_3_prismatic_joint 0.140
+						      -unpause" />
+            
             
 </launch>

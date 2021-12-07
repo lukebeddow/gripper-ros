@@ -1,0 +1,6 @@
+geometry_msgs/Pose panda_pose
+pose gripper_pose
+bool ignore_panda
+bool ignore_gripper
+---
+bool success

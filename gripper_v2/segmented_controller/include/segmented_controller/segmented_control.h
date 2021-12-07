@@ -82,6 +82,7 @@ public:
         }
         else {
           ROS_ERROR("finger_1, 2 and 3 all = true in segmented_control.h");
+          throw std::runtime_error("all finger controllers already initialised");
         }
 
         // Init effort command publisher.

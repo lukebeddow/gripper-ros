@@ -65,6 +65,7 @@
   <depend>tf2_ros</depend>
   
   <depend>gripper_virtual_node</depend>
+  <depend>gripper_msgs</depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

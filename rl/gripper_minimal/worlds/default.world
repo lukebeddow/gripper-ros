@@ -1,0 +1,42 @@
+<?xml version="1.0" ?>
+<sdf version="1.4">
+    <world name="empty">
+    
+    		<!-- physics  -->
+    		<physics type="ode">
+				  <max_step_size>0.001</max_step_size>
+				  <ode>
+				  	<solver>
+				  		<iters>50</iters>
+				  	</solver>
+				  	<!--
+				  	<constraints>
+				  		<cfm>0</cfm>
+				  	</constraints>
+				  	-->
+				  </ode>
+				</physics>
+
+        <!-- basics -->
+        <include>
+            <uri>model://ground_plane</uri>
+        </include>
+        <include>
+            <uri>model://sun</uri>
+        </include>
+
+        <include>
+          <uri>model://ball</uri>
+          <pose>0.5 0 0 0 0 0</pose>
+        </include>
+        
+        <include>
+        	<uri>model://panda_and_gripper</uri>
+        	<pose>0.5 0.5 0 0 0 0</pose>
+        </include>
+
+        <!-- plugin to connect ros and gazebo, my first test -->
+        <plugin name="gz_link" filename="libgz_link.so"/>
+    
+    </world>
+</sdf>

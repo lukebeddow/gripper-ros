@@ -15,8 +15,8 @@
 		      <joint name="panda_joint5" />
 		      <joint name="panda_joint6" />
 		      <joint name="panda_joint7" />
-		      <joint name="panda_joint8" />
-		      <joint name="world_to_base" />
+		      <joint name="world_to_base"/>
+		      <link name="panda_link8"/>
 		  </group>
 		  
 		  <!-- define a pose for this group -->
@@ -35,20 +35,26 @@
 		  <disable_collisions link1="panda_link0" link2="panda_link2" reason="Never" />
 		  <disable_collisions link1="panda_link0" link2="panda_link3" reason="Never" />
 		  <disable_collisions link1="panda_link0" link2="panda_link4" reason="Never" />
+
 		  <disable_collisions link1="panda_link1" link2="panda_link2" reason="Adjacent" />
 		  <disable_collisions link1="panda_link1" link2="panda_link3" reason="Never" />
 		  <disable_collisions link1="panda_link1" link2="panda_link4" reason="Never" />
+
 		  <disable_collisions link1="panda_link2" link2="panda_link3" reason="Adjacent" />
 		  <disable_collisions link1="panda_link2" link2="panda_link4" reason="Never" />
+
 		  <disable_collisions link1="panda_link3" link2="panda_link4" reason="Adjacent" />
 		  <disable_collisions link1="panda_link3" link2="panda_link5" reason="Never" />
 		  <disable_collisions link1="panda_link3" link2="panda_link6" reason="Never" />
 		  <disable_collisions link1="panda_link3" link2="panda_link7" reason="Never" />
+
 		  <disable_collisions link1="panda_link4" link2="panda_link5" reason="Adjacent" />
 		  <disable_collisions link1="panda_link4" link2="panda_link6" reason="Never" />
 		  <disable_collisions link1="panda_link4" link2="panda_link7" reason="Never" />
+
 		  <disable_collisions link1="panda_link5" link2="panda_link6" reason="Adjacent" />
 		  <disable_collisions link1="panda_link5" link2="panda_link7" reason="Never" />
+
 		  <disable_collisions link1="panda_link6" link2="panda_link7" reason="Adjacent" />
 		  
 	</xacro:macro>
