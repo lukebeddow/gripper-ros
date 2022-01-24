@@ -5,21 +5,8 @@
 <!-- =================================================================================== -->
 <robot name="panda">
   <mujoco>
-    <!-- compiler settings: required -->
     <compiler balanceinertia="true" discardvisual="false" meshdir="./meshes_mujoco/"/>
-    <!-- defaults 500, 100 need to be adjusted -->
     <size nconmax="500" njmax="1400"/>
-    <!-- set inital pose keyframe DOESN'T WORK WITH URDF PARSER -->
-    <!-- <keyframe>
-				<key name="initial pose"
-						time="0"
-						qpos="0 0 0 0 0 0.6 0
-									140e-3 0    0 0 0 0 0 0 0 0 0
-									140e-3 0    0 0 0 0 0 0 0 0 0
-									140e-3 0    0 0 0 0 0 0 0 0 0
-									0"
-				/>
-			</keyframe> -->
   </mujoco>
   <!-- rest of file should be identical to panda_and_gripper.urdf.xacro -->
   <!-- <link name="world" />

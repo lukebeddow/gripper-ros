@@ -8,6 +8,9 @@
 	<node name="gen_gripper_urdf_mujoco" pkg="xacro" type="xacro" respawn="false"
 				args="--inorder -o $(find gripper_description)/urdf/mujoco/gripper_mujoco.urdf $(find gripper_description)/urdf/mujoco/xacro/gripper_mujoco.urdf.xacro"/>
 				
+	<node name="gen_task_urdf_mujoco" pkg="xacro" type="xacro" respawn="false"
+				args="--inorder -o $(find gripper_description)/urdf/mujoco/gripper_task.urdf $(find gripper_description)/urdf/mujoco/xacro/gripper_task.urdf.xacro"/>
+				
 	<!-- delay here and make the last node required so roslaunch quits after it is finished -->
   <arg name="node_start_delay" default="1.0"/>
   <node name="gen_both_urdf_mujoco" pkg="xacro" type="xacro" respawn="false"

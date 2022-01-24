@@ -38,7 +38,7 @@
 
     <!-- these are implemented in the <dynamics> tags in each joint -->
     <xacro:property name="joint_friction" value="0.0"/>
-    <xacro:property name="joint_damping" value="0.001"/>
+    <xacro:property name="joint_damping" value="0.01"/>
     
     <!-- END OF PARAMETERS TO BE SET BY HAND -->
 

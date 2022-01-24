@@ -105,7 +105,8 @@
       </visual>
       <collision>
         <geometry>
-          <mesh filename="package://gripper_description/meshes/main body collision.STL"/>
+<!--          <mesh filename="package://gripper_description/meshes/main body collision.STL"/>-->
+					<cylinder length="0.1" radius="0.03"/>
         </geometry>
       </collision>
     </link>

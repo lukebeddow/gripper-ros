@@ -5,21 +5,8 @@
 <!-- =================================================================================== -->
 <robot name="panda_and_gripper">
   <mujoco>
-    <!-- compiler settings: required -->
     <compiler balanceinertia="true" discardvisual="false" meshdir="./meshes_mujoco/"/>
-    <!-- defaults 500, 100 need to be adjusted -->
     <size nconmax="500" njmax="1400"/>
-    <!-- set inital pose keyframe DOESN'T WORK WITH URDF PARSER -->
-    <!-- <keyframe>
-				<key name="initial pose"
-						time="0"
-						qpos="0 0 0 0 0 0.6 0
-									140e-3 0    0 0 0 0 0 0 0 0 0
-									140e-3 0    0 0 0 0 0 0 0 0 0
-									140e-3 0    0 0 0 0 0 0 0 0 0
-									0"
-				/>
-			</keyframe> -->
   </mujoco>
   <!-- rest of file should be identical to panda_and_gripper.urdf.xacro -->
   <!-- <link name="world" />
@@ -536,7 +523,8 @@
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://gripper_description/meshes/main body collision.STL"/>
+        <!--          <mesh filename="package://gripper_description/meshes/main body collision.STL"/>-->
+        <cylinder length="0.1" radius="0.03"/>
       </geometry>
     </collision>
   </link>
@@ -802,7 +790,7 @@
     <child link="finger_1_segment_link_2"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_1">
     <provideFeedback>1</provideFeedback>
@@ -859,7 +847,7 @@
     <child link="finger_1_segment_link_3"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_2">
     <provideFeedback>1</provideFeedback>
@@ -916,7 +904,7 @@
     <child link="finger_1_segment_link_4"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_3">
     <provideFeedback>1</provideFeedback>
@@ -973,7 +961,7 @@
     <child link="finger_1_segment_link_5"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_4">
     <provideFeedback>1</provideFeedback>
@@ -1030,7 +1018,7 @@
     <child link="finger_1_segment_link_6"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_5">
     <provideFeedback>1</provideFeedback>
@@ -1087,7 +1075,7 @@
     <child link="finger_1_segment_link_7"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_6">
     <provideFeedback>1</provideFeedback>
@@ -1144,7 +1132,7 @@
     <child link="finger_1_segment_link_8"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_7">
     <provideFeedback>1</provideFeedback>
@@ -1201,7 +1189,7 @@
     <child link="finger_1_segment_link_9"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_8">
     <provideFeedback>1</provideFeedback>
@@ -1258,7 +1246,7 @@
     <child link="finger_1_segment_link_10"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_1_segment_joint_9">
     <provideFeedback>1</provideFeedback>
@@ -1388,7 +1376,7 @@
     <child link="finger_2_segment_link_2"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_1">
     <provideFeedback>1</provideFeedback>
@@ -1445,7 +1433,7 @@
     <child link="finger_2_segment_link_3"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_2">
     <provideFeedback>1</provideFeedback>
@@ -1502,7 +1490,7 @@
     <child link="finger_2_segment_link_4"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_3">
     <provideFeedback>1</provideFeedback>
@@ -1559,7 +1547,7 @@
     <child link="finger_2_segment_link_5"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_4">
     <provideFeedback>1</provideFeedback>
@@ -1616,7 +1604,7 @@
     <child link="finger_2_segment_link_6"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_5">
     <provideFeedback>1</provideFeedback>
@@ -1673,7 +1661,7 @@
     <child link="finger_2_segment_link_7"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_6">
     <provideFeedback>1</provideFeedback>
@@ -1730,7 +1718,7 @@
     <child link="finger_2_segment_link_8"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_7">
     <provideFeedback>1</provideFeedback>
@@ -1787,7 +1775,7 @@
     <child link="finger_2_segment_link_9"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_8">
     <provideFeedback>1</provideFeedback>
@@ -1844,7 +1832,7 @@
     <child link="finger_2_segment_link_10"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_2_segment_joint_9">
     <provideFeedback>1</provideFeedback>
@@ -1974,7 +1962,7 @@
     <child link="finger_3_segment_link_2"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_1">
     <provideFeedback>1</provideFeedback>
@@ -2031,7 +2019,7 @@
     <child link="finger_3_segment_link_3"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_2">
     <provideFeedback>1</provideFeedback>
@@ -2088,7 +2076,7 @@
     <child link="finger_3_segment_link_4"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_3">
     <provideFeedback>1</provideFeedback>
@@ -2145,7 +2133,7 @@
     <child link="finger_3_segment_link_5"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_4">
     <provideFeedback>1</provideFeedback>
@@ -2202,7 +2190,7 @@
     <child link="finger_3_segment_link_6"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_5">
     <provideFeedback>1</provideFeedback>
@@ -2259,7 +2247,7 @@
     <child link="finger_3_segment_link_7"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_6">
     <provideFeedback>1</provideFeedback>
@@ -2316,7 +2304,7 @@
     <child link="finger_3_segment_link_8"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_7">
     <provideFeedback>1</provideFeedback>
@@ -2373,7 +2361,7 @@
     <child link="finger_3_segment_link_9"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_8">
     <provideFeedback>1</provideFeedback>
@@ -2430,7 +2418,7 @@
     <child link="finger_3_segment_link_10"/>
     <origin rpy="0 0 0" xyz="0.019 0 0"/>
     <limit effort="1000.0" lower="-1.0" upper="1.0" velocity="1.0"/>
-    <dynamics damping="0.001" friction="0.0"/>
+    <dynamics damping="0.01" friction="0.0"/>
   </joint>
   <gazebo reference="finger_3_segment_joint_9">
     <provideFeedback>1</provideFeedback>

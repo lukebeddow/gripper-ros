@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<mujoco model="gripper">
+<mujoco model="gripper_task">
     <compiler angle="radian" meshdir="./meshes_mujoco/"/>
     <size njmax="1400" nconmax="500"/>
     <asset>
@@ -12,9 +12,9 @@
         <mesh name="palm collision" file="palm collision.STL"/>
     </asset>
     <worldbody>
-        <geom pos="0 0 1" quat="0 1 0 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="main body visual"/>
-        <geom size="0.03 0.05" pos="0 0 1" quat="0 1 0 0" type="cylinder"/>
-        <body name="finger_1_intermediate" pos="0 0 1" quat="1.6581e-12 0.707107 5.12042e-12 -0.707107">
+        <geom pos="0 0 0.325" quat="0 1 0 0" type="mesh" contype="0" conaffinity="0" group="1" mesh="main body visual"/>
+        <geom size="0.03 0.05" pos="0 0 0.325" quat="0 1 0 0" type="cylinder"/>
+        <body name="finger_1_intermediate" pos="0 0 0.325" quat="1.6581e-12 0.707107 5.12042e-12 -0.707107">
             <inertial pos="0 0 0" quat="0.37634 0.403447 0.585982 0.593484" mass="0.1" diaginertia="0.000166494 0.00015418 3.54554e-05"/>
             <joint name="finger_1_prismatic_joint" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="0.053 0.141" damping="1"/>
             <geom type="mesh" contype="0" conaffinity="0" group="1" mesh="nut visual"/>
@@ -29,50 +29,50 @@
                 <body name="finger_1_segment_link_2" pos="0.148 -0.007 0" quat="0.707107 0.707107 0 0">
                     <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                     <joint name="finger_1_segment_joint_1" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_2_geom_visual"/>
+                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_2_geom_collision"/>
                     <body name="finger_1_segment_link_3" pos="0.019 0 0">
                         <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                         <joint name="finger_1_segment_joint_2" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_3_geom_visual"/>
+                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_3_geom_collision"/>
                         <body name="finger_1_segment_link_4" pos="0.019 0 0">
                             <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                             <joint name="finger_1_segment_joint_3" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_4_geom_visual"/>
+                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_4_geom_collision"/>
                             <body name="finger_1_segment_link_5" pos="0.019 0 0">
                                 <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                 <joint name="finger_1_segment_joint_4" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_5_geom_visual"/>
+                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_5_geom_collision"/>
                                 <body name="finger_1_segment_link_6" pos="0.019 0 0">
                                     <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                     <joint name="finger_1_segment_joint_5" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_6_geom_visual"/>
+                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_6_geom_collision"/>
                                     <body name="finger_1_segment_link_7" pos="0.019 0 0">
                                         <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                         <joint name="finger_1_segment_joint_6" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_7_geom_visual"/>
+                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_7_geom_collision"/>
                                         <body name="finger_1_segment_link_8" pos="0.019 0 0">
                                             <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                             <joint name="finger_1_segment_joint_7" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_8_geom_visual"/>
+                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_8_geom_collision"/>
                                             <body name="finger_1_segment_link_9" pos="0.019 0 0">
                                                 <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                                 <joint name="finger_1_segment_joint_8" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_9_geom_visual"/>
+                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_9_geom_collision"/>
                                                 <body name="finger_1_segment_link_10" pos="0.019 0 0">
                                                     <inertial pos="0.0095 0 0" quat="0 0.707107 0 0.707107" mass="0.0126667" diaginertia="2.73326e-06 2.66824e-06 1.59009e-06"/>
                                                     <joint name="finger_1_segment_joint_9" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
-                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box"/>
+                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_10_geom_visual"/>
+                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_1_segment_link_10_geom_collision"/>
+                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" contype="0" conaffinity="0" group="1" name="finger_1_segment_link_10_geom_hook_visual"/>
+                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" name="finger_1_segment_link_10_geom_hook_collision"/>
                                                 </body>
                                             </body>
                                         </body>
@@ -84,7 +84,7 @@
                 </body>
             </body>
         </body>
-        <body name="finger_2_intermediate" pos="0 0 1" quat="0.612372 0.353553 0.612372 -0.353553">
+        <body name="finger_2_intermediate" pos="0 0 0.325" quat="0.612372 0.353553 0.612372 -0.353553">
             <inertial pos="0 0 0" quat="0.37634 0.403447 0.585982 0.593484" mass="0.1" diaginertia="0.000166494 0.00015418 3.54554e-05"/>
             <joint name="finger_2_prismatic_joint" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="0.053 0.141" damping="1"/>
             <geom type="mesh" contype="0" conaffinity="0" group="1" mesh="nut visual"/>
@@ -99,50 +99,50 @@
                 <body name="finger_2_segment_link_2" pos="0.148 -0.007 0" quat="0.707107 0.707107 0 0">
                     <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                     <joint name="finger_2_segment_joint_1" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_2_geom_visual"/>
+                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_2_geom_collision"/>
                     <body name="finger_2_segment_link_3" pos="0.019 0 0">
                         <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                         <joint name="finger_2_segment_joint_2" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_3_geom_visual"/>
+                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_3_geom_collision"/>
                         <body name="finger_2_segment_link_4" pos="0.019 0 0">
                             <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                             <joint name="finger_2_segment_joint_3" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_4_geom_visual"/>
+                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_4_geom_collision"/>
                             <body name="finger_2_segment_link_5" pos="0.019 0 0">
                                 <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                 <joint name="finger_2_segment_joint_4" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_5_geom_visual"/>
+                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_5_geom_collision"/>
                                 <body name="finger_2_segment_link_6" pos="0.019 0 0">
                                     <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                     <joint name="finger_2_segment_joint_5" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_6_geom_visual"/>
+                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_6_geom_collision"/>
                                     <body name="finger_2_segment_link_7" pos="0.019 0 0">
                                         <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                         <joint name="finger_2_segment_joint_6" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_7_geom_visual"/>
+                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_7_geom_collision"/>
                                         <body name="finger_2_segment_link_8" pos="0.019 0 0">
                                             <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                             <joint name="finger_2_segment_joint_7" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_8_geom_visual"/>
+                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_8_geom_collision"/>
                                             <body name="finger_2_segment_link_9" pos="0.019 0 0">
                                                 <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                                 <joint name="finger_2_segment_joint_8" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_9_geom_visual"/>
+                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_9_geom_collision"/>
                                                 <body name="finger_2_segment_link_10" pos="0.019 0 0">
                                                     <inertial pos="0.0095 0 0" quat="0 0.707107 0 0.707107" mass="0.0126667" diaginertia="2.73326e-06 2.66824e-06 1.59009e-06"/>
                                                     <joint name="finger_2_segment_joint_9" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
-                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box"/>
+                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_10_geom_visual"/>
+                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_2_segment_link_10_geom_collision"/>
+                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" contype="0" conaffinity="0" group="1" name="finger_2_segment_link_10_geom_hook_visual"/>
+                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" name="finger_2_segment_link_10_geom_hook_collision"/>
                                                 </body>
                                             </body>
                                         </body>
@@ -154,7 +154,7 @@
                 </body>
             </body>
         </body>
-        <body name="finger_3_intermediate" pos="0 0 1" quat="0.612372 -0.353553 0.612372 0.353553">
+        <body name="finger_3_intermediate" pos="0 0 0.325" quat="0.612372 -0.353553 0.612372 0.353553">
             <inertial pos="0 0 0" quat="0.37634 0.403447 0.585982 0.593484" mass="0.1" diaginertia="0.000166494 0.00015418 3.54554e-05"/>
             <joint name="finger_3_prismatic_joint" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="0.053 0.141" damping="1"/>
             <geom type="mesh" contype="0" conaffinity="0" group="1" mesh="nut visual"/>
@@ -169,50 +169,50 @@
                 <body name="finger_3_segment_link_2" pos="0.148 -0.007 0" quat="0.707107 0.707107 0 0">
                     <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                     <joint name="finger_3_segment_joint_1" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_2_geom_visual"/>
+                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_2_geom_collision"/>
                     <body name="finger_3_segment_link_3" pos="0.019 0 0">
                         <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                         <joint name="finger_3_segment_joint_2" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_3_geom_visual"/>
+                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_3_geom_collision"/>
                         <body name="finger_3_segment_link_4" pos="0.019 0 0">
                             <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                             <joint name="finger_3_segment_joint_3" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_4_geom_visual"/>
+                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_4_geom_collision"/>
                             <body name="finger_3_segment_link_5" pos="0.019 0 0">
                                 <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                 <joint name="finger_3_segment_joint_4" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_5_geom_visual"/>
+                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_5_geom_collision"/>
                                 <body name="finger_3_segment_link_6" pos="0.019 0 0">
                                     <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                     <joint name="finger_3_segment_joint_5" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_6_geom_visual"/>
+                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_6_geom_collision"/>
                                     <body name="finger_3_segment_link_7" pos="0.019 0 0">
                                         <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                         <joint name="finger_3_segment_joint_6" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_7_geom_visual"/>
+                                        <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_7_geom_collision"/>
                                         <body name="finger_3_segment_link_8" pos="0.019 0 0">
                                             <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                             <joint name="finger_3_segment_joint_7" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_8_geom_visual"/>
+                                            <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_8_geom_collision"/>
                                             <body name="finger_3_segment_link_9" pos="0.019 0 0">
                                                 <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.00633333" diaginertia="1.17589e-06 7.62539e-07 4.14205e-07"/>
                                                 <joint name="finger_3_segment_joint_8" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
+                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_9_geom_visual"/>
+                                                <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_9_geom_collision"/>
                                                 <body name="finger_3_segment_link_10" pos="0.019 0 0">
                                                     <inertial pos="0.0095 0 0" quat="0 0.707107 0 0.707107" mass="0.0126667" diaginertia="2.73326e-06 2.66824e-06 1.59009e-06"/>
                                                     <joint name="finger_3_segment_joint_9" pos="0 0 0" axis="0 1 0" limited="true" range="-1 1" damping="0.01" stiffness="5"/>
-                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box"/>
-                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" contype="0" conaffinity="0" group="1"/>
-                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box"/>
+                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_10_geom_visual"/>
+                                                    <geom size="0.0095 0.014 0.00045" pos="0.0095 0 0" type="box" name="finger_3_segment_link_10_geom_collision"/>
+                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" contype="0" conaffinity="0" group="1" name="finger_3_segment_link_10_geom_hook_visual"/>
+                                                    <geom size="0.0175 0.014 0.00045" pos="0.019 0 0.0175" quat="0.707107 0 -0.707107 0" type="box" name="finger_3_segment_link_10_geom_hook_collision"/>
                                                 </body>
                                             </body>
                                         </body>
@@ -224,15 +224,15 @@
                 </body>
             </body>
         </body>
-        <body name="palm" pos="0 0 1" quat="0 0.707107 0 -0.707107">
+        <body name="palm" pos="0 0 0.325" quat="0 0.707107 0 -0.707107">
             <inertial pos="0 0 0" mass="0.05" diaginertia="1e-05 1e-05 1e-05"/>
             <joint name="palm_prismatic_joint" pos="0 0 0" axis="1 0 0" type="slide" limited="true" range="0 0.16" damping="1"/>
             <geom type="mesh" contype="0" conaffinity="0" group="1" mesh="palm visual"/>
             <geom type="mesh" mesh="palm collision"/>
         </body>
-    </worldbody>
+    <include file="objects.xml"/></worldbody>
 <keyframe>
-    <key name="initial pose" time="0" qpos="0.14 0.0 0 0 0 0 0 0 0 0 0  0.14 0.0 0 0 0 0 0 0 0 0 0  0.14 0.0 0 0 0 0 0 0 0 0 0  0.0"/>
+    <key name="initial pose" time="0" qpos="0.14 0.0 0 0 0 0 0 0 0 0 0  0.14 0.0 0 0 0 0 0 0 0 0 0  0.14 0.0 0 0 0 0 0 0 0 0 0  0.0  -0.9 1.0 0.1 0 0 0 1 -0.7 1.0 0.1 0 0 0 1 -0.5 1.0 0.1 0 0 0 1 -0.3 1.0 0.1 0 0 0 1 -0.1 1.0 0.1 0 0 0 1 0.1 1.0 0.1 0 0 0 1 0.3 1.0 0.1 0 0 0 1 0.5 1.0 0.1 0 0 0 1 0.7 1.0 0.1 0 0 0 1 0.9 1.0 0.1 0 0 0 1 -0.9 1.2 0.1 0 0 0 1 -0.7 1.2 0.1 0 0 0 1"/>
   </keyframe><actuator>
     
   <motor name="finger_1_prismatic_joint_actuator" joint="finger_1_prismatic_joint"/>

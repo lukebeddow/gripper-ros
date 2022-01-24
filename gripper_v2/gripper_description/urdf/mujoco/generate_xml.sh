@@ -17,12 +17,13 @@ cd $WS_DIR$MUJOCO_DIR
 roslaunch gripper_scripting mujoco.launch
 
 # remove the old mujoco xml files
-rm gripper_mujoco.xml panda_mujoco.xml panda_and_gripper_mujoco.xml
+rm -f gripper_mujoco.xml panda_mujoco.xml panda_and_gripper_mujoco.xml gripper_task.xml
 
 # compile new mujoco xml files
 ./compile gripper_mujoco.urdf gripper_mujoco.xml
 ./compile panda_mujoco.urdf panda_mujoco.xml
 ./compile panda_and_gripper_mujoco.urdf panda_and_gripper_mujoco.xml
+./compile gripper_task.urdf gripper_task.xml
 
 # add extra features to the xml files
 ./xml_script.py

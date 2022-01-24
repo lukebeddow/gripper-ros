@@ -66,8 +66,8 @@
             </body>
         </body>
     </worldbody>
-<size njmax="1400" nconmax="500"/><keyframe>
-    <key name="initial pose" time="0" qpos="0 0 0 0 0 1.0 0"/>
+<keyframe>
+    <key name="initial pose" time="0" qpos="0.01 0.02 0.03 0.04 0.05 1.0 0.07"/>
   </keyframe><actuator>
     
   <motor name="panda_joint1_actuator" joint="panda_joint1"/>

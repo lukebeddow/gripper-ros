@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mujoco model="objects">
+
+  <body name="ground" pos="0 0 0">
+    <geom type="plane" size="1 1 1"/>
+  </body>
+
+  <body name="sphere_50mm" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_50mm"/>
+    <geom type="sphere" size="0.05"/>
+  </body>
+
+  <body name="sphere_40mm" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <!-- testing, 10 extra dummy objects -->
+  <body name="sphere_40mm1" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm1"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm2" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm2"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm3" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm3"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm4" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm4"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm5" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm5"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm6" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm6"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm7" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm7"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm8" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm8"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm9" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm9"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+
+  <body name="sphere_40mm10" pos="0 0 0">
+    <inertial pos="0 0 0" mass="0.1" diaginertia="1e-4 1e-4 1e-4"/>
+    <freejoint name="sphere_40mm10"/>
+    <geom type="sphere" size="0.04"/>
+  </body>
+  <!---->
+
+</mujoco>
