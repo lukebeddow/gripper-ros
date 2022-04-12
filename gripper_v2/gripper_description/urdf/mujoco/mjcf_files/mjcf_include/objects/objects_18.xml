@@ -1,0 +1,104 @@
+<mujoco><body name="cube_fillet_45_normal_11" pos="0 0 0">
+    <inertial diaginertia="6.508763888062512e-05 6.508763888062512e-05 6.508763888062512e-05" mass="0.05688396501457725" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cube_fillet_45_normal_11"/>
+    <geom mesh="cube_fillet_45_normal_11" name="cube_fillet_45_normal_11_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_74" pos="0 0 0">
+    <inertial diaginertia="8.613409880361186e-05 8.613409880361186e-05 8.613409880361186e-05" mass="0.09143344188886623" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_74"/>
+    <geom mesh="sphere_normal_74" name="sphere_normal_74_geom" type="mesh"/>
+  </body>
+  <body name="cube_fillet_35_normal_7" pos="0 0 0">
+    <inertial diaginertia="0.00022004785942365268 0.00022004785942365268 0.00022004785942365268" mass="0.11814110787172005" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cube_fillet_35_normal_7"/>
+    <geom mesh="cube_fillet_35_normal_7" name="cube_fillet_35_normal_7_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_110" pos="0 0 0">
+    <inertial diaginertia="2.51596123053237e-05 2.51596123053237e-05 2.51596123053237e-05" mass="0.04369405658457154" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_110"/>
+    <geom mesh="sphere_normal_110" name="sphere_normal_110_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_14_fillet_15_normal_11" pos="0 0 0">
+    <inertial diaginertia="0.0007464482941631465 0.0007464482941631465 1.8950732432914862e-05" mass="0.032242565597667645" pos="0 0 0" quat="0.683 0.683 0.183 0.183"/>
+    <freejoint name="cylinder_14_fillet_15_normal_11"/>
+    <geom mesh="cylinder_14_fillet_15_normal_11" name="cylinder_14_fillet_15_normal_11_geom" type="mesh"/>
+  </body>
+  <body name="cuboid_211_fillet_35_upright_7" pos="0 0 0">
+    <inertial diaginertia="8.38807291666667e-06 2.0970182291666673e-05 2.0970182291666673e-05" mass="0.016637500000000003" pos="0 0 0" quat="0.707 0 0.707 0"/>
+    <freejoint name="cuboid_211_fillet_35_upright_7"/>
+    <geom mesh="cuboid_211_fillet_35_upright_7" name="cuboid_211_fillet_35_upright_7_geom" type="mesh"/>
+  </body>
+  <body name="cuboid_211_fillet_5_normal_6" pos="0 0 0">
+    <inertial diaginertia="3.060364059448244e-05 7.650910148620609e-05 7.650910148620609e-05" mass="0.03617050781250001" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cuboid_211_fillet_5_normal_6"/>
+    <geom mesh="cuboid_211_fillet_5_normal_6" name="cuboid_211_fillet_5_normal_6_geom" type="mesh"/>
+  </body>
+  <body name="cuboid_221_fillet_35_normal_4" pos="0 0 0">
+    <inertial diaginertia="2.9162725702921556e-05 4.6660361124674486e-05 2.9162725702921556e-05" mass="0.0202779296875" pos="0 0 0" quat="0.7071 0.7071 0 0"/>
+    <freejoint name="cuboid_221_fillet_35_normal_4"/>
+    <geom mesh="cuboid_221_fillet_35_normal_4" name="cuboid_221_fillet_35_normal_4_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_21_fillet_15_normal_15" pos="0 0 0">
+    <inertial diaginertia="2.3893333333333344e-05 2.3893333333333344e-05 5.120000000000004e-06" mass="0.006400000000000002" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cylinder_21_fillet_15_normal_15"/>
+    <geom mesh="cylinder_21_fillet_15_normal_15" name="cylinder_21_fillet_15_normal_15_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_21_fillet_35_normal_3" pos="0 0 0">
+    <inertial diaginertia="0.0004904016929453999 0.0004904016929453999 0.0001952629166418755" mass="0.05688396501457727" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cylinder_21_fillet_35_normal_3"/>
+    <geom mesh="cylinder_21_fillet_35_normal_3" name="cylinder_21_fillet_35_normal_3_geom" type="mesh"/>
+  </body>
+  <body name="cuboid_311_fillet_45_normal_1" pos="0 0 0">
+    <inertial diaginertia="5.4613333333333375e-05 0.0002730666666666667 0.0002730666666666667" mass="0.051200000000000016" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cuboid_311_fillet_45_normal_1"/>
+    <geom mesh="cuboid_311_fillet_45_normal_1" name="cuboid_311_fillet_45_normal_1_geom" type="mesh"/>
+  </body>
+  <body name="cuboid_221_fillet_5_normal_7" pos="0 0 0">
+    <inertial diaginertia="1.0075272623697915e-05 1.6120436197916666e-05 1.0075272623697915e-05" mass="0.0107171875" pos="0 0 0" quat="0.7071 0.7071 0 0"/>
+    <freejoint name="cuboid_221_fillet_5_normal_7"/>
+    <geom mesh="cuboid_221_fillet_5_normal_7" name="cuboid_221_fillet_5_normal_7_geom" type="mesh"/>
+  </body>
+  <body name="cube_fillet_45_normal_8" pos="0 0 0">
+    <inertial diaginertia="0.0001666666666666667 0.0001666666666666667 0.0001666666666666667" mass="0.1" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cube_fillet_45_normal_8"/>
+    <geom mesh="cube_fillet_45_normal_8" name="cube_fillet_45_normal_8_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_11_fillet_5_normal_7" pos="0 0 0">
+    <inertial diaginertia="0.0013207402083333325 0.0013207402083333325 0.00020131374999999988" mass="0.13309999999999994" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cylinder_11_fillet_5_normal_7"/>
+    <geom mesh="cylinder_11_fillet_5_normal_7" name="cylinder_11_fillet_5_normal_7_geom" type="mesh"/>
+  </body>
+  <body name="cuboid_211_fillet_5_normal_8" pos="0 0 0">
+    <inertial diaginertia="1.754889175415039e-05 4.387222938537597e-05 4.387222938537597e-05" mass="0.025908398437499997" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cuboid_211_fillet_5_normal_8"/>
+    <geom mesh="cuboid_211_fillet_5_normal_8" name="cuboid_211_fillet_5_normal_8_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_13_fillet_15_sideways_9" pos="0 0 0">
+    <inertial diaginertia="0.0007172453460983516 0.0007172453460983516 2.5660829639435942e-05" mass="0.0386737609329446" pos="0 0 0" quat="0.683 0.683 0.183 0.183"/>
+    <freejoint name="cylinder_13_fillet_15_sideways_9"/>
+    <geom mesh="cylinder_13_fillet_15_sideways_9" name="cylinder_13_fillet_15_sideways_9_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_116" pos="0 0 0">
+    <inertial diaginertia="1.9828093141069822e-05 1.9828093141069822e-05 1.9828093141069822e-05" mass="0.03787638917158557" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_116"/>
+    <geom mesh="sphere_normal_116" name="sphere_normal_116_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_54" pos="0 0 0">
+    <inertial diaginertia="0.00015262090874292267 0.00015262090874292267 0.00015262090874292267" mass="0.12887492367189088" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_54"/>
+    <geom mesh="sphere_normal_54" name="sphere_normal_54_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_12_fillet_15_sideways_13" pos="0 0 0">
+    <inertial diaginertia="0.00037796183018980195 0.00037796183018980195 1.8950732432914862e-05" mass="0.032242565597667645" pos="0 0 0" quat="0.683 0.683 0.183 0.183"/>
+    <freejoint name="cylinder_12_fillet_15_sideways_13"/>
+    <geom mesh="cylinder_12_fillet_15_sideways_13" name="cylinder_12_fillet_15_sideways_13_geom" type="mesh"/>
+  </body>
+  <body name="cylinder_11_fillet_35_normal_11" pos="0 0 0">
+    <inertial diaginertia="0.0005836556249999998 0.0005836556249999998 7.381124999999998e-05" mass="0.07289999999999998" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="cylinder_11_fillet_35_normal_11"/>
+    <geom mesh="cylinder_11_fillet_35_normal_11" name="cylinder_11_fillet_35_normal_11_geom" type="mesh"/>
+  </body>
+  <body name="ground" pos="0 0 0">
+    <geom name="ground_geom" size="1 1 1" type="plane"/>
+  </body>
+</mujoco>

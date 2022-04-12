@@ -51,322 +51,322 @@ cube:
     min: 5  
   quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# # ----- sphere ----- #
+# ----- sphere ----- #
 
-# sphere:
-#   include: true
-#   name_root: sphere
-#   suffix: normal
-#   path: sphere
-#   spawn:
-#     rest: 0.05
-#     axis: x
-#   inertial:
-#     mass: 0.1
-#     type: sphere
-#     r: 0.05
-#   scale:
-#     num: 120
-#     max: { x: 1.4, y: 1.4, z: 1.4 }
-#     min: { x: 0.7, y: 0.7, z: 0.7 }
-#   fillet:
-#     used: false
-#   quat: { x: 0, y: 0, z: 0, w: 1 }
+sphere:
+  include: true
+  name_root: sphere
+  suffix: normal
+  path: sphere
+  spawn:
+    rest: 0.05
+    axis: x
+  inertial:
+    mass: 0.1
+    type: sphere
+    r: 0.05
+  scale:
+    num: 120
+    max: { x: 1.4, y: 1.4, z: 1.4 }
+    min: { x: 0.7, y: 0.7, z: 0.7 }
+  fillet:
+    used: false
+  quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# # ----- cylinder ----- #
+# ----- cylinder ----- #
 
-# cylinder_11:
-#   include: true
-#   name_root: cylinder_11_fillet
-#   suffix: normal
-#   path: cylinder_11
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cylinder
-#     r: 0.05
-#     h: 0.1
-#   scale:
-#     num: 15
-#     max: { x: 1.4, y: 1.4, z: 1.4 }
-#     min: { x: 0.7, y: 0.7, z: 0.7 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0, y: 0, z: 0, w: 1 }
+cylinder_11:
+  include: true
+  name_root: cylinder_11_fillet
+  suffix: normal
+  path: cylinder_11
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cylinder
+    r: 0.05
+    h: 0.1
+  scale:
+    num: 15
+    max: { x: 1.4, y: 1.4, z: 1.4 }
+    min: { x: 0.7, y: 0.7, z: 0.7 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# cylinder_12_sideways:
-#   include: true
-#   name_root: cylinder_12_fillet
-#   suffix: sideways
-#   path: cylinder_12
-#   spawn:
-#     rest: 0.05
-#     axis: x
-#   inertial:
-#     mass: 0.1
-#     type: cylinder
-#     r: 0.05
-#     h: 0.2
-#   scale:
-#     num: 15
-#     max: { x: 1.2, y: 1.2, z: 1.2 }
-#     min: { x: 0.6, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 25
-#     min: 5
-#   quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
+cylinder_12_sideways:
+  include: true
+  name_root: cylinder_12_fillet
+  suffix: sideways
+  path: cylinder_12
+  spawn:
+    rest: 0.05
+    axis: x
+  inertial:
+    mass: 0.1
+    type: cylinder
+    r: 0.05
+    h: 0.2
+  scale:
+    num: 15
+    max: { x: 1.2, y: 1.2, z: 1.2 }
+    min: { x: 0.6, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 25
+    min: 5
+  quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
 
-# cylinder_12_upright:
-#   include: true
-#   name_root: cylinder_12_fillet
-#   suffix: upright
-#   path: cylinder_12
-#   spawn:
-#     rest: 0.1
-#     axis: x
-#   inertial:
-#     mass: 0.1
-#     type: cylinder
-#     r: 0.05
-#     h: 0.2
-#   scale:
-#     num: 15
-#     max: { x: 0.7, y: 0.7, z: 0.7 }
-#     min: { x: 0.6, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 25
-#     min: 5
-#   quat: { x: 0.01, y: 0, z: 0, w: 0 } # get an inertia matrix error with all=0
+cylinder_12_upright:
+  include: true
+  name_root: cylinder_12_fillet
+  suffix: upright
+  path: cylinder_12
+  spawn:
+    rest: 0.1
+    axis: x
+  inertial:
+    mass: 0.1
+    type: cylinder
+    r: 0.05
+    h: 0.2
+  scale:
+    num: 15
+    max: { x: 0.7, y: 0.7, z: 0.7 }
+    min: { x: 0.6, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 25
+    min: 5
+  quat: { x: 0.01, y: 0, z: 0, w: 0 } # get an inertia matrix error with all=0
 
-# cylinder_13_sideways:
-#   include: true
-#   name_root: cylinder_13_fillet
-#   suffix: sideways
-#   path: cylinder_13
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cylinder
-#     r: 0.05
-#     h: 0.3
-#   scale:
-#     num: 15
-#     max: { x: 0.9, y: 0.9, z: 0.9 }
-#     min: { x: 0.6, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 25
-#     min: 5
-#   quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
+cylinder_13_sideways:
+  include: true
+  name_root: cylinder_13_fillet
+  suffix: sideways
+  path: cylinder_13
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cylinder
+    r: 0.05
+    h: 0.3
+  scale:
+    num: 15
+    max: { x: 0.9, y: 0.9, z: 0.9 }
+    min: { x: 0.6, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 25
+    min: 5
+  quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
 
-# cylinder_14:
-#   include: true
-#   name_root: cylinder_14_fillet
-#   suffix: normal
-#   path: cylinder_14
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cylinder
-#     r: 0.05
-#     h: 0.4
-#   scale:
-#     num: 15
-#     max: { x: 0.9, y: 0.9, z: 0.9 }
-#     min: { x: 0.6, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 25
-#     min: 5
-#   quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
+cylinder_14:
+  include: true
+  name_root: cylinder_14_fillet
+  suffix: normal
+  path: cylinder_14
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cylinder
+    r: 0.05
+    h: 0.4
+  scale:
+    num: 15
+    max: { x: 0.9, y: 0.9, z: 0.9 }
+    min: { x: 0.6, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 25
+    min: 5
+  quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
 
-# cylinder_21:
-#   include: true
-#   name_root: cylinder_21_fillet
-#   suffix: normal
-#   path: cylinder_21
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cylinder
-#     r: 0.1
-#     h: 0.1
-#   scale:
-#     num: 15
-#     max: { x: 0.9, y: 0.9, z: 0.9 }
-#     min: { x: 0.4, y: 0.4, z: 0.4 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0, y: 0, z: 0, w: 1 }
+cylinder_21:
+  include: true
+  name_root: cylinder_21_fillet
+  suffix: normal
+  path: cylinder_21
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cylinder
+    r: 0.1
+    h: 0.1
+  scale:
+    num: 15
+    max: { x: 0.9, y: 0.9, z: 0.9 }
+    min: { x: 0.4, y: 0.4, z: 0.4 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# # ----- cuboid ----- #
+# ----- cuboid ----- #
 
-# cuboid_211:
-#   include: true
-#   name_root: cuboid_211_fillet
-#   suffix: normal
-#   path: cuboid_211
-#   spawn:
-#     rest: 0.05
-#     axis: x
-#   inertial:
-#     mass: 0.1
-#     type: cuboid
-#     x: 0.2
-#     y: 0.1
-#     z: 0.1
-#   scale:
-#     num: 9
-#     max: { x: 0.9, y: 0.9, z: 0.9 }
-#     min: { x: 0.6, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0, y: 0, z: 0, w: 1 }
+cuboid_211:
+  include: true
+  name_root: cuboid_211_fillet
+  suffix: normal
+  path: cuboid_211
+  spawn:
+    rest: 0.05
+    axis: x
+  inertial:
+    mass: 0.1
+    type: cuboid
+    x: 0.2
+    y: 0.1
+    z: 0.1
+  scale:
+    num: 9
+    max: { x: 0.9, y: 0.9, z: 0.9 }
+    min: { x: 0.6, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# cuboid_211_upright:
-#   include: true
-#   name_root: cuboid_211_fillet
-#   suffix: upright
-#   path: cuboid_211
-#   spawn:
-#     rest: 0.1
-#     axis: x
-#   inertial:
-#     mass: 0.1
-#     type: cuboid
-#     x: 0.2
-#     y: 0.1
-#     z: 0.1
-#   scale:
-#     num: 9
-#     max: { x: 0.7, y: 0.7, z: 0.7 }
-#     min: { x: 0.5, y: 0.5, z: 0.5 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0, y: 0.707, z: 0, w: 0.707 }
+cuboid_211_upright:
+  include: true
+  name_root: cuboid_211_fillet
+  suffix: upright
+  path: cuboid_211
+  spawn:
+    rest: 0.1
+    axis: x
+  inertial:
+    mass: 0.1
+    type: cuboid
+    x: 0.2
+    y: 0.1
+    z: 0.1
+  scale:
+    num: 9
+    max: { x: 0.7, y: 0.7, z: 0.7 }
+    min: { x: 0.5, y: 0.5, z: 0.5 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0, y: 0.707, z: 0, w: 0.707 }
 
-# cuboid_221:
-#   include: true
-#   name_root: cuboid_221_fillet
-#   suffix: normal
-#   path: cuboid_221
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cuboid
-#     x: 0.2
-#     y: 0.1
-#     z: 0.2
-#   scale:
-#     num: 9
-#     max: { x: 0.7, y: 0.7, z: 0.7 }
-#     min: { x: 0.4, y: 0.4, z: 0.4 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0.7071, y: 0, z: 0, w: 0.7071 }
+cuboid_221:
+  include: true
+  name_root: cuboid_221_fillet
+  suffix: normal
+  path: cuboid_221
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cuboid
+    x: 0.2
+    y: 0.1
+    z: 0.2
+  scale:
+    num: 9
+    max: { x: 0.7, y: 0.7, z: 0.7 }
+    min: { x: 0.4, y: 0.4, z: 0.4 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0.7071, y: 0, z: 0, w: 0.7071 }
 
-# cuboid_311:
-#   include: true
-#   name_root: cuboid_311_fillet
-#   suffix: normal
-#   path: cuboid_311
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cuboid
-#     x: 0.3
-#     y: 0.1
-#     z: 0.1
-#   scale:
-#     num: 9
-#     max: { x: 0.8, y: 0.8, z: 0.8 }
-#     min: { x: 0.6, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0, y: 0, z: 0, w: 1 }
+cuboid_311:
+  include: true
+  name_root: cuboid_311_fillet
+  suffix: normal
+  path: cuboid_311
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cuboid
+    x: 0.3
+    y: 0.1
+    z: 0.1
+  scale:
+    num: 9
+    max: { x: 0.8, y: 0.8, z: 0.8 }
+    min: { x: 0.6, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# cuboid_311_thinner:
-#   include: true
-#   name_root: cuboid_311_fillet
-#   suffix: thinner
-#   path: cuboid_311
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cuboid
-#     x: 0.3
-#     y: 0.1
-#     z: 0.1
-#   scale:
-#     num: 9
-#     max: { x: 1.2, y: 0.8, z: 0.8 }
-#     min: { x: 1.2, y: 0.6, z: 0.6 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0, y: 0, z: 0, w: 1 }
+cuboid_311_thinner:
+  include: true
+  name_root: cuboid_311_fillet
+  suffix: thinner
+  path: cuboid_311
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cuboid
+    x: 0.3
+    y: 0.1
+    z: 0.1
+  scale:
+    num: 9
+    max: { x: 1.2, y: 0.8, z: 0.8 }
+    min: { x: 1.2, y: 0.6, z: 0.6 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0, y: 0, z: 0, w: 1 }
 
-# cuboid_321:
-#   include: true
-#   name_root: cuboid_321_fillet
-#   suffix: normal
-#   path: cuboid_321
-#   spawn:
-#     rest: 0.05
-#     axis: y
-#   inertial:
-#     mass: 0.1
-#     type: cuboid
-#     x: 0.3
-#     y: 0.1
-#     z: 0.2
-#   scale:
-#     num: 9
-#     max: { x: 0.5, y: 0.5, z: 0.5 }
-#     min: { x: 0.4, y: 0.4, z: 0.4 }
-#   fillet:
-#     used: true
-#     step: 10
-#     max: 45
-#     min: 5
-#   quat: { x: 0.7071, y: 0, z: 0, w: 0.7071 }
+cuboid_321:
+  include: true
+  name_root: cuboid_321_fillet
+  suffix: normal
+  path: cuboid_321
+  spawn:
+    rest: 0.05
+    axis: y
+  inertial:
+    mass: 0.1
+    type: cuboid
+    x: 0.3
+    y: 0.1
+    z: 0.2
+  scale:
+    num: 9
+    max: { x: 0.5, y: 0.5, z: 0.5 }
+    min: { x: 0.4, y: 0.4, z: 0.4 }
+  fillet:
+    used: true
+    step: 10
+    max: 45
+    min: 5
+  quat: { x: 0.7071, y: 0, z: 0, w: 0.7071 }

@@ -71,18 +71,15 @@ preprocesses: source_ros
 # build the mujoco mjcf files (phony means it will always run)
 .PHONY: $(MJCFS)
 $(MJCFS): $(MJCFDIR)/%.xml : $(URDFDIR)/%.urdf
-	echo MJCF build $@
 	rm -f $@
 	./compile $< $@
 
 # build the urdfs (use regular xacro to play nice with roscore)
 $(URDFS): $(URDFDIR)/%.urdf : xacro/%.urdf.xacro
-	echo URDF build $@
 	xacro $< > $@
 
 # create the object xml includes (use xacro3 for increased speed)
 $(MJINC): %.xml : %.xacro $(MJDEP)
-	echo MJINC build $@
 	./xacro3 $< > $@
 
 # run a .sh to source ros and start roscore, it then calls 'make targets'
