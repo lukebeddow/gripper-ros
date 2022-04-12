@@ -1,0 +1,14 @@
+<launch>
+
+  <node name="gripper_real_node"
+        type="gripper_interface.py"
+        pkg="gripper_real_node"
+        output="screen"
+  />
+
+  <node name="rqt_gui"
+        type="rqt_gui"
+        pkg="rqt_gui"
+  />
+
+</launch>

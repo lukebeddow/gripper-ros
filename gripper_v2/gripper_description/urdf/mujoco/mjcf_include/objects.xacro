@@ -1,0 +1,12 @@
+<mujoco xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:include filename="create_objects.xacro"/>
+
+  <xacro:create_all type="object"/>
+
+  <!-- define the ground (it's important to do this after 'create_all') -->
+  <body name="ground" pos="0 0 0">
+    <geom name="ground_geom" type="plane" size="1 1 1"/>
+  </body>
+
+</mujoco>

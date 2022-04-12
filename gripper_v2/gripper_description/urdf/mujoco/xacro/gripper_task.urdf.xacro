@@ -11,10 +11,16 @@
 
   <!-- attach gripper to the ground for gazebo -->
 	<link name="world"/>
-	<joint name="world_to_base" type="fixed">
-		<origin xyz="0 0 0.325" rpy="${pi} 0 0"/>
+	<joint name="world_to_base" type="prismatic">
+		<origin xyz="0 0 0.335" rpy="${pi} 0 0"/> <!-- 0.325 is fingertips just not touching-->
+		<axis xyz="0 0 1" rpy="0 0 0"/>
 		<parent link="world"/>
 		<child link="gripper_base_link"/>
+		<limit effort="1e3" 
+        			 lower="-1"
+        			 upper="1"
+        			 velocity="1"/>
+    <dynamics damping="1"/>
 	</joint>
 		
 </robot>

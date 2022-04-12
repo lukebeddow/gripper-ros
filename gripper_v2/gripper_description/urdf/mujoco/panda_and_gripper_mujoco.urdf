@@ -10,33 +10,33 @@
   </mujoco>
   <!-- rest of file should be identical to panda_and_gripper.urdf.xacro -->
   <!-- <link name="world" />
-    <xacro:unless value="${not connected_to}">
+    <xacro:unless value="False">
       <joint name="virtual_joint" type="fixed">
-        <parent link="${connected_to}"/>
-        <child link="${arm_id}_link0"/>
-        <origin rpy="${rpy}" xyz="${xyz}"/>
+        <parent link="base_link"/>
+        <child link="panda_link0"/>
+        <origin rpy="0 0 0" xyz="0 0 0"/>
         <dynamics damping="1.0"/>
       </joint>
     </xacro:unless> -->
   <!-- PARAMETERS TO SET BY HAND -->
   <!-- END OF PARAMETERS TO SET BY HAND -->
   <!-- original working mesh links -->
-  <!--    <xacro:arm_link number="0" visual_mesh="package://${mesh_folder}/visual/link0.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link0.stl" mass="3.06"/>-->
-  <!--    <xacro:arm_link number="1" visual_mesh="package://${mesh_folder}/visual/link1.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link1.stl" mass="2.34"/>-->
-  <!--    <xacro:arm_link number="2" visual_mesh="package://${mesh_folder}/visual/link2.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link2.stl" mass="2.36"/>-->
-  <!--    <xacro:arm_link number="3" visual_mesh="package://${mesh_folder}/visual/link3.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link3.stl" mass="2.38"/>-->
-  <!--    <xacro:arm_link number="4" visual_mesh="package://${mesh_folder}/visual/link4.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link4.stl" mass="2.43"/>-->
-  <!--    <xacro:arm_link number="5" visual_mesh="package://${mesh_folder}/visual/link5.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link5.stl" mass="3.5"/>-->
-  <!--    <xacro:arm_link number="6" visual_mesh="package://${mesh_folder}/visual/link6.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link6.stl" mass="1.47"/>-->
-  <!--    <xacro:arm_link number="7" visual_mesh="package://${mesh_folder}/visual/link7.dae"-->
-  <!--      collision_mesh="package://${mesh_folder}/collision/link7.stl" mass="0.45"/>-->
+  <!--    <xacro:arm_link number="0" visual_mesh="package://gripper_description/meshes_panda/visual/link0.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link0.stl" mass="3.06"/>-->
+  <!--    <xacro:arm_link number="1" visual_mesh="package://gripper_description/meshes_panda/visual/link1.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link1.stl" mass="2.34"/>-->
+  <!--    <xacro:arm_link number="2" visual_mesh="package://gripper_description/meshes_panda/visual/link2.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link2.stl" mass="2.36"/>-->
+  <!--    <xacro:arm_link number="3" visual_mesh="package://gripper_description/meshes_panda/visual/link3.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link3.stl" mass="2.38"/>-->
+  <!--    <xacro:arm_link number="4" visual_mesh="package://gripper_description/meshes_panda/visual/link4.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link4.stl" mass="2.43"/>-->
+  <!--    <xacro:arm_link number="5" visual_mesh="package://gripper_description/meshes_panda/visual/link5.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link5.stl" mass="3.5"/>-->
+  <!--    <xacro:arm_link number="6" visual_mesh="package://gripper_description/meshes_panda/visual/link6.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link6.stl" mass="1.47"/>-->
+  <!--    <xacro:arm_link number="7" visual_mesh="package://gripper_description/meshes_panda/visual/link7.dae"-->
+  <!--      collision_mesh="package://gripper_description/meshes_panda/collision/link7.stl" mass="0.45"/>-->
   <!--     <xacro:arm_link number="8"/>-->
   <link name="panda_link0">
     <visual>
@@ -503,9 +503,9 @@
   <!-- PARAMETERS TO BE SET BY HAND -->
   <!-- END OF PARAMETERS TO BE SET BY HAND -->
   <!-- retrieve info about the gripper
-    <xacro:property name="filename" value="$(find gripper_description)/config/gripper.yaml"/>
-    <xacro:property name="dictionary" value="${xacro.load_yaml(filename)}"/>
-    <xacro:property name="is_segmented" value="${dictionary['gripper_config']['is_segmented']}"/>
+    <xacro:property name="filename" value="/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description/config/gripper.yaml"/>
+    <xacro:property name="dictionary" value="{'gripper_config': {'is_segmented': True, 'effort_control': False, 'previous_update': {'effort_control': False, 'old_is_segmented': True, 'old_num_segments': 10, 'torsion': False}, 'num_segments': 10, 'torsion': False}}"/>
+    <xacro:property name="is_segmented" value="True"/>
     -->
   <!-- PARAMETERS TO BE SET BY HAND -->
   <!-- END OF PARAMETER TO BE SET BY HAND -->
@@ -719,15 +719,13 @@
   </joint>
   <!-- PARAMETERS TO BE SET BY HAND -->
   <!-- END OF PARAMETERS TO BE SET BY HAND -->
-  <!-- <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
-    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/> -->
   <link name="finger_1_segment_link_1">
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -756,9 +754,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -813,9 +811,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -870,9 +868,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -927,9 +925,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -984,9 +982,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1041,9 +1039,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1098,9 +1096,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1155,9 +1153,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1212,9 +1210,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1270,9 +1268,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1305,15 +1303,13 @@
   </joint>
   <!-- PARAMETERS TO BE SET BY HAND -->
   <!-- END OF PARAMETERS TO BE SET BY HAND -->
-  <!-- <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
-    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/> -->
   <link name="finger_2_segment_link_1">
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1342,9 +1338,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1399,9 +1395,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1456,9 +1452,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1513,9 +1509,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1570,9 +1566,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1627,9 +1623,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1684,9 +1680,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1741,9 +1737,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1798,9 +1794,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1856,9 +1852,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1891,15 +1887,13 @@
   </joint>
   <!-- PARAMETERS TO BE SET BY HAND -->
   <!-- END OF PARAMETERS TO BE SET BY HAND -->
-  <!-- <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
-    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/> -->
   <link name="finger_3_segment_link_1">
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1928,9 +1922,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -1985,9 +1979,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2042,9 +2036,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2099,9 +2093,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2156,9 +2150,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2213,9 +2207,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2270,9 +2264,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2327,9 +2321,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2384,9 +2378,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>
@@ -2442,9 +2436,9 @@
     <inertial>
       <mass value="0.00633333333333"/>
       <inertia ixx="4.14205277778e-07" ixy="0.00" ixz="0.00" iyy="7.62538611111e-07" iyz="0.00" izz="1.17588888889e-06"/>
-      <!-- <inertia ixx="${1e-6 * stability_factor}"
-                 iyy="${1e-6 * stability_factor}"
-                 izz="${1e-6 * stability_factor}"
+      <!-- <inertia ixx="1e-06"
+                 iyy="1e-06"
+                 izz="1e-06"
                 ixy="0.00" iyz="0.00" ixz="0.00" /> -->
     </inertial>
     <visual>

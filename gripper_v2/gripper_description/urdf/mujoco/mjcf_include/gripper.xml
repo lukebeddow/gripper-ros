@@ -1,9 +1,0 @@
-<mjcf_include>
-  <compiler
-    meshir="./meshes_mujoco/"
-    balanceinertia="true"
-    discardvisual="false"
-  />
-
-  <size njmax="1400" nconmax="500"/>
-</mjcf_include>

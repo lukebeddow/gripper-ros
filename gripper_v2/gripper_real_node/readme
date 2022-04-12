@@ -1,0 +1,37 @@
+How to test the real gripper:
+
+Run:
+
+$ cd gripper_repo_ws
+$ source devel/setup.bash
+$ roslaunch gripper_real_node monitor.launch
+
+OR
+
+You need 4 terminal windows (sourced):
+
+1: $ roscore
+2: $ rosrun gripper_real_node gripper_interface.py
+3: $ rqt
+4: $ rostopic pub /gripper/demand gripper_virtual_node/gripper_state "header:
+        seq: 0
+        stamp: {secs: 0, nsecs: 0}
+        frame_id: ''
+      x: 0.1
+      y: 0.1
+      z: 0.1
+      th: 0.0" 
+
+1 is ros master.
+
+2 runs the gripper interface, this should initialise a bluetooth connection
+with the gripper and begin data transfer.
+
+3 is a data visualiser, you should be able to subscribe to the following:
+  - /gripper/real/gauge1
+  - /gripper/real/gauge2
+  - /gripper/real/gauge3
+These will plot the live strain gauge data.
+
+4 is how to send test commands to the gripper, by publishing on the gripper
+demand topic. Units in metres and radians.

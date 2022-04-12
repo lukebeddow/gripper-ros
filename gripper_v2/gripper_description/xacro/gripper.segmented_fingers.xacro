@@ -49,8 +49,6 @@
     <xacro:property name="segment_thickness" value="${finger_thickness_mm * 0.001}"/>
     <xacro:property name="hook_length" value="${hook_length_mm * 0.001}"/>
     <xacro:property name="hook_angle" value="${(hook_angle_d / 180.0) * 3.1415926535897}"/>
-    <!-- <xacro:property name="joint_friction" value="${total_friction / num_segments}"/>
-    <xacro:property name="joint_damping" value="${total_damping * num_segments}"/> -->
 
     <!-- find inertia of each segment -->
     <xacro:property name="finger_mass" value="${finger_mass_g * 0.001}"/>
