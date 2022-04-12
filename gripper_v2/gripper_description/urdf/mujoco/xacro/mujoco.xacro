@@ -4,7 +4,7 @@
 	<xacro:macro name="mujoco_settings">
 		<mujoco>
 			<compiler
-				meshdir="./meshes_mujoco/"
+				meshdir="../meshes_mujoco/"
 				balanceinertia="true"
 				discardvisual="false"
 			/>

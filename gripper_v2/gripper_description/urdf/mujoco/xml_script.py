@@ -1,23 +1,19 @@
 #!/usr/bin/env python
 
 import yaml
-import rospkg 
 from lxml import etree
 from math import floor, ceil
 from copy import deepcopy
 import numpy as np
 
-# open the gripper details yaml file to extract parameters
-
-# rospack = rospkg.RosPack()
-# description_path = rospack.get_path("gripper_description")
-
+# DEFINE THE LOCATION OF THE DIRECTORIES
 description_path = "/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description"
+directory_path = description_path + "/urdf/mujoco/mjcf_files/"
 
 with open(description_path + "/config/gripper.yaml") as file:
   gripper_details = yaml.safe_load(file)
 
-with open(description_path + "/urdf/mujoco/mjcf_include/define_objects.yaml") as file:
+with open(directory_path + "mjcf_include/define_objects.yaml") as file:
   object_details = yaml.safe_load(file)
 
 # ----- essential user defined parameters ----- #
@@ -495,7 +491,7 @@ if __name__ == "__main__":
   the new file should look identical to the old file except the changes
   """
 
-  directory_path = description_path + "/urdf/mujoco/"
+  # directory_path = description_path + "/urdf/mujoco/"
 
   # define the names of the xml files we will be editing
   gripper_filename = directory_path + "gripper_mujoco.xml"

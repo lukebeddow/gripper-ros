@@ -15,9 +15,10 @@
 # ----- user defined options ----- #
 
 # define directory structure
+MJCFDIR = mjcf_files
 URDFDIR = urdf
-TASKDIR = task
-MJINCDIR = mjcf_include
+TASKDIR = $(MJCFDIR)/task
+MJINCDIR = $(MJCFDIR)/mjcf_include
 ASSETDIR = $(MJINCDIR)/assets
 OBJDIR = $(MJINCDIR)/objects
 
@@ -30,8 +31,8 @@ MAKEFLAGS += -j8 # run on up to 8 parallel cpu cores
 
 # use the robot xacros to get the desired mjcf target names for robots
 XACROS := $(wildcard xacro/*.urdf.xacro)
-URDFS := $(patsubst xacro/%.urdf.xacro, %.urdf, $(XACROS))
-MJCFS := $(patsubst %.urdf, %.xml, $(URDFS))
+URDFS := $(patsubst xacro/%.urdf.xacro, $(URDFDIR)/%.urdf, $(XACROS))
+MJCFS := $(patsubst xacro/%.urdf.xacro, $(MJCFDIR)/%.xml, $(XACROS))
 
 # add the additional dependencies for the mjcf_include files
 MJDEP := $(patsubst %, $(MJINCDIR)/%, $(MJDEP))
@@ -69,16 +70,19 @@ preprocesses: source_ros
 
 # build the mujoco mjcf files (phony means it will always run)
 .PHONY: $(MJCFS)
-$(MJCFS): %.xml : %.urdf
+$(MJCFS): $(MJCFDIR)/%.xml : $(URDFDIR)/%.urdf
+	echo MJCF build $@
 	rm -f $@
 	./compile $< $@
 
 # build the urdfs (use regular xacro to play nice with roscore)
-$(URDFS): %.urdf : xacro/%.urdf.xacro
+$(URDFS): $(URDFDIR)/%.urdf : xacro/%.urdf.xacro
+	echo URDF build $@
 	xacro $< > $@
 
 # create the object xml includes (use xacro3 for increased speed)
 $(MJINC): %.xml : %.xacro $(MJDEP)
+	echo MJINC build $@
 	./xacro3 $< > $@
 
 # run a .sh to source ros and start roscore, it then calls 'make targets'
