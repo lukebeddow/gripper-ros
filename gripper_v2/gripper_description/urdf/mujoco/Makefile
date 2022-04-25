@@ -42,6 +42,10 @@ MJXACROS := $(wildcard $(MJINCDIR)/*.xacro)
 MJXACROS := $(filter-out $(MJDEP), $(MJXACROS))
 MJINC := $(patsubst %.xacro, %.xml, $(MJXACROS))
 
+# create the target directories if they don't exist
+DIRS := $(TASKDIR) $(ASSETDIR) $(OBJDIR)
+$(info $(shell mkdir -p $(DIRS)))
+
 # ----- start of make ----- #
 
 # first run preprocess to source ros, that automatically runs 'make targets'
