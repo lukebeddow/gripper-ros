@@ -8,7 +8,7 @@ import numpy as np
 
 # DEFINE THE LOCATION OF THE DIRECTORIES
 description_path = "/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description"
-directory_path = description_path + "/urdf/mujoco/mjcf_files/"
+directory_path = description_path + "/urdf/mujoco/mjcf/"
 
 with open(description_path + "/config/gripper.yaml") as file:
   gripper_details = yaml.safe_load(file)

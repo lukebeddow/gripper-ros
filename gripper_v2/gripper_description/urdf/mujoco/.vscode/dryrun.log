@@ -3,36 +3,48 @@ make: Entering directory '/home/luke/gripper_repo_ws/src/gripper_v2/gripper_desc
 ./source_ros.sh make targets
  
 make[1]: Entering directory '/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description/urdf/mujoco'
-xacro xacro/panda_and_gripper_mujoco.urdf.xacro > panda_and_gripper_mujoco.urdf
-rm -f panda_and_gripper_mujoco.xml
-./compile panda_and_gripper_mujoco.urdf panda_and_gripper_mujoco.xml
-xacro xacro/gripper_mujoco.urdf.xacro > gripper_mujoco.urdf
-rm -f gripper_mujoco.xml
-./compile gripper_mujoco.urdf gripper_mujoco.xml
-xacro xacro/panda_mujoco.urdf.xacro > panda_mujoco.urdf
-rm -f panda_mujoco.xml
-./compile panda_mujoco.urdf panda_mujoco.xml
-xacro xacro/gripper_task.urdf.xacro > gripper_task.urdf
-rm -f gripper_task.xml
-./compile gripper_task.urdf gripper_task.xml
-./xacro3 mjcf_include/assets.xacro > mjcf_include/assets.xml
-./xacro3 mjcf_include/objects.xacro > mjcf_include/objects.xml
-./xacro3 mjcf_include/details.xacro > mjcf_include/details.xml
+xacro xacro/panda_and_gripper_mujoco.urdf.xacro > urdf/panda_and_gripper_mujoco.urdf
+rm -f mjcf/panda_and_gripper_mujoco.xml
+cp urdf/panda_and_gripper_mujoco.urdf mjcf/panda_and_gripper_mujoco.urdf &&\
+cd mjcf &&\
+./compile panda_and_gripper_mujoco.urdf panda_and_gripper_mujoco.xml &&\
+  rm panda_and_gripper_mujoco.urdf
+xacro xacro/gripper_mujoco.urdf.xacro > urdf/gripper_mujoco.urdf
+rm -f mjcf/gripper_mujoco.xml
+cp urdf/gripper_mujoco.urdf mjcf/gripper_mujoco.urdf &&\
+cd mjcf &&\
+./compile gripper_mujoco.urdf gripper_mujoco.xml &&\
+  rm gripper_mujoco.urdf
+xacro xacro/panda_mujoco.urdf.xacro > urdf/panda_mujoco.urdf
+rm -f mjcf/panda_mujoco.xml
+cp urdf/panda_mujoco.urdf mjcf/panda_mujoco.urdf &&\
+cd mjcf &&\
+./compile panda_mujoco.urdf panda_mujoco.xml &&\
+  rm panda_mujoco.urdf
+xacro xacro/gripper_task.urdf.xacro > urdf/gripper_task.urdf
+rm -f mjcf/gripper_task.xml
+cp urdf/gripper_task.urdf mjcf/gripper_task.urdf &&\
+cd mjcf &&\
+./compile gripper_task.urdf gripper_task.xml &&\
+  rm gripper_task.urdf
+./xacro3 mjcf/mjcf_include/assets.xacro > mjcf/mjcf_include/assets.xml
+./xacro3 mjcf/mjcf_include/objects.xacro > mjcf/mjcf_include/objects.xml
+./xacro3 mjcf/mjcf_include/details.xacro > mjcf/mjcf_include/details.xml
 sleep 1
 pkill roscore
-rm -f task/*.xml
-rm -f mjcf_include/objects/*.xml
-rm -f mjcf_include/assets/*.xml
+rm -f mjcf/task/*.xml
+rm -f mjcf/mjcf_include/objects/*.xml
+rm -f mjcf/mjcf_include/assets/*.xml
 ./xml_script.py
 make[1]: Leaving directory '/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description/urdf/mujoco'
 echo ROS has now been sourced
  
-... logging to /home/luke/.ros/log/afebfb3a-ba71-11ec-beb0-ccd9ac443a1d/roslaunch-luke-linux-5347.log
+... logging to /home/luke/.ros/log/1f149f1a-c46f-11ec-ad88-ccd9ac443a1d/roslaunch-luke-linux-5119.log
 Checking log directory for disk usage. This may take a while.
 Press Ctrl-C to interrupt
 Done checking log file disk usage. Usage is <1GB.
 ]2;roscore
-[1mstarted roslaunch server http://luke-linux:33551/[0m
+[1mstarted roslaunch server http://luke-linux:36911/[0m
 ros_comm version 1.14.12
 
 
@@ -46,11 +58,11 @@ PARAMETERS
 NODES
 
 auto-starting new master
-[1mprocess[master]: started with pid [5405][0m
+[1mprocess[master]: started with pid [5309][0m
 [1mROS_MASTER_URI=http://luke-linux:11311/[0m
 ]2;roscore http://luke-linux:11311/
-[1msetting /run_id to afebfb3a-ba71-11ec-beb0-ccd9ac443a1d[0m
-[1mprocess[rosout-1]: started with pid [5460][0m
+[1msetting /run_id to 1f149f1a-c46f-11ec-ad88-ccd9ac443a1d[0m
+[1mprocess[rosout-1]: started with pid [5401][0m
 started core service [/rosout]
 [rosout-1] killing on exit
 [master] killing on exit

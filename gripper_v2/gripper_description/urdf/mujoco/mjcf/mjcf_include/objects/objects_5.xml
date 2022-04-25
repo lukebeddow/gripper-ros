@@ -1,0 +1,104 @@
+<mujoco><body name="sphere_normal_67" pos="0 0 0">
+    <inertial diaginertia="0.00010602239917963569 0.00010602239917963569 0.00010602239917963569" mass="0.10357109708935476" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_67"/>
+    <geom mesh="sphere_normal_67" name="sphere_normal_67_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_86" pos="0 0 0">
+    <inertial diaginertia="5.9048999999999976e-05 5.9048999999999976e-05 5.9048999999999976e-05" mass="0.07289999999999998" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_86"/>
+    <geom mesh="sphere_normal_86" name="sphere_normal_86_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_60" pos="0 0 0">
+    <inertial diaginertia="0.00012942570758815846 0.00012942570758815846 0.00012942570758815846" mass="0.11673802157541212" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_60"/>
+    <geom mesh="sphere_normal_60" name="sphere_normal_60_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_74" pos="0 0 0">
+    <inertial diaginertia="8.613409880361186e-05 8.613409880361186e-05 8.613409880361186e-05" mass="0.09143344188886623" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_74"/>
+    <geom mesh="sphere_normal_74" name="sphere_normal_74_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_8" pos="0 0 0">
+    <inertial diaginertia="0.00046324985554953746 0.00046324985554953746 0.00046324985554953746" mass="0.25089336454304895" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_8"/>
+    <geom mesh="sphere_normal_8" name="sphere_normal_8_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_69" pos="0 0 0">
+    <inertial diaginertia="9.999999999999995e-05 9.999999999999995e-05 9.999999999999995e-05" mass="0.09999999999999996" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_69"/>
+    <geom mesh="sphere_normal_69" name="sphere_normal_69_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_119" pos="0 0 0">
+    <inertial diaginertia="1.7525145137855428e-05 1.7525145137855428e-05 1.7525145137855428e-05" mass="0.03517199267250152" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_119"/>
+    <geom mesh="sphere_normal_119" name="sphere_normal_119_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_27" pos="0 0 0">
+    <inertial diaginertia="0.0003016023337786834 0.0003016023337786834 0.0003016023337786834" mass="0.19393706492977814" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_27"/>
+    <geom mesh="sphere_normal_27" name="sphere_normal_27_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_72" pos="0 0 0">
+    <inertial diaginertia="9.148244196915598e-05 9.148244196915598e-05 9.148244196915598e-05" mass="0.09479875839609195" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_72"/>
+    <geom mesh="sphere_normal_72" name="sphere_normal_72_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_6" pos="0 0 0">
+    <inertial diaginertia="0.000483654238696573 0.000483654238696573 0.000483654238696573" mass="0.2574666598819459" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_6"/>
+    <geom mesh="sphere_normal_6" name="sphere_normal_6_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_32" pos="0 0 0">
+    <inertial diaginertia="0.00026767457413457834 0.00026767457413457834 0.00026767457413457834" mass="0.18053618970079377" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_32"/>
+    <geom mesh="sphere_normal_32" name="sphere_normal_32_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_45" pos="0 0 0">
+    <inertial diaginertia="0.0001935370169136751 0.0001935370169136751 0.0001935370169136751" mass="0.14861355587217584" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_45"/>
+    <geom mesh="sphere_normal_45" name="sphere_normal_45_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_95" pos="0 0 0">
+    <inertial diaginertia="4.360816914942841e-05 4.360816914942841e-05 4.360816914942841e-05" mass="0.06077720333808262" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_95"/>
+    <geom mesh="sphere_normal_95" name="sphere_normal_95_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_90" pos="0 0 0">
+    <inertial diaginertia="5.1723360696887064e-05 5.1723360696887064e-05 5.1723360696887064e-05" mass="0.0673305312436393" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_90"/>
+    <geom mesh="sphere_normal_90" name="sphere_normal_90_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_111" pos="0 0 0">
+    <inertial diaginertia="2.419943583614405e-05 2.419943583614405e-05 2.419943583614405e-05" mass="0.04268577244046406" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_111"/>
+    <geom mesh="sphere_normal_111" name="sphere_normal_111_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_40" pos="0 0 0">
+    <inertial diaginertia="0.0002197965013371064 0.0002197965013371064 0.0002197965013371064" mass="0.1604029920618766" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_40"/>
+    <geom mesh="sphere_normal_40" name="sphere_normal_40_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_112" pos="0 0 0">
+    <inertial diaginertia="2.326880059541206e-05 2.326880059541206e-05 2.326880059541206e-05" mass="0.04169312029309992" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_112"/>
+    <geom mesh="sphere_normal_112" name="sphere_normal_112_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_66" pos="0 0 0">
+    <inertial diaginertia="0.00010914049238268358 0.00010914049238268358 0.00010914049238268358" mass="0.10538809281498064" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_66"/>
+    <geom mesh="sphere_normal_66" name="sphere_normal_66_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_43" pos="0 0 0">
+    <inertial diaginertia="0.00020372097681386223 0.00020372097681386223 0.00020372097681386223" mass="0.1532573987380419" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_43"/>
+    <geom mesh="sphere_normal_43" name="sphere_normal_43_geom" type="mesh"/>
+  </body>
+  <body name="sphere_normal_17" pos="0 0 0">
+    <inertial diaginertia="0.00037976965964318926 0.00037976965964318926 0.00037976965964318926" mass="0.2226958681050274" pos="0 0 0" quat="1 0 0 0"/>
+    <freejoint name="sphere_normal_17"/>
+    <geom mesh="sphere_normal_17" name="sphere_normal_17_geom" type="mesh"/>
+  </body>
+  <body name="ground" pos="0 0 0">
+    <geom name="ground_geom" size="1 1 1" type="plane"/>
+  </body>
+</mujoco>

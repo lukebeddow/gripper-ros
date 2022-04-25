@@ -15,7 +15,7 @@
 # ----- user defined options ----- #
 
 # define directory structure
-MJCFDIR = mjcf_files
+MJCFDIR = mjcf
 URDFDIR = urdf
 TASKDIR = $(MJCFDIR)/task
 MJINCDIR = $(MJCFDIR)/mjcf_include
@@ -72,7 +72,10 @@ preprocesses: source_ros
 .PHONY: $(MJCFS)
 $(MJCFS): $(MJCFDIR)/%.xml : $(URDFDIR)/%.urdf
 	rm -f $@
-	./compile $< $@
+	cp $< $(MJCFDIR)/$(notdir $<) &&\
+	cd $(MJCFDIR) &&\
+	./compile $(notdir $<) $(notdir $@) &&\
+  rm $(notdir $<)
 
 # build the urdfs (use regular xacro to play nice with roscore)
 $(URDFS): $(URDFDIR)/%.urdf : xacro/%.urdf.xacro
