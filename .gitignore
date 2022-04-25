@@ -1,5 +1,5 @@
 openai_ros/
 *.pyc
-/mjcf/task/
-/mjcf/mjcf_include/assets/
-/mjcf/mjcf_include/objects/
+mjcf/task
+mjcf/mjcf_include/assets
+mjcf/mjcf_include/objects
