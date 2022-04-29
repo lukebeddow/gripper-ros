@@ -27,7 +27,7 @@
 # ----- cube ----- #
 
 cube:
-  include: false
+  include: true
   name_root: cube_fillet
   suffix: normal
   path: cube
@@ -76,7 +76,7 @@ sphere:
 # ----- cylinder ----- #
 
 cylinder_11:
-  include: false
+  include: true
   name_root: cylinder_11_fillet
   suffix: normal
   path: cylinder_11
@@ -100,7 +100,7 @@ cylinder_11:
   quat: { x: 0, y: 0, z: 0, w: 1 }
 
 cylinder_12_sideways:
-  include: false
+  include: true
   name_root: cylinder_12_fillet
   suffix: sideways
   path: cylinder_12
@@ -124,7 +124,7 @@ cylinder_12_sideways:
   quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
 
 cylinder_12_upright:
-  include: false
+  include: true
   name_root: cylinder_12_fillet
   suffix: upright
   path: cylinder_12
@@ -148,7 +148,7 @@ cylinder_12_upright:
   quat: { x: 0.01, y: 0, z: 0, w: 0 } # get an inertia matrix error with all=0
 
 cylinder_13_sideways:
-  include: false
+  include: true
   name_root: cylinder_13_fillet
   suffix: sideways
   path: cylinder_13
@@ -172,7 +172,7 @@ cylinder_13_sideways:
   quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
 
 cylinder_14:
-  include: false
+  include: true
   name_root: cylinder_14_fillet
   suffix: normal
   path: cylinder_14
@@ -196,7 +196,7 @@ cylinder_14:
   quat: { x: 0.683, y: 0.183, z: 0.183, w: 0.683 } # rot(x,90) and rot(y,30)
 
 cylinder_21:
-  include: false
+  include: true
   name_root: cylinder_21_fillet
   suffix: normal
   path: cylinder_21
@@ -222,7 +222,7 @@ cylinder_21:
 # ----- cuboid ----- #
 
 cuboid_211:
-  include: false
+  include: true
   name_root: cuboid_211_fillet
   suffix: normal
   path: cuboid_211
@@ -247,7 +247,7 @@ cuboid_211:
   quat: { x: 0, y: 0, z: 0, w: 1 }
 
 cuboid_211_upright:
-  include: false
+  include: true
   name_root: cuboid_211_fillet
   suffix: upright
   path: cuboid_211
@@ -272,7 +272,7 @@ cuboid_211_upright:
   quat: { x: 0, y: 0.707, z: 0, w: 0.707 }
 
 cuboid_221:
-  include: false
+  include: true
   name_root: cuboid_221_fillet
   suffix: normal
   path: cuboid_221
@@ -297,7 +297,7 @@ cuboid_221:
   quat: { x: 0.7071, y: 0, z: 0, w: 0.7071 }
 
 cuboid_311:
-  include: false
+  include: true
   name_root: cuboid_311_fillet
   suffix: normal
   path: cuboid_311
@@ -322,7 +322,7 @@ cuboid_311:
   quat: { x: 0, y: 0, z: 0, w: 1 }
 
 cuboid_311_thinner:
-  include: false
+  include: true
   name_root: cuboid_311_fillet
   suffix: thinner
   path: cuboid_311
@@ -347,7 +347,7 @@ cuboid_311_thinner:
   quat: { x: 0, y: 0, z: 0, w: 1 }
 
 cuboid_321:
-  include: false
+  include: true
   name_root: cuboid_321_fillet
   suffix: normal
   path: cuboid_321

@@ -1,8 +1,10 @@
 make --dry-run --always-make --keep-going --print-directory
 make: Entering directory '/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description/urdf/mujoco'
+
 ./source_ros.sh make targets
  
 make[1]: Entering directory '/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description/urdf/mujoco'
+
 xacro xacro/panda_and_gripper_mujoco.urdf.xacro > urdf/panda_and_gripper_mujoco.urdf
 rm -f mjcf/panda_and_gripper_mujoco.xml
 cp urdf/panda_and_gripper_mujoco.urdf mjcf/panda_and_gripper_mujoco.urdf &&\
@@ -38,35 +40,4 @@ rm -f mjcf/mjcf_include/assets/*.xml
 ./xml_script.py
 make[1]: Leaving directory '/home/luke/gripper_repo_ws/src/gripper_v2/gripper_description/urdf/mujoco'
 echo ROS has now been sourced
- 
-... logging to /home/luke/.ros/log/1f149f1a-c46f-11ec-ad88-ccd9ac443a1d/roslaunch-luke-linux-5119.log
-Checking log directory for disk usage. This may take a while.
-Press Ctrl-C to interrupt
-Done checking log file disk usage. Usage is <1GB.
-]2;roscore
-[1mstarted roslaunch server http://luke-linux:36911/[0m
-ros_comm version 1.14.12
-
-
-SUMMARY
-========
-
-PARAMETERS
- * /rosdistro: melodic
- * /rosversion: 1.14.12
-
-NODES
-
-auto-starting new master
-[1mprocess[master]: started with pid [5309][0m
-[1mROS_MASTER_URI=http://luke-linux:11311/[0m
-]2;roscore http://luke-linux:11311/
-[1msetting /run_id to 1f149f1a-c46f-11ec-ad88-ccd9ac443a1d[0m
-[1mprocess[rosout-1]: started with pid [5401][0m
-started core service [/rosout]
-[rosout-1] killing on exit
-[master] killing on exit
-shutting down processing monitor...
-... shutting down processing monitor complete
-[1mdone[0m
  

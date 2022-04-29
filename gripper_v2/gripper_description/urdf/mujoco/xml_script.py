@@ -65,6 +65,8 @@ gripper_joints = [
   "palm_prismatic_joint"]
 base_joints = ["world_to_base"]
 
+# ----- end essential user defined parameters ----- #
+
 # get details about the objects from the yaml file
 obj_list = object_details.keys()
 detail_list = []
@@ -114,19 +116,12 @@ for nums in detail_list:
 # now reverse the list (mujoco seems to go backwards for the objects)
 z_rest.reverse()
 
-# #  TESTING INCLUDE DUMMY OBJECT
-# total_num += 1
-# z_rest.append(0.05)
-# print("add one dummy object")
-
 # now assign each object one freejoint
 num_object_freejoints = int(total_num)
 print("total number of object freejoints is", num_object_freejoints)
 
 # define object z height for spawning, we want objects to drop down and settle
 object_z_insert = 0.1
-
-# ----- end essential user defined parameters ----- #
 
 # auto generate joint names
 panda_joints = ["panda_joint{0}".format(i) for i in range(1,8)]
@@ -290,6 +285,22 @@ task_actuator = """
   </actuator>
 """.format(base_actuator_string, gripper_actuator_string, finger_actuator_string)
 
+force_sensor_site = """
+  <site name="force sensor site"
+        type="sphere"
+        rgba="0 0 0 0"
+        size="0.005 0.005 0.005"
+        pos="0 0 0"
+        quat="0 0 0 1"
+  />
+"""
+
+force_sensor = """
+  <sensor>
+    <force name="force sensor" noise="0" site="force sensor site"/>
+  </sensor>
+"""
+
 # ----- helper functions ----- #
 
 def modify_tag_text(tree, tagname, target_text):
@@ -368,6 +379,33 @@ def add_chunk(tree, parent_tag, xml_string_to_add):
 
   for t in tags:
     t.append(new_tree)
+  
+  return
+
+def add_chunk_with_specific_attribute(tree, parent_tag, attribute_name,
+  attribute_value, xml_string_to_add):
+  """
+  Add a chunk of xml text to a parent tag, but only if the parent tag
+  has a specific attribute with a specific value
+  """
+
+  # extract the xml text from
+  new_tree = etree.fromstring(xml_string_to_add)
+
+  # get the root of the parent tree
+  root = tree.getroot()
+
+  # special case where we are adding at the root
+  if parent_tag == "@root":
+    root.append(new_tree)
+    return
+
+  # search recursively for all instances of the parent tag
+  tags = root.findall(".//" + parent_tag)
+
+  for t in tags:
+    if t.attrib[attribute_name] == attribute_value:
+      t.append(new_tree)
   
   return
 
@@ -491,8 +529,6 @@ if __name__ == "__main__":
   the new file should look identical to the old file except the changes
   """
 
-  # directory_path = description_path + "/urdf/mujoco/"
-
   # define the names of the xml files we will be editing
   gripper_filename = directory_path + "gripper_mujoco.xml"
   panda_filename = directory_path + "panda_mujoco.xml"
@@ -522,6 +558,14 @@ if __name__ == "__main__":
   add_chunk(both_tree, "@root", panda_and_gripper_actuator)
   add_chunk(task_tree, "@root", task_actuator)
   add_chunk(taskN_tree, "@root", task_actuator)
+
+  # add force sensor to the gripper body
+  add_chunk_with_specific_attribute(task_tree, "body", "name",
+                                    "gripper_base_link", force_sensor_site)
+  add_chunk_with_specific_attribute(taskN_tree, "body", "name",
+                                    "gripper_base_link", force_sensor_site)
+  add_chunk(task_tree, "@root", force_sensor)
+  add_chunk(taskN_tree, "@root", force_sensor)
 
   # now add in finger joint stiffnesses
   tag_string = "finger_{0}_segment_joint_{1}"
