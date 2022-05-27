@@ -6,39 +6,62 @@ from math import sin
 from gripper_class import Gripper
 from gripper_virtual_node.msg import gripper_msg
 from gripper_virtual_node.msg import gripper_state
+
+from gripper_msgs.msg import demand
+from gripper_msgs.msg import status
+
+
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 
-def callback(data):
+def demand_callback(data):
   """callback function for when command is received for the gripper"""
 
-  # send in units of mm and radians
-  mygripper.command.radius = data.x * 1000.0
-  mygripper.command.angle = data.th * -1
-  mygripper.command.palm = data.z * 1000.0
+  use_units = None
 
-  mygripper.send_command()
+  # check for special message cases
+  if data.stop: command_type = "stop"
+  elif data.resume: command_type = "resume"
+  elif data.home: command_type = "home"
+  elif data.power_saving_off: command_type = "power_saving_off"
+  elif data.power_saving_on: command_type = "power_saving_on"
 
-  # global test
+  # otherwise we are sending a command
+  else: 
+    command_type = "command"
+    # check what units have been requested
+    if data.y_is_angle:
+      if data.use_deg:
+        if not data.use_mm:
+          rospy.logwarn("Gripper command cannot have units 'metres' and 'degrees'"
+            ", units have been overridden to 'millimeters' and 'degrees'")
+        use_units = "mm_deg"
+      else:
+        if data.use_mm:
+          rospy.logwarn("Gripper command cannot have units 'millimetres' and 'radians'"
+            ", units have been overridden to 'metres' and 'radians'")
+        use_units = "m_rad"
+    elif data.use_mm:
+      use_units = "mm"
+    else:
+      use_units = "m"
 
-  # if test % 4 == 0:
-  #   mygripper.send_message("power_saving_on")
-  #   print("power saving ON")
-  # elif test % 4 == 1:
-  #   mygripper.send_message("power_saving_off")
-  #   print("power saving OFF")
-  # elif test % 4 == 2:
-  #   mygripper.send_message("stop")
-  #   print("gripper stopped")
-  # elif test % 4 == 3:
-  #   mygripper.send_message("resume")
-  #   print("gripper resumed")
+  # input command data
+  mygripper.command.x = data.gripper.x
+  mygripper.command.y = data.gripper.y
+  mygripper.command.z = data.gripper.z
 
-  # test += 1
+  log_str = "Sending gripper command with units %s of (x, y, z): (%.2f, %.2f, %.2f)" % (
+    use_units, mygripper.command.x, mygripper.command.y, mygripper.command.z
+  )
 
-# test = 0
+  rospy.loginfo(log_str)
+
+  # send the command
+  mygripper.send_message(type=command_type, units=use_units)
 
 if __name__ == "__main__":
+
   try:
     # establish connection with the gripper
     com_port = "/dev/rfcomm0"
@@ -54,7 +77,7 @@ if __name__ == "__main__":
     gauge1_pub = rospy.Publisher("/gripper/real/gauge1", Float64, queue_size=10)
     gauge2_pub = rospy.Publisher("/gripper/real/gauge2", Float64, queue_size=10)
     gauge3_pub = rospy.Publisher("/gripper/real/gauge3", Float64, queue_size=10)
-    rospy.Subscriber("/gripper/demand", gripper_state, callback)
+    rospy.Subscriber("/gripper/demand", demand, demand_callback)
     rate = rospy.Rate(10)
 
     while not rospy.is_shutdown():

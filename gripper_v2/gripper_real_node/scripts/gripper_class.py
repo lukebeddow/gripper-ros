@@ -12,18 +12,24 @@ class Gripper:
 
     # define bytes for communication instructions
     # sendCommandByte = bytes([100]) python 3+
-    sendCommandByte = to_byte(100)
-    homeByte = to_byte(101)
-    powerSavingOnByte = to_byte(102)
-    powerSavingOffByte = to_byte(103)
-    stopByte = to_byte(104)
-    resumeByte = to_byte(105)
+    motorCommandByte_m = to_byte(100)
+    motorCommandByte_mm = to_byte(101)
+    jointCommandByte_m_rad = to_byte(102)
+    jointCommandByte_mm_deg = to_byte(103)
+
+    # special communications
+    homeByte = to_byte(110)
+    powerSavingOnByte = to_byte(111)
+    powerSavingOffByte = to_byte(112)
+    stopByte = to_byte(113)
+    resumeByte = to_byte(114)
     
     # define bytes for communication protocol
     messageReceivedByte = to_byte(200)
     messageFailedByte = to_byte(201)
     targetNotReachedByte = to_byte(202)
     targetReachedByte = to_byte(203)
+    invalidCommandByte = to_byte(204)
     
     specialByte = to_byte(253)
     startMarkerByte = to_byte(254)
@@ -39,18 +45,35 @@ class Gripper:
     gauge3_data = []
     
     #------------------------------------------------------------------------#
+
     class Command:
         '''This sub-class contains commands to be sent to the gripper'''
-        radius = 0.0        # in mm (from 50mm to 135mm)
-        angle = 0.0         # in deg (from -40deg to +40deg)
-        palm = 0.0          # in mm (from 0 to 160mm)
-        def __init__(self):
-            self.filler = "filled"
+
+        x = 0.0
+        y = 0.0
+        z = 0.0
+
+        def __init__(self, units="m"):
+            self.units=units
+            self.check_units()
+            
+        def check_units(self):
+            if self.units not in ["m", "mm", "m_rad", "mm_deg"]:
+                raise RuntimeError(
+                    "Gripper command units must be either:\n"
+                    "\tm -> x,y,z are motor positions in metres\n"
+                    "\tmm -> x,y,z are motor positions in millimetres\n"
+                    "\tm_rad -> x,z are motor positions in metres, y is finger angle in radians\n"
+                    "\tmm_deg -> x,z are motor positions in millimetres, y is finger angle in degrees\n"
+                )
         def listed(self):
-            return [self.radius, self.angle, self.palm]
+            return [self.x, self.y, self.z]
+
     #------------------------------------------------------------------------#
+
     class State:
       """Sub-class containing the last known state of the gripper"""
+
       is_target_reached = True
       gauge1_data = 0.0
       gauge2_data = 0.0
@@ -58,15 +81,19 @@ class Gripper:
       x_mm = -1.0
       y_mm = -1.0
       z_mm = -1.0
+
       def __init__(self):
         pass
+
     #------------------------------------------------------------------------#
+
     class GripperException(Exception):
       pass
+
     #------------------------------------------------------------------------#
             
     def __init__(self):
-      self.command = self.Command()
+      self.command = self.Command(units="m")
       self.state = self.State()
 
     def connect(self, com_port):
@@ -81,7 +108,7 @@ class Gripper:
     def get_state(self):
       return self.state
 
-    def send_message(self, type="command"):
+    def send_message(self, type="command", units=None):
         """This method publishes a method of the specified type"""
 
         byte_msg = bytearray()
@@ -90,9 +117,24 @@ class Gripper:
         for i in range(self.startEndSize):
             byte_msg += self.startMarkerByte
 
+        if units is not None: self.command.units = units
+
         # fill in the main message
         if type == "command":
-            byte_msg += bytearray(self.instructionByte)
+
+            self.command.check_units()
+
+            if self.command.units == "m":
+                byte_msg += bytearray(self.motorCommandByte_m)
+            elif self.command.units == "mm":
+                byte_msg += bytearray(self.motorCommandByte_mm)
+            elif self.command.units == "m_rad":
+                byte_msg += bytearray(self.jointCommandByte_m_rad)
+            elif self.command.units == "mm_deg":
+                byte_msg += bytearray(self.jointCommandByte_mm_deg)
+            else:
+                raise RuntimeError("invalid units for gripper command")   
+
             command_list = self.command.listed()
             for i in range(len(command_list)):
                 byte_msg += bytearray(struct.pack("f", command_list[i]))
@@ -113,7 +155,7 @@ class Gripper:
             byte_msg += bytearray(self.resumeByte)
 
         else:
-            print("incorrect type given to send_message")
+            print("incorrect type given to gripper_class send_message()")
             return
 
         # set the end markers
@@ -249,9 +291,9 @@ class Gripper:
                 return
 
             # check that output fits our requirements (getting errors of 3,8)
-            if len(output) != 25:
+            if len(output) != 26:
                 print("Wrong size! The length was", len(output), 
-                    "when it should have been 25")
+                    "when it should have been 26")
                 continue
 
             isTargetReached = output[0]

@@ -1,0 +1,9 @@
+bool y_is_angle
+bool use_mm
+bool use_deg
+bool stop
+bool resume
+bool home
+bool power_saving_off
+bool power_saving_on
+pose gripper

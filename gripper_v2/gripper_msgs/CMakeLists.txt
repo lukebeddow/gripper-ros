@@ -55,6 +55,7 @@ add_message_files(
 	status.msg
 	arm.msg
 	movement.msg
+  demand.msg
 )
 
 # Generate services in the 'srv' folder
@@ -111,7 +112,7 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES gripper_class
+  LIBRARIES gripper_class gripper_mj
 #  CATKIN_DEPENDS message_generation roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
@@ -131,6 +132,10 @@ include_directories(
 add_library(gripper_class
   src/gripper_class.cpp
 )
+add_library(gripper_mj
+  src/gripper.cpp
+)
+
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -154,6 +159,9 @@ add_library(gripper_class
 
 # Specify libraries to link a library or executable target against
 target_link_libraries(gripper_class
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(gripper_mj
   ${catkin_LIBRARIES}
 )
 

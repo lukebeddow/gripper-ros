@@ -1,3 +1,4 @@
 Header header
 bool is_target_reached
-pose pose
+pose motor
+float32 theta
