@@ -5,9 +5,6 @@
 #include <cstdio>
 #include <math.h>
 
-namespace luke
-{
-
 class Gripper
 {
   /* class representing the gripper state, all units SI unless stated */
@@ -77,6 +74,7 @@ public:
   double get_x_m() { return x; }
   double get_y_m() { return y; }
   double get_z_m() { return z; }
+  
   double get_x_mm() { return x * 1e3; }
   double get_y_mm() { return y * 1e3; }
   double get_z_mm() { return z * 1e3; }
@@ -131,7 +129,7 @@ public:
     return (update_z() ? in_lim : false);
   }
   bool set_xyz_m(double x_m, double y_m, double z_m) {
-    x = x_m; y = x_m; z = z_m; return update();
+    x = x_m; y = y_m; z = z_m; return update();
   }
   bool set_xyz_m_deg(double x_m, double th_deg, double z_m) {
     x = x_m; bool in_lim = set_th_deg(th_deg); z = z_m; 
@@ -178,11 +176,9 @@ public:
   bool is_at_step(int xstep, int ystep, int zstep, int tol);
 };
 
-inline std::ostream& operator<<(std::ostream& os, luke::Gripper& g) {
+inline std::ostream& operator<<(std::ostream& os, Gripper& g) {
   g.print();
   return os;
 }
-
-} // namespace luke
 
 #endif // GRIPPER_H_

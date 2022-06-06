@@ -5,6 +5,12 @@
         pkg="gripper_real_node"
         output="screen"
   />
+  
+  <node name="gripper_real_node_publisher"
+  			type="gripper_real_node_publisher"
+  			pkg="gripper_real_node"
+  			output="screen"
+  />
 
   <node name="rqt_gui"
         type="rqt_gui"

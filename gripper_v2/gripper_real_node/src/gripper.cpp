@@ -1,7 +1,4 @@
-#include "gripper.h"
-
-namespace luke
-{
+#include "gripper_real_node/gripper.h"
 
 bool Gripper::update_xy() 
 {
@@ -297,5 +294,3 @@ bool Gripper::is_at(Gripper target, int tol)
   
   return false;
 }
-
-} // namespace luke

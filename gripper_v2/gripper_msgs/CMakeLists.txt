@@ -56,6 +56,14 @@ add_message_files(
 	arm.msg
 	movement.msg
   demand.msg
+
+  MotorState.msg
+  MotorSteps.msg
+  SensorState.msg
+  GripperState.msg
+  GripperDemand.msg
+  GripperOutput.msg
+  GripperInput.msg
 )
 
 # Generate services in the 'srv' folder
@@ -112,8 +120,8 @@ generate_messages(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES gripper_class gripper_mj
-#  CATKIN_DEPENDS message_generation roscpp rospy std_msgs
+  LIBRARIES gripper_class
+  # CATKIN_DEPENDS message_generation roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
 
@@ -132,20 +140,26 @@ include_directories(
 add_library(gripper_class
   src/gripper_class.cpp
 )
-add_library(gripper_mj
-  src/gripper.cpp
+# add_library(gripper_mj
+#   src/gripper.cpp
+# )
+# add_library(gripper_publisher
+#   src/gripper_publisher.cpp
+# )
+
+
+# Add cmake target dependencies of the library
+# as an example, code may need to be generated before libraries
+# either from message generation or dynamic reconfigure
+add_dependencies(gripper_class 
+  ${${PROJECT_NAME}_EXPORTED_TARGETS} 
+  ${catkin_EXPORTED_TARGETS}
 )
 
-
-## Add cmake target dependencies of the library
-## as an example, code may need to be generated before libraries
-## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-## Declare a C++ executable
-## With catkin_make all packages are built within a single CMake context
-## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/gripper_msgs_node.cpp)
+# Declare a C++ executable
+# With catkin_make all packages are built within a single CMake context
+# The recommended prefix ensures that target names across packages don't collide
+# add_executable(${PROJECT_NAME}_node src/gripper_publisher_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -161,9 +175,17 @@ add_library(gripper_mj
 target_link_libraries(gripper_class
   ${catkin_LIBRARIES}
 )
-target_link_libraries(gripper_mj
-  ${catkin_LIBRARIES}
-)
+# target_link_libraries(gripper_mj
+#   ${catkin_LIBRARIES}
+# )
+# target_link_libraries(gripper_publisher
+#   ${catkin_LIBRARIES}
+#   gripper_mj
+# )
+# target_link_libraries(${PROJECT_NAME}_node
+#   ${catkin_LIBRARIES}
+#   gripper_publisher
+# )
 
 #############
 ## Install ##

@@ -1,0 +1,7 @@
+bool is_target_reached
+bool is_power_saving
+bool is_stopped
+float32 angle
+gripper_msgs/MotorState pose
+gripper_msgs/MotorSteps step
+gripper_msgs/SensorState sensor
