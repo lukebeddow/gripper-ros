@@ -26,6 +26,10 @@ class Gripper:
   powerSavingOffByte = to_byte(112)
   stopByte = to_byte(113)
   resumeByte = to_byte(114)
+  setSpeedByte = to_byte(115)
+  debugOnByte = to_byte(116)
+  debugOffByte = to_byte(117)
+  printByte = to_byte(118)
   
   # define bytes for communication protocol and error messages
   messageReceivedByte = to_byte(200)
@@ -138,7 +142,16 @@ class Gripper:
     self.state = self.State()
 
   def connect(self, com_port):
-      self.serial = serial.Serial(com_port, 115200)
+    tries = 0
+    while tries < 10:
+      try:
+        self.serial = serial.Serial(com_port, 115200)
+        return
+      except serial.serialutil.SerialException as e:
+        print("Serial connection failed:", e)
+        time.sleep(0.5)
+        tries += 1
+        print("Trying again...this is try number", tries)
       
   def debug_print(self,print_string):
       '''This method prints an output string if we are in debug mode'''
@@ -180,6 +193,14 @@ class Gripper:
           for i in range(len(command_list)):
               byte_msg += bytearray(struct.pack("f", command_list[i]))
 
+      elif type == "set_speed":
+
+          byte_msg += bytearray(self.setSpeedByte)
+
+          command_list = self.command.listed()
+          for i in range(len(command_list)):
+              byte_msg += bytearray(struct.pack("f", command_list[i]))
+
       elif type == "home":
           byte_msg += bytearray(self.homeByte)
 
@@ -194,6 +215,15 @@ class Gripper:
 
       elif type == "resume":
           byte_msg += bytearray(self.resumeByte)
+
+      elif type == "debug_on":
+          byte_msg += bytearray(self.debugOnByte)
+
+      elif type == "debug_off":
+          byte_msg += bytearray(self.debugOffByte)
+
+      elif type == "print":
+          byte_msg += bytearray(self.printByte)
 
       else:
           print("incorrect type given to gripper_class send_message()")

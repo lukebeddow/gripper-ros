@@ -12,6 +12,7 @@
 #include "gripper_msgs/GripperState.h"
 #include "gripper_msgs/GripperOutput.h"
 #include "gripper_msgs/GripperInput.h"
+#include "gripper_msgs/ControlRequest.h"
 
 // this package includes
 #include "gripper_real_node/gripper.h"
@@ -57,18 +58,24 @@ public:
   GripperPublisher(ros::NodeHandle nh);
   void demand_callback(const gripper_msgs::GripperDemand& msg);
   void state_callback(const gripper_msgs::GripperOutput& msg);
+  void publish_demand(std::vector<float> target_state);
 
   /* ----- class member variables ----- */
 
   // gripper state
   Gripper_ROS gripper_;
 
+  // state at last control interval
+  gripper_msgs::GripperState last_state;
+
   // ros functionality
   ros::NodeHandle nh_;
   ros::Publisher input_pub_;
   ros::Publisher state_pub_;
+  ros::Publisher demand_pub_;
   ros::Subscriber demand_sub_;
   ros::Subscriber output_sub_;
+  ros::ServiceClient dqn_srv_;
 
 };
 

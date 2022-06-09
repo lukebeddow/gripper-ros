@@ -14,6 +14,25 @@ def demand_callback(data):
   Receive a gripper ROS input demand and send it to the real gripper
   """
 
+  # MORE TESTING - override
+  if data.override != "":
+    log_str = "Overriding demand with %s and (x, y, z): (%.2f, %.2f, %.2f)" % (
+      data.override, data.x_m, data.y_m, data.z_m
+    )
+    rospy.loginfo(log_str)
+    mygripper.command.x = data.x_m
+    mygripper.command.y = data.y_m
+    mygripper.command.z = data.z_m
+    mygripper.send_message(type=data.override)
+
+    return
+
+  # # FOR TESTING - first set the speed
+  # mygripper.command.x = 10
+  # mygripper.command.y = 10
+  # mygripper.command.z = 10
+  # mygripper.send_message(type="set_speed")
+
   log_str = ("gripper input: home = %d, stop = %d, resume = %d, power_saving_on = %d, power_saving_off = %d, ignore_xyz_command = %d" % 
     (data.home, data.stop, data.resume, data.power_saving_on, data.power_saving_off, data.ignore_xyz_command))
 
@@ -59,6 +78,38 @@ def state_to_msg(state):
 
   return output_msg
 
+def normalise_between(value, min, max):
+  """
+  Normalises a value into [-1, 1]
+  """
+
+  if value < min: return -1.0
+  elif value > max: return 1.0
+  else:
+    return 2 * (value - min) / (max - min) - 1
+
+def scale_gauges(gauge1, gauge2, gauge3):
+  """
+  First attempt at scaling the gauges to [-1, 1] for nn input
+  """
+
+  """
+  This scaling is very rough to put the gauges into SI units. A large deformation
+  of the finger results in a value of -2.0 reading from the gauge. The wire stripper
+  weight resulted in a reading of about 1.2. These would be 200g and 120g. The maximum
+  the fingers could safely bend is likely about 300g, or +-3.0. Hence, we want to
+  normalise the reading from -3.0 to +3.0.
+  """
+  gauge1 = (gauge1 + 0.70e6) * 1.258e-6
+  gauge2 = (gauge2 - 0.60e6) * 1.258e-6
+  gauge3 = (gauge3 - 0.56e6) * 1.258e-6
+
+  gauge1 = normalise_between(gauge1, -1, 1)
+  gauge2 = normalise_between(gauge2, -1, 1)
+  gauge3 = normalise_between(gauge3, -1, 1)
+
+  return gauge1, gauge2, gauge3
+
 if __name__ == "__main__":
 
   try:
@@ -66,7 +117,9 @@ if __name__ == "__main__":
     # establish connection with the gripper
     com_port = "/dev/rfcomm0"
     mygripper = Gripper()
+
     mygripper.connect(com_port)
+    mygripper.send_message(type="resume")
 
     # now initilise ros
     rospy.init_node("gripper_real_publisher")
@@ -101,9 +154,16 @@ if __name__ == "__main__":
 
         # publish data
         state_pub.publish(output_msg)
-        gauge1_pub.publish(state.gauge1_data)
-        gauge2_pub.publish(state.gauge2_data)
-        gauge3_pub.publish(state.gauge3_data)
+
+        g1, g2, g3 = scale_gauges(state.gauge1_data, state.gauge2_data, state.gauge3_data)
+        
+        # gauge1_pub.publish((state.gauge1_data + 0.70e6) * 1.258e-6)
+        # gauge2_pub.publish((state.gauge2_data - 0.60e6) * 1.258e-6)
+        # gauge3_pub.publish((state.gauge3_data - 0.56e6) * 1.258e-6)
+
+        gauge1_pub.publish(g1)
+        gauge2_pub.publish(g2)
+        gauge3_pub.publish(g3)
 
       rate.sleep()
 

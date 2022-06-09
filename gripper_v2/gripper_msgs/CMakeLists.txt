@@ -56,7 +56,7 @@ add_message_files(
 	arm.msg
 	movement.msg
   demand.msg
-
+  
   MotorState.msg
   MotorSteps.msg
   SensorState.msg
@@ -72,6 +72,8 @@ add_service_files(
   move_gripper.srv
   set_joints.srv
   set_pose.srv
+
+  ControlRequest.srv
 )
 
 ## Generate actions in the 'action' folder

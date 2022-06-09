@@ -4,3 +4,4 @@ bool angle_demand
 bool use_mm
 bool use_deg
 bool home
+string override

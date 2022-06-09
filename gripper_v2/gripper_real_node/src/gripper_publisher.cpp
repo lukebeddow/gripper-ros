@@ -80,12 +80,43 @@ GripperPublisher::GripperPublisher(ros::NodeHandle nh)
   // set up publishers
   state_pub_ = nh_.advertise<gripper_msgs::GripperState>("gripper/real/state", 10);
   input_pub_ = nh_.advertise<gripper_msgs::GripperInput>("gripper/real/input", 10);
+  demand_pub_ = nh_.advertise<gripper_msgs::GripperDemand>("gripper/demand", 10);
 
+  // setup service
+  dqn_srv_ = nh_.serviceClient<gripper_msgs::ControlRequest>("/gripper/control/dqn");
+}
+
+void GripperPublisher::publish_demand(std::vector<float> target_state)
+{
+  /* publish a demand */
+
+  if (target_state.size() == 0) {
+    return;
+  }
+
+  float TEMPORARY_OFFSET = 5e-3;
+
+  ROS_INFO("Preparing to publish a demand");
+
+  gripper_msgs::GripperDemand demand;
+
+  demand.state.pose.x = target_state[0] - TEMPORARY_OFFSET;
+  demand.state.pose.y = target_state[1] - TEMPORARY_OFFSET;
+  demand.state.pose.z = target_state[2] - TEMPORARY_OFFSET;
+
+  ROS_INFO("Demand about to be published");
+
+  demand_pub_.publish(demand);
+
+  ROS_INFO_STREAM("Demand published of (x, y, z) mm = (" << target_state[0] * 1e3
+    << ", " << target_state[1] * 1e3 << ", " << target_state[2] * 1e3 << ")");
 }
 
 void GripperPublisher::demand_callback(const gripper_msgs::GripperDemand& msg)
 {
   /* get a user specified demand, check it, and publish it */
+
+  ROS_INFO("Received a demand");
 
   bool success = false;
   float x = msg.state.pose.x;
@@ -173,4 +204,35 @@ void GripperPublisher::state_callback(const gripper_msgs::GripperOutput& msg)
   gripper_msgs::GripperState new_state = gripper_.to_state_msg();
   state_pub_.publish(new_state);
 
+  // if the target has not been reached, do nothing
+  if (new_state.is_target_reached == false) return;
+
+  // otherwise, request a new control signal
+  gripper_msgs::ControlRequest srv_msg;
+
+  srv_msg.request.gripper_state.push_back(new_state.pose.x);
+  srv_msg.request.gripper_state.push_back(new_state.pose.y);
+  srv_msg.request.gripper_state.push_back(new_state.pose.z);
+
+  srv_msg.request.gauge1.push_back(last_state.sensor.gauge1);
+  srv_msg.request.gauge1.push_back(new_state.sensor.gauge1 - last_state.sensor.gauge1);
+  srv_msg.request.gauge1.push_back(new_state.sensor.gauge1);
+
+  srv_msg.request.gauge2.push_back(last_state.sensor.gauge2);
+  srv_msg.request.gauge2.push_back(new_state.sensor.gauge2 - last_state.sensor.gauge2);
+  srv_msg.request.gauge2.push_back(new_state.sensor.gauge2);
+
+  srv_msg.request.gauge3.push_back(last_state.sensor.gauge3);
+  srv_msg.request.gauge3.push_back(new_state.sensor.gauge3 - last_state.sensor.gauge3);
+  srv_msg.request.gauge3.push_back(new_state.sensor.gauge3);
+
+  bool success = dqn_srv_.call(srv_msg);
+
+  if (not success) return;
+
+  ROS_INFO("Control request finished");
+
+  last_state = new_state;
+
+  publish_demand(srv_msg.response.target_state);
 }

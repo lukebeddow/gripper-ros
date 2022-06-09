@@ -1,0 +1,11 @@
+<launch>
+
+	<node name="gripper_dqn_node"
+				type="dqn_node.py"
+				pkg="gripper_dqn"
+				output="screen"
+	/>
+	
+	<include file="$(find gripper_real_node)/launch/monitor.launch"/>
+	
+</launch>
