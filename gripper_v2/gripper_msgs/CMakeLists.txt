@@ -64,6 +64,8 @@ add_message_files(
   GripperDemand.msg
   GripperOutput.msg
   GripperInput.msg
+
+  SensorRaw.msg
 )
 
 # Generate services in the 'srv' folder

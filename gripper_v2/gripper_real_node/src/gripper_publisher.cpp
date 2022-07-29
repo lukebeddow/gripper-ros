@@ -1,4 +1,4 @@
-#include "gripper_real_node/gripper_publisher.h"
+#include "gripper_publisher.h"
 
 Gripper_ROS::Gripper_ROS()
 {
@@ -14,9 +14,9 @@ bool Gripper_ROS::from_output_msg(gripper_msgs::GripperOutput msg)
   float x = msg.motor_x_m;
   float y = msg.motor_y_m;
   float z = msg.motor_z_m;
-  long g1 = msg.gauge1;
-  long g2 = msg.gauge2;
-  long g3 = msg.gauge3;
+  gauge1 = msg.gauge1;
+  gauge2 = msg.gauge2;
+  gauge3 = msg.gauge3;
 
   // set the new state
   bool success = set_xyz_m(x, y, z);
@@ -30,11 +30,6 @@ bool Gripper_ROS::from_output_msg(gripper_msgs::GripperOutput msg)
     ROS_ERROR("Real gripper state received is outside safe limits in gripper.h");
   }
 
-  // do we scale the raw gauge data here?
-  gauge1 = g1;
-  gauge2 = g2;
-  gauge3 = g3;
-
   return success;
 }
 
@@ -45,22 +40,29 @@ gripper_msgs::GripperState Gripper_ROS::to_state_msg()
   gripper_msgs::GripperState state_msg;
 
   // fill with data
+  state_msg.units = "m_rad";
   state_msg.pose.x = get_x_m();
   state_msg.pose.y = get_y_m();
   state_msg.pose.z = get_z_m();
+  state_msg.angle = th;
 
   state_msg.step.x = step.x;
   state_msg.step.y = step.y;
   state_msg.step.z = step.z;
 
+  state_msg.speed.x = speed.x;
+  state_msg.speed.y = speed.y;
+  state_msg.speed.z = speed.z;
+
   state_msg.sensor.gauge1 = gauge1;
   state_msg.sensor.gauge2 = gauge2;
   state_msg.sensor.gauge3 = gauge3;
 
-  state_msg.angle = th;
   state_msg.is_target_reached = is_target_reached;
   state_msg.is_power_saving = is_power_saving;
   state_msg.is_stopped = is_stopped;
+
+  state_msg.timestamp = ros::Time::now().toSec();
 
   return state_msg;
 }
@@ -78,6 +80,7 @@ GripperPublisher::GripperPublisher(ros::NodeHandle nh)
     &GripperPublisher::state_callback, this);
 
   // set up publishers
+  sensor_pub_ = nh_.advertise<gripper_msgs::SensorState>("gripper/real/sensors", 10);
   state_pub_ = nh_.advertise<gripper_msgs::GripperState>("gripper/real/state", 10);
   input_pub_ = nh_.advertise<gripper_msgs::GripperInput>("gripper/real/input", 10);
   demand_pub_ = nh_.advertise<gripper_msgs::GripperDemand>("gripper/demand", 10);
@@ -94,21 +97,16 @@ void GripperPublisher::publish_demand(std::vector<float> target_state)
     return;
   }
 
-  float TEMPORARY_OFFSET = 5e-3;
-
-  ROS_INFO("Preparing to publish a demand");
-
   gripper_msgs::GripperDemand demand;
 
-  demand.state.pose.x = target_state[0] - TEMPORARY_OFFSET;
-  demand.state.pose.y = target_state[1] - TEMPORARY_OFFSET;
-  demand.state.pose.z = target_state[2] - TEMPORARY_OFFSET;
+  demand.state.pose.x = target_state[0];
+  demand.state.pose.y = target_state[1];
+  demand.state.pose.z = target_state[2];
 
-  ROS_INFO("Demand about to be published");
+  // demand_pub_.publish(demand); // this is very slow!
+  demand_callback(demand);
 
-  demand_pub_.publish(demand);
-
-  ROS_INFO_STREAM("Demand published of (x, y, z) mm = (" << target_state[0] * 1e3
+  ROS_INFO_STREAM("Demand published by gripper_publisher of (x, y, z) mm = (" << target_state[0] * 1e3
     << ", " << target_state[1] * 1e3 << ", " << target_state[2] * 1e3 << ")");
 }
 
@@ -116,7 +114,7 @@ void GripperPublisher::demand_callback(const gripper_msgs::GripperDemand& msg)
 {
   /* get a user specified demand, check it, and publish it */
 
-  ROS_INFO("Received a demand");
+  ROS_INFO("Received a demand in gripper_publisher");
 
   bool success = false;
   float x = msg.state.pose.x;
@@ -203,6 +201,10 @@ void GripperPublisher::state_callback(const gripper_msgs::GripperOutput& msg)
   // publish
   gripper_msgs::GripperState new_state = gripper_.to_state_msg();
   state_pub_.publish(new_state);
+  sensor_pub_.publish(new_state.sensor);
+
+  // TESTING: not using service method
+  return;
 
   // if the target has not been reached, do nothing
   if (new_state.is_target_reached == false) return;

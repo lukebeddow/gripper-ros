@@ -1,4 +1,7 @@
-#include "gripper_real_node/gripper.h"
+#include "gripper.h"
+
+namespace luke
+{
 
 bool Gripper::update_xy() 
 {
@@ -66,6 +69,18 @@ bool Gripper::update_xy()
 
   // update our saved record of the finger angle
   th = new_th;
+
+  // finally, check that the fingertips are not overlapping too much
+  double th_lim = calc_max_fingertip_angle();
+  if (th < th_lim) {
+    if (debug) {
+      std::cout << "Gripper received xy values that exceed fingertip radius limit = "
+        << fingertip_radius_min << ", angle capped at = " << th_lim << "\n";
+    }
+    y = calc_y(th_lim);
+    th = th_lim;
+    within_limits = false;
+  } 
 
   // update the motor step counts
   step.x = get_x_step();
@@ -140,33 +155,76 @@ void Gripper::print()
 
 }
 
-bool Gripper::step_to(double xstep, double ystep, double zstep)
+bool Gripper::step_to(double xstep, double ystep, double zstep, int num)
 {
-  /* steps each motor one step towards the desired step state. This function
-  should be called via an overload with more convenient units */
-
-  // std::cout << "(request, state) -> x: (" << xstep << ", " << step.x
-  //   << ") y: (" << ystep << ", " << step.y << ") z: (" << zstep
-  //   << ", " << step.z << ")\n";
+  /* steps each motor num steps towards the desired step state */
 
   bool finished = true;
 
-  if (xstep != step.x) {
-    (xstep > step.x) ? (step_x(1)) : (step_x(-1));
-    finished = false;
+  // calculate distance to target position
+  int x_to_go = xstep - step.x;
+  int y_to_go = ystep - step.y;
+  int z_to_go = zstep - step.z;
+
+  // how many steps will we go
+  if (x_to_go < 0) {
+    if (x_to_go * -1 > num) {
+      x_to_go = -1 * num;
+      finished = false;
+    }
+  }
+  else {
+    if (x_to_go > num) {
+      x_to_go = num;
+      finished = false;
+    }
   }
 
-  if (ystep != step.y) {
-    (ystep > step.y) ? (step_y(1)) : (step_y(-1));
-    finished = false;
+  if (y_to_go < 0) {
+    if (y_to_go * -1 > num) {
+      y_to_go = -1 * num;
+      finished = false;
+    }
+  }
+  else {
+    if (y_to_go > num) {
+      y_to_go = num;
+      finished = false;
+    }
   }
 
-  if (zstep != step.z) {
-    (zstep > step.z) ? (step_z(1)) : (step_z(-1));
-    finished = false;
+  if (z_to_go < 0) {
+    if (z_to_go * -1 > num) {
+      z_to_go = -1 * num;
+      finished = false;
+    }
   }
+  else {
+    if (z_to_go > num) {
+      z_to_go = num;
+      finished = false;
+    }
+  }
+  
+  // set the new position
+  set_xyz_step(step.x + x_to_go, step.y + y_to_go, step.z + z_to_go);
 
   return finished;
+}
+
+bool Gripper::step_to(Gripper target, int num)
+{
+  /* steps towards a given gripper state */
+
+  /* old code
+  for (int i = 0; i < num; i++) {
+    if (step_to(target.step.x, target.step.y, target.step.z)) {
+      return true;
+    }
+  }
+  */
+
+  return step_to(target.step.x, target.step.y, target.step.z, num);
 }
 
 bool Gripper::step_to_m_rad(double x, double th, double z)
@@ -188,19 +246,6 @@ bool Gripper::step_to_m_rad(double x, double th, double z, int num)
   temp.set_xyz_m_rad(x, th, z);
 
   return step_to(temp, num);
-}
-
-bool Gripper::step_to(Gripper target, int num)
-{
-  /* steps towards a given gripper state */
-
-  for (int i = 0; i < num; i++) {
-    if (step_to(target.step.x, target.step.y, target.step.z)) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 bool Gripper::is_at_xyz_m(double x, double y, double z)
@@ -294,3 +339,5 @@ bool Gripper::is_at(Gripper target, int tol)
   
   return false;
 }
+
+} // namespace luke

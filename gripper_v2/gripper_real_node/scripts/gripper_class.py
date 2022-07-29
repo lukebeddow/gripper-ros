@@ -43,7 +43,7 @@ class Gripper:
   startMarkerByte = to_byte(254)
   endMarkerByte = to_byte(255)
   
-  startEndSize = 2          # number of bytes for each of start/end markers
+  startEndSize = 3          # number of bytes for each of start/end markers
   
   debug = True                    # are we in debug mode
   connected = False
@@ -142,10 +142,13 @@ class Gripper:
     self.state = self.State()
 
   def connect(self, com_port):
+    self.baud_rate = 115200
     tries = 0
     while tries < 10:
       try:
-        self.serial = serial.Serial(com_port, 115200)
+        self.serial = serial.Serial(com_port, self.baud_rate)
+        self.com_port = com_port
+        print("Gripper is connected")
         return
       except serial.serialutil.SerialException as e:
         print("Serial connection failed:", e)
@@ -290,61 +293,73 @@ class Gripper:
               self.debug_print("Unknown error, response was: " + str(response))
           return False
       
-  def get_serial_message(self, timeout=3.0):
+  def get_serial_message(self, timeout=0.5):
       '''This method gets the next message in the serial buffer, and will wait
       until the timeout for it to arrive'''
+
+      try:
       
-      # are there no bytes in the buffer
-      if self.serial.in_waiting == 0:
-          return "empty buffer"
-      
-      t0 = time.clock()
-      t1 = time.clock()
-      
-      message_started = False
-      data_received = 0
-      signature_count = 0
-      
-      received_bytes = bytearray()
+        # are there no bytes in the buffer
+        if self.serial.in_waiting == 0:
+            return "empty buffer"
+        
+        t0 = time.clock()
+        t1 = time.clock()
+        
+        message_started = False
+        data_received = 0
+        signature_count = 0
+        
+        received_bytes = bytearray()
 
-      i = 0
+        i = 0
 
-      while timeout > t1 - t0:
+        while timeout > t1 - t0:
 
-          t1 = time.clock()
+            t1 = time.clock()
 
-          if self.serial.in_waiting > 0:
-              x = self.serial.read()
+            if self.serial.in_waiting > 0:
+                x = self.serial.read()
 
-              # are we in the middle of reading the message
-              if message_started:
-                  received_bytes += x
-                  data_received += 1
+                # are we in the middle of reading the message
+                if message_started:
+                    received_bytes += x
+                    data_received += 1
 
-              # the below logic checks for start and end signatures
-              if not message_started:
-                  if x == self.startMarkerByte:
-                      signature_count += 1
-                      if signature_count == self.startEndSize:
-                          message_started = True
-                          signature_count = 0
-                  else:
-                      signature_count = 0
-              # else the message has started
-              else:
-                  if x == self.endMarkerByte:
-                      signature_count += 1
-                      if signature_count == self.startEndSize:
-                          data_received -= self.startEndSize
-                          # remove the end marker from the message
-                          for i in range(self.startEndSize):
-                              received_bytes.pop()
-                          # print("Message received")
-                          return received_bytes
-                  else:
-                      signature_count = 0
-                  
-      return "timeout"
+                # the below logic checks for start and end signatures
+                if not message_started:
+                    if x == self.startMarkerByte:
+                        signature_count += 1
+                        if signature_count == self.startEndSize:
+                            message_started = True
+                            signature_count = 0
+                    else:
+                        signature_count = 0
+                # else the message has started
+                else:
+                    if x == self.endMarkerByte:
+                        signature_count += 1
+                        if signature_count == self.startEndSize:
+                            data_received -= self.startEndSize
+                            # remove the end marker from the message
+                            for i in range(self.startEndSize):
+                                received_bytes.pop()
+                            # print("Message received")
+                            return received_bytes
+                    else:
+                        signature_count = 0
+
+            #   else:
+            #       return "ran out of buffer"
+                    
+        return "timeout"
+
+      except IOError as e:
+        print("gripper.get_serial_message error:", e)
+        self.connect(self.com_port)
+
+        # recursive loop
+        return self.get_serial_message(timeout=timeout)
 
   def update_state(self):
       """This method updates the state of the gripper"""

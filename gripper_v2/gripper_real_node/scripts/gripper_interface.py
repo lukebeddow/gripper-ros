@@ -14,24 +14,18 @@ def demand_callback(data):
   Receive a gripper ROS input demand and send it to the real gripper
   """
 
-  # MORE TESTING - override
-  if data.override != "":
-    log_str = "Overriding demand with %s and (x, y, z): (%.2f, %.2f, %.2f)" % (
-      data.override, data.x_m, data.y_m, data.z_m
-    )
-    rospy.loginfo(log_str)
-    mygripper.command.x = data.x_m
-    mygripper.command.y = data.y_m
-    mygripper.command.z = data.z_m
-    mygripper.send_message(type=data.override)
+  # # MORE TESTING - override
+  # if data.override != "":
+  #   log_str = "Overriding demand with %s and (x, y, z): (%.2f, %.2f, %.2f)" % (
+  #     data.override, data.x_m, data.y_m, data.z_m
+  #   )
+  #   rospy.loginfo(log_str)
+  #   mygripper.command.x = data.x_m
+  #   mygripper.command.y = data.y_m
+  #   mygripper.command.z = data.z_m
+  #   mygripper.send_message(type=data.override)
 
-    return
-
-  # # FOR TESTING - first set the speed
-  # mygripper.command.x = 10
-  # mygripper.command.y = 10
-  # mygripper.command.z = 10
-  # mygripper.send_message(type="set_speed")
+  #   return
 
   log_str = ("gripper input: home = %d, stop = %d, resume = %d, power_saving_on = %d, power_saving_off = %d, ignore_xyz_command = %d" % 
     (data.home, data.stop, data.resume, data.power_saving_on, data.power_saving_off, data.ignore_xyz_command))
@@ -53,40 +47,13 @@ def demand_callback(data):
     mygripper.command.y = data.y_m
     mygripper.command.z = data.z_m
 
-    log_str = "Sending gripper command with units %s of (x, y, z): (%.2f, %.2f, %.2f)" % (
+    log_str = "Sending gripper command with units %s of (x, y, z): (%.4f, %.4f, %.4f)" % (
       use_units, mygripper.command.x, mygripper.command.y, mygripper.command.z
     )
 
     rospy.loginfo(log_str)
 
     mygripper.send_message(type="command", units=use_units)
-
-def state_to_msg(state):
-  """
-  Convert the gripper class state to a ROS GripperOutput message
-  """
-
-  output_msg = GripperOutput()
-
-  output_msg.is_target_reached = state.is_target_reached
-  output_msg.motor_x_m = state.x_mm * 1e-3
-  output_msg.motor_y_m = state.y_mm * 1e-3
-  output_msg.motor_z_m = state.z_mm * 1e-3
-  output_msg.gauge1 = state.gauge1_data
-  output_msg.gauge2 = state.gauge2_data
-  output_msg.gauge3 = state.gauge3_data
-
-  return output_msg
-
-def normalise_between(value, min, max):
-  """
-  Normalises a value into [-1, 1]
-  """
-
-  if value < min: return -1.0
-  elif value > max: return 1.0
-  else:
-    return 2 * (value - min) / (max - min) - 1
 
 def scale_gauges(gauge1, gauge2, gauge3):
   """
@@ -104,11 +71,44 @@ def scale_gauges(gauge1, gauge2, gauge3):
   gauge2 = (gauge2 - 0.60e6) * 1.258e-6
   gauge3 = (gauge3 - 0.56e6) * 1.258e-6
 
-  gauge1 = normalise_between(gauge1, -1, 1)
-  gauge2 = normalise_between(gauge2, -1, 1)
-  gauge3 = normalise_between(gauge3, -1, 1)
+  gauge1 = normalise_between(gauge1, -2, 2)
+  gauge2 = normalise_between(gauge2, -2, 2)
+  gauge3 = normalise_between(gauge3, -2, 2)
 
   return gauge1, gauge2, gauge3
+
+def state_to_msg(state):
+  """
+  Convert the gripper class state to a ROS GripperOutput message
+  """
+
+  output_msg = GripperOutput()
+
+  # g1, g2, g3 = scale_gauges(state.gauge1_data, state.gauge2_data, state.gauge3_data)
+  # output_msg.gauge1 = g1
+  # output_msg.gauge2 = g2
+  # output_msg.gauge3 = g3
+
+  output_msg.is_target_reached = state.is_target_reached
+  output_msg.motor_x_m = state.x_mm * 1e-3
+  output_msg.motor_y_m = state.y_mm * 1e-3
+  output_msg.motor_z_m = state.z_mm * 1e-3
+
+  output_msg.gauge1 = state.gauge1_data
+  output_msg.gauge2 = state.gauge2_data
+  output_msg.gauge3 = state.gauge3_data
+
+  return output_msg
+
+def normalise_between(value, min, max):
+  """
+  Normalises a value into [-1, 1]
+  """
+
+  if value < min: return -1.0
+  elif value > max: return 1.0
+  else:
+    return 2 * (value - min) / (max - min) - 1
 
 if __name__ == "__main__":
 
@@ -120,6 +120,18 @@ if __name__ == "__main__":
 
     mygripper.connect(com_port)
     mygripper.send_message(type="resume")
+
+    # set a lower speed
+    mygripper.command.x = 150
+    mygripper.command.y = 150
+    mygripper.command.z = 150
+    mygripper.send_message(type="set_speed")
+
+    # # TESTING - move closer
+    # mygripper.command.x = 0.1
+    # mygripper.command.y = 0.1
+    # mygripper.command.z = 0.01
+    # mygripper.send_message(type="command", units="m")
 
     # now initilise ros
     rospy.init_node("gripper_real_publisher")
@@ -155,15 +167,10 @@ if __name__ == "__main__":
         # publish data
         state_pub.publish(output_msg)
 
-        g1, g2, g3 = scale_gauges(state.gauge1_data, state.gauge2_data, state.gauge3_data)
-        
-        # gauge1_pub.publish((state.gauge1_data + 0.70e6) * 1.258e-6)
-        # gauge2_pub.publish((state.gauge2_data - 0.60e6) * 1.258e-6)
-        # gauge3_pub.publish((state.gauge3_data - 0.56e6) * 1.258e-6)
-
-        gauge1_pub.publish(g1)
-        gauge2_pub.publish(g2)
-        gauge3_pub.publish(g3)
+        # for visualisation ONLY
+        gauge1_pub.publish(output_msg.gauge1)
+        gauge2_pub.publish(output_msg.gauge2)
+        gauge3_pub.publish(output_msg.gauge3)
 
       rate.sleep()
 
