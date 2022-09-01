@@ -5,3 +5,4 @@ float32 motor_z_m
 float32 gauge1
 float32 gauge2
 float32 gauge3
+float32 gauge4

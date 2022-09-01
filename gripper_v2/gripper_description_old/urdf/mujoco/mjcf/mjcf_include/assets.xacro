@@ -1,7 +1,0 @@
-<mujoco xmlns:xacro="http://ros.org/wiki/xacro">
-
-  <xacro:include filename="create_objects.xacro"/>
-
-  <xacro:create_all type="mesh"/>
-
-</mujoco>

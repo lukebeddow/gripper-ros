@@ -21,7 +21,7 @@ public:
   constexpr static int sign = 1;
 
   // are we in debug mode
-  constexpr static bool debug = false;
+  constexpr static bool debug = true;
 
   // handy constants
   constexpr static double to_rad = M_PI / 180.0;
@@ -56,7 +56,7 @@ public:
   double th_max = 40 * to_rad;
   double xy_max_force = 20;
   double z_max_force = 10;
-  double fingertip_radius_min = -5e-3;
+  double fingertip_radius_min = -20e-3; // -5e-3 originally, now edited
 
   // auto generated constants
   constexpr static double hypotenuse = sqrt(pow(finger_length, 2) + pow(hook_length, 2));

@@ -9,6 +9,9 @@ from gripper_msgs.msg import GripperOutput
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 
+# for testing
+import numpy as np
+
 def demand_callback(data):
   """
   Receive a gripper ROS input demand and send it to the real gripper
@@ -27,10 +30,10 @@ def demand_callback(data):
 
   #   return
 
-  log_str = ("gripper input: home = %d, stop = %d, resume = %d, power_saving_on = %d, power_saving_off = %d, ignore_xyz_command = %d" % 
-    (data.home, data.stop, data.resume, data.power_saving_on, data.power_saving_off, data.ignore_xyz_command))
+  # log_str = ("gripper input: home = %d, stop = %d, resume = %d, power_saving_on = %d, power_saving_off = %d, ignore_xyz_command = %d" % 
+  #   (data.home, data.stop, data.resume, data.power_saving_on, data.power_saving_off, data.ignore_xyz_command))
 
-  rospy.loginfo(log_str)
+  # rospy.loginfo(log_str)
 
   # check demand information in order of importance
   if data.stop: mygripper.send_message(type="stop")
@@ -70,12 +73,14 @@ def scale_gauges(gauge1, gauge2, gauge3):
   gauge1 = (gauge1 + 0.70e6) * 1.258e-6
   gauge2 = (gauge2 - 0.60e6) * 1.258e-6
   gauge3 = (gauge3 - 0.56e6) * 1.258e-6
+  gauge4 = (gauge4 - 0) * 1.0
 
   gauge1 = normalise_between(gauge1, -2, 2)
   gauge2 = normalise_between(gauge2, -2, 2)
   gauge3 = normalise_between(gauge3, -2, 2)
+  gauge4 = normalise_between(gauge4, -1e6, 1e6)
 
-  return gauge1, gauge2, gauge3
+  return gauge1, gauge2, gauge3, gauge4
 
 def state_to_msg(state):
   """
@@ -97,6 +102,7 @@ def state_to_msg(state):
   output_msg.gauge1 = state.gauge1_data
   output_msg.gauge2 = state.gauge2_data
   output_msg.gauge3 = state.gauge3_data
+  output_msg.gauge4 = state.gauge4_data
 
   return output_msg
 
@@ -144,10 +150,23 @@ if __name__ == "__main__":
     gauge1_pub = rospy.Publisher("/gripper/real/gauge1", Float64, queue_size=10)
     gauge2_pub = rospy.Publisher("/gripper/real/gauge2", Float64, queue_size=10)
     gauge3_pub = rospy.Publisher("/gripper/real/gauge3", Float64, queue_size=10)
+    gauge4_pub = rospy.Publisher("/gripper/real/gauge4", Float64, queue_size=10)
 
     # create data transfer input/output
     rospy.Subscriber("/gripper/real/input", GripperInput, demand_callback)
     state_pub = rospy.Publisher("/gripper/real/output", GripperOutput, queue_size=10)
+
+    # for testing: publish rolling averages
+    gauge1avg_pub = rospy.Publisher("/gripper/real/gauge1avg", Float64, queue_size=10)
+    gauge2avg_pub = rospy.Publisher("/gripper/real/gauge2avg", Float64, queue_size=10)
+    gauge3avg_pub = rospy.Publisher("/gripper/real/gauge3avg", Float64, queue_size=10)
+    gauge4avg_pub = rospy.Publisher("/gripper/real/gauge4avg", Float64, queue_size=10)
+    i = 0
+    num_for_avg = 10
+    gauge1avg = np.zeros(num_for_avg)
+    gauge2avg = np.zeros(num_for_avg)
+    gauge3avg = np.zeros(num_for_avg)
+    gauge4avg = np.zeros(num_for_avg)
 
     rate = rospy.Rate(10)
 
@@ -168,9 +187,23 @@ if __name__ == "__main__":
         state_pub.publish(output_msg)
 
         # for visualisation ONLY
-        gauge1_pub.publish(output_msg.gauge1)
-        gauge2_pub.publish(output_msg.gauge2)
-        gauge3_pub.publish(output_msg.gauge3)
+        gauge1_pub.publish(state.gauge1_data)
+        gauge2_pub.publish(state.gauge2_data)
+        gauge3_pub.publish(state.gauge3_data)
+        gauge4_pub.publish(state.gauge4_data)
+
+        # get averages
+        gauge1avg[i] = state.gauge1_data
+        gauge2avg[i] = state.gauge2_data
+        gauge3avg[i] = state.gauge3_data
+        gauge4avg[i] = state.gauge4_data
+        i += 1
+        if i == num_for_avg:
+          gauge1avg_pub.publish(np.mean(gauge1avg))
+          gauge2avg_pub.publish(np.mean(gauge2avg))
+          gauge3avg_pub.publish(np.mean(gauge3avg))
+          gauge4avg_pub.publish(np.mean(gauge4avg))
+          i = 0
 
       rate.sleep()
 

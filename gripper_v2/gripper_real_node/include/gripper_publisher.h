@@ -41,13 +41,19 @@ public:
   constexpr static float g1_offset = 0.70e6;
   constexpr static float g2_offset = -0.60e6;
   constexpr static float g3_offset = 0.56e6;
+  constexpr static float g4_offset = 0;
 
   constexpr static float g1_scale = 1.258e-6;
   constexpr static float g2_scale = 1.258e-6;
   constexpr static float g3_scale = 1.258e-6;
+  constexpr static float g4_scale = 1.0;
 
   constexpr static float normalisation_value = 2;
 
+  constexpr static float g1_norm = 2;
+  constexpr static float g2_norm = 2;
+  constexpr static float g3_norm = 2;
+  constexpr static float g4_norm = 2;
 
   // // what we already have from gripper.h
   // double x, y, z;
@@ -58,6 +64,7 @@ public:
   long gauge1 = 0;
   long gauge2 = 0;
   long gauge3 = 0;
+  long gauge4 = 0;
 
   // is the gripper at the target
   bool is_target_reached = false;

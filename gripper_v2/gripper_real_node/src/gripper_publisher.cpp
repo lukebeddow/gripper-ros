@@ -17,6 +17,7 @@ bool Gripper_ROS::from_output_msg(gripper_msgs::GripperOutput msg)
   gauge1 = msg.gauge1;
   gauge2 = msg.gauge2;
   gauge3 = msg.gauge3;
+  gauge4 = msg.gauge4;
 
   // set the new state
   bool success = set_xyz_m(x, y, z);
@@ -57,6 +58,7 @@ gripper_msgs::GripperState Gripper_ROS::to_state_msg()
   state_msg.sensor.gauge1 = gauge1;
   state_msg.sensor.gauge2 = gauge2;
   state_msg.sensor.gauge3 = gauge3;
+  state_msg.sensor.gauge4 = gauge4;
 
   state_msg.is_target_reached = is_target_reached;
   state_msg.is_power_saving = is_power_saving;
