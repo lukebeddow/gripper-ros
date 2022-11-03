@@ -7,4 +7,5 @@ gripper_msgs/MotorState pose
 gripper_msgs/MotorState speed
 gripper_msgs/MotorSteps step
 gripper_msgs/SensorState sensor
+geometry_msgs/Wrench ftdata
 string units

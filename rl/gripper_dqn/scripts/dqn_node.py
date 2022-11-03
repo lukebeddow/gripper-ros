@@ -148,9 +148,9 @@ if __name__ == "__main__":
   # demand_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
   # load the file that is local
-  folderpath = "/home/luke/mymujoco/rl/models/dqn/best_august_trainings/"
-  foldername = "luke-PC_14:46_A2"
-  model.load(id=29, folderpath=folderpath, foldername=foldername)
+  folderpath = "/home/luke/mymujoco/rl/models/dqn/baselines-oct/"
+  foldername = "sensor_2_thickness_0.9"
+  model.load(id=None, folderpath=folderpath, foldername=foldername)
 
   model.env.mj.set.debug = True
 
@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
   while not rospy.is_shutdown():
 
-    perform_actions = True
+    perform_actions = False
 
     if perform_actions:
       if ready_for_new_action: #and not no_motion:
