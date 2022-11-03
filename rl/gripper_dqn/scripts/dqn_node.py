@@ -129,6 +129,11 @@ def move_panda_z_abs(target_z):
 
 if __name__ == "__main__":
 
+  # load the file that is local
+  folderpath = "/home/luke/mymujoco/rl/models/dqn/11-09-22/"
+  foldername = "luke-PC_17:53_A4"
+  model.load(id=None, folderpath=folderpath, foldername=foldername)
+
   # now initilise ros
   rospy.init_node("dqn_node")
   rospy.loginfo("dqn node main has now started")
@@ -147,18 +152,13 @@ if __name__ == "__main__":
   # rospy.Subscriber("/gripper/real/output", GripperOutput, state_callback)
   # demand_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
-  # load the file that is local
-  folderpath = "/home/luke/mymujoco/rl/models/dqn/best_august_trainings/"
-  foldername = "luke-PC_14:46_A2"
-  model.load(id=29, folderpath=folderpath, foldername=foldername)
+  perform_actions = True
 
   model.env.mj.set.debug = True
 
   rate = rospy.Rate(20)
 
   while not rospy.is_shutdown():
-
-    perform_actions = True
 
     if perform_actions:
       if ready_for_new_action: #and not no_motion:
