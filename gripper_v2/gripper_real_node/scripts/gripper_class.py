@@ -103,16 +103,17 @@ class Gripper:
     self.command = self.Command(units="m")
     self.state = self.State()
 
-  def connect(self, com_port):
+  def connect(self, com_port, baud_rate=115200):
     """
     Initiate a connection with the gripper over bluetooth
     """
-    self.baud_rate = 115200
+    self.baud_rate = baud_rate
     tries = 0
     while tries < 10:
       try:
         self.serial = serial.Serial(com_port, self.baud_rate)
         self.com_port = com_port
+        # time.sleep(0.5)
         print("Gripper is connected")
         return
       except serial.serialutil.SerialException as e:

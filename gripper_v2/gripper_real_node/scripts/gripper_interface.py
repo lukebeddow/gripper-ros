@@ -121,10 +121,12 @@ if __name__ == "__main__":
   try:
 
     # establish connection with the gripper
-    com_port = "/dev/rfcomm0"
+    bt_port = "/dev/rfcomm0"
+    usb_port = "/dev/ttyACM0"
+
     mygripper = Gripper()
 
-    mygripper.connect(com_port)
+    mygripper.connect(usb_port)
     mygripper.send_message(type="resume")
 
     # set a lower speed

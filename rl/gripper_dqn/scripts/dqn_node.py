@@ -154,6 +154,11 @@ if __name__ == "__main__":
 
   perform_actions = True
 
+  # load the file that is local
+  folderpath = "/home/luke/mymujoco/rl/models/dqn/baselines-oct/"
+  foldername = "sensor_2_thickness_0.9"
+  model.load(id=None, folderpath=folderpath, foldername=foldername)
+
   model.env.mj.set.debug = True
 
   rate = rospy.Rate(20)

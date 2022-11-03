@@ -12,6 +12,14 @@
   			output="screen"
   />
 
+	
+	<node name="ft_sensor_node"
+        type="ft_sensor_node"
+        pkg="ft_sensor"
+        output="screen"
+  />
+	
+	
   <node name="rqt_gui"
         type="rqt_gui"
         pkg="rqt_gui"

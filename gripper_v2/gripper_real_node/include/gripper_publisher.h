@@ -5,6 +5,7 @@
 // ros includes
 #include <ros/ros.h>
 #include <std_msgs/Float64.h>
+#include <geometry_msgs/Wrench.h>
 
 // gripper messages
 #include "gripper_msgs/pose.h"
@@ -66,6 +67,9 @@ public:
   long gauge3 = 0;
   long gauge4 = 0;
 
+  // uncalibrated force-torque sensor data
+  geometry_msgs::Wrench last_ft_data;
+
   // is the gripper at the target
   bool is_target_reached = false;
 
@@ -95,6 +99,7 @@ public:
   void demand_callback(const gripper_msgs::GripperDemand& msg);
   void state_callback(const gripper_msgs::GripperOutput& msg);
   void publish_demand(std::vector<float> target_state);
+  void ftsensor_callback(const geometry_msgs::Wrench& msg);
 
   /* ----- class member variables ----- */
 
@@ -112,6 +117,7 @@ public:
   ros::Publisher demand_pub_;
   ros::Subscriber demand_sub_;
   ros::Subscriber output_sub_;
+  ros::Subscriber force_torque_sub_;
   ros::ServiceClient dqn_srv_;
 
 };

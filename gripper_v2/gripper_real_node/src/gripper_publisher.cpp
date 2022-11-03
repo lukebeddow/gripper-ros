@@ -60,6 +60,10 @@ gripper_msgs::GripperState Gripper_ROS::to_state_msg()
   state_msg.sensor.gauge3 = gauge3;
   state_msg.sensor.gauge4 = gauge4;
 
+  state_msg.ftdata = last_ft_data;
+
+  // ROS_INFO_STREAM("last ft data z is " << state_msg.ftdata.force.z);
+
   state_msg.is_target_reached = is_target_reached;
   state_msg.is_power_saving = is_power_saving;
   state_msg.is_stopped = is_stopped;
@@ -80,6 +84,8 @@ GripperPublisher::GripperPublisher(ros::NodeHandle nh)
     &GripperPublisher::demand_callback, this);
   output_sub_ = nh_.subscribe("gripper/real/output", 10,
     &GripperPublisher::state_callback, this);
+  force_torque_sub_ = nh_.subscribe("gripper/real/ftsensor", 10,
+    &GripperPublisher::ftsensor_callback, this);
 
   // set up publishers
   sensor_pub_ = nh_.advertise<gripper_msgs::SensorState>("gripper/real/sensors", 10);
@@ -239,4 +245,17 @@ void GripperPublisher::state_callback(const gripper_msgs::GripperOutput& msg)
   last_state = new_state;
 
   publish_demand(srv_msg.response.target_state);
+}
+
+void GripperPublisher::ftsensor_callback(const geometry_msgs::Wrench& msg)
+{
+  /* receive data from force-torque sensor */
+
+  // copy data across
+  gripper_.last_ft_data.force.x = msg.force.x;
+  gripper_.last_ft_data.force.y = msg.force.y;
+  gripper_.last_ft_data.force.z = msg.force.z;
+  gripper_.last_ft_data.torque.x = msg.torque.x;
+  gripper_.last_ft_data.torque.y = msg.torque.y;
+  gripper_.last_ft_data.torque.z = msg.torque.z; 
 }
