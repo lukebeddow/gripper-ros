@@ -121,7 +121,10 @@ static void wait_for_other_connection(){
 	tim.tv_nsec = 0L;
 
 	while(1){
+
+    // could this cause problems? replace with ros sleep
 		nanosleep(&tim, (struct timespec *)NULL);
+
 		ret = rq_sensor_state();
 		if(ret == 0){
 			break;
@@ -212,9 +215,11 @@ int main(int argc, char **argv) {
  		*}
  		*/
 
+    // ROS_INFO("LOOP");
+
  		ret = rq_sensor_state();
  		if(ret == -1){
-      ROS_INFO("Waiting for other connection");
+      // ROS_INFO("Waiting for other connection");
  			wait_for_other_connection();
  		}
  		if(rq_sensor_get_current_state() == RQ_STATE_RUN){
@@ -228,8 +233,8 @@ int main(int argc, char **argv) {
       fill_wrench_message(wrench_msg);
       pub.publish(wrench_msg);
 
-      // for testing
-      ROS_INFO_STREAM("ftsensor z = " << wrench_msg.force.z);
+      // // for testing
+      // ROS_INFO_STREAM("ftsensor z = " << wrench_msg.force.z);
 
       rate.sleep();
  		}

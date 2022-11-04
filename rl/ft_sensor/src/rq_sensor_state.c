@@ -40,6 +40,15 @@
  *  \maintener Nicolas Lauzier <nicolas@robotiq.com>
  */
 
+/* added by Luke, a toggle switch to hack the driver to work. This means that when
+a good connection is established, the stream never resets, in other words it ignores
+all signals that the stream has gone bad. If the stream actually stays good, it means
+that when the sensor moves, the new values will update correclty. However, when the
+sensor is still, new values are lost and we keep receiving the old value. This means
+the sensor uncertainty is around +-0.5N. This also means that if the sensor is
+disconnected, the code will never notice and keep spamming the last known value. */
+#define LUKE_HACK_SENSOR 1
+
 //////////
 //Includes
 #include <string.h>
@@ -162,6 +171,13 @@ static void rq_state_run()
 		stop_connection();
 #endif
 		current_state = RQ_STATE_INIT;
+
+// added by luke
+#if LUKE_HACK_SENSOR
+    // ignore invalid signals, override with run signal
+    current_state = RQ_STATE_RUN;
+#endif
+
 	}
 }
 

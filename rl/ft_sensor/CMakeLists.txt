@@ -114,10 +114,10 @@ catkin_package(
 ###########
 
 # DOESNT WORK: need to run 'make linux' manually
-# add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/Linux/bin/libRQSensorLinux.a
-#     COMMAND make linux
-#     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-# )
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/Linux/bin/libRQSensorLinux.a
+    COMMAND make linux
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 find_library(LIB_TO_INCLUDE RQSensorLinux 
   ${CMAKE_CURRENT_SOURCE_DIR}/Linux/bin/)

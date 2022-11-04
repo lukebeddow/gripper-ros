@@ -1,16 +1,29 @@
 <launch>
 
+  <arg name="move_all" default="false"/>
+  <arg name="move_gripper" default="false"/>
+  <arg name="move_panda" default="false"/>
+
+  <group if="$(arg move_all)">
+    <param name="/gripper/dqn/move_gripper" value="true"/>
+    <param name="/gripper/dqn/move_panda" value="true"/>
+  </group>
+  <group unless="$(arg move_all)">
+    <param name="/gripper/dqn/move_gripper" value="$(arg move_gripper)"/>
+    <param name="/gripper/dqn/move_panda" value="$(arg move_panda)"/>
+  </group>
+
 	<node name="gripper_dqn_node"
 				type="dqn_node.py"
 				pkg="gripper_dqn"
 				output="screen"
 	/>
 
-  <node name="ft_sensor_node"
+  <!-- <node name="ft_sensor_node"
         type="ft_sensor_node"
         pkg="ft_sensor"
         output="screen"
-  />
+  /> -->
 	
 	<include file="$(find gripper_real_node)/launch/monitor.launch"/>
 	

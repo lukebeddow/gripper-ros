@@ -29,11 +29,6 @@ Windows/$(OBJ)libRQSensorWin.a: $(OBJ)rq_sensor_com.o $(OBJ)rq_sensor_state.o
 # Rules to compile under linux
 linux: Linux/$(BIN)driverSensor
 
-# added by luke
-.phony: driver_lib
-driver_lib: Linux/$(BIN)libRQSensorLinux.a
-# end added by luke
-
 Linux/$(BIN)driverSensor: Linux/$(BIN)libRQSensorLinux.a
 	gcc -c Linux/$(SRC)main.c -o Linux/$(OBJ)main.o
 	gcc Linux/$(OBJ)main.o $< -L./Linux/bin/ -lRQSensorLinux -o $@
