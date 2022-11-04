@@ -21,7 +21,7 @@ public:
   constexpr static int sign = 1;
 
   // are we in debug mode
-  constexpr static bool debug = true;
+  constexpr static bool debug = false;
 
   // handy constants
   constexpr static double to_rad = M_PI / 180.0;
@@ -56,7 +56,7 @@ public:
   double th_max = 40 * to_rad;
   double xy_max_force = 20;
   double z_max_force = 10;
-  double fingertip_radius_min = -20e-3; // -5e-3 originally, now edited
+  double fingertip_radius_min = -20e-3;
 
   // auto generated constants
   constexpr static double hypotenuse = sqrt(pow(finger_length, 2) + pow(hook_length, 2));
@@ -82,7 +82,7 @@ public:
 
   // convert y position to and from angle, take note of chosen sign convention
   double calc_y(double th_rad) { return x + sign * leadscrew_dist * sin(th_rad); }
-  double calc_th(double x, double y) { return atan((y - x) / leadscrew_dist) * sign; }
+  double calc_th(double x, double y) { return asin((y - x) / leadscrew_dist) * sign; }
 
   // checking fingertip radius
   double calc_fingertip_radius() { 

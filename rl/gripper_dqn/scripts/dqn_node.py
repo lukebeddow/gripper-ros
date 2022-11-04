@@ -144,6 +144,11 @@ def move_panda_z_abs(franka, target_z):
 
 if __name__ == "__main__":
 
+  # load the file that is local
+  folderpath = "/home/luke/mymujoco/rl/models/dqn/11-09-22/"
+  foldername = "luke-PC_17:53_A4"
+  model.load(id=None, folderpath=folderpath, foldername=foldername)
+
   # now initilise ros
   rospy.init_node("dqn_node")
   rospy.loginfo("dqn node main has now started")

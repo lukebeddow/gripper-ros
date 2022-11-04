@@ -72,7 +72,7 @@ bool Gripper::update_xy()
 
   // finally, check that the fingertips are not overlapping too much
   double th_lim = calc_max_fingertip_angle();
-  if (th < th_lim) {
+  if (th < th_lim) { // less than as th_lim is always negative
     if (debug) {
       std::cout << "Gripper received xy values that exceed fingertip radius limit = "
         << fingertip_radius_min << ", angle capped at = " << th_lim << "\n";
