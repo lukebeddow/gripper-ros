@@ -1,0 +1,5 @@
+bool move_panda
+bool move_gripper
+float32 action_delay
+int32 log_level
+---

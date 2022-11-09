@@ -1,0 +1,6 @@
+string folderpath
+string group_name
+string run_name
+int32 run_id
+---
+bool success

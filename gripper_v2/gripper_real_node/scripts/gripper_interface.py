@@ -35,12 +35,17 @@ def demand_callback(data):
 
   # rospy.loginfo(log_str)
 
-  # check demand information in order of importance
-  if data.stop: mygripper.send_message(type="stop")
+  # check for commands that override and cause ignoring of others
+  if data.stop: 
+    mygripper.send_message(type="stop")
+    return
+  if data.home: 
+    mygripper.send_message(type="home")
+    return
+
   if data.resume: mygripper.send_message(type="resume")
   if data.power_saving_on: mygripper.send_message(type="power_saving_on")
   if data.power_saving_off: mygripper.send_message(type="power_saving_off")
-  if data.home: mygripper.send_message(type="home")
 
   if not data.ignore_xyz_command:
 

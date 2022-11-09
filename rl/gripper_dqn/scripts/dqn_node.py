@@ -5,30 +5,30 @@ import sys
 import numpy as np
 
 from std_srvs.srv import Empty
-
-from gripper_msgs.msg import GripperInput, GripperState, GripperDemand
+from gripper_msgs.msg import GripperState, GripperDemand
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
-from gripper_dqn.srv import LoadModel
+from gripper_dqn.srv import LoadModel, ApplySettings
 
-# insert the mymujoco path
+# insert the mymujoco path for TrainDQN file
 sys.path.insert(0, "/home/luke/mymujoco/rl")
 
 # create model instance
 from TrainDQN import TrainDQN
 device = "cuda" #none
-model = TrainDQN(use_wandb=False, no_plot=True, log_level=1, device=device)
+dqn_log_level = 1
+model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
 
-# user settings
+# user settings defaults for this node
 log_level = 2
 action_delay = 1.0
+move_gripper = False
+move_panda = False
 
-# global variables
+# global flags
 new_demand = False
 model_loaded = False
 ready_for_new_action = False
 continue_grasping = True
-
-demand = GripperInput()
 
 # these will be ROS publishers once the node starts up
 norm_state_pub = None
@@ -245,8 +245,10 @@ def cancel_grasping_callback(request=None):
 
 def reset_all(request=None):
   """
-  Reset the gripper
+  Reset the gripper and panda
   """
+
+  global panda_z_height
 
   # reset and prepare environment
   model.env.reset()
@@ -254,6 +256,10 @@ def reset_all(request=None):
   # create a homing request for the gripper
   homing_demand = GripperDemand()
   homing_demand.home = True
+
+  # HERE WE SHOULD RESET PANDA POSITION BUT THIS IS NOT YET DONE
+  rospy.logwarn("panda position should be reset but is NOT currently, panda_z_height set to 0")
+  panda_z_height = 0.0
 
   if log_level > 0: rospy.loginfo("dqn node is publishing a homing gripper demand")
   demand_pub.publish(homing_demand)
@@ -304,7 +310,7 @@ def load_model(request):
 
   try:
 
-    if log_level > 0: rospy.loginfo("Preparing to load model now in dqn node")
+    if log_level > 0: rospy.loginfo(f"Preparing to load model now in dqn node: {pathtofolder}/{foldername}")
     model.load(id=request.run_id, folderpath=pathtofolder, foldername=foldername)
     model_loaded = True
     if log_level > 0: rospy.loginfo("Model loaded successfully")
@@ -318,13 +324,37 @@ def load_model(request):
 
     return False
 
+def apply_settings(request):
+  """
+  Override existing settings with that from request - beware that all settings are
+  overwritten, so if you ignore a setting in the service request it will now be
+  set to the default value from initilisation (so False or 0)
+  """
+
+  global log_level
+  global action_delay
+  global move_gripper
+  global move_panda
+  global franka_instance
+
+  log_level = request.log_level
+  action_delay = request.action_delay
+  move_gripper = request.move_gripper
+  move_panda = request.move_panda
+
+  # if starting or ending a panda connection
+  if move_panda: connect_panda()
+  else: franka_instance = None
+
+  return []
+
 if __name__ == "__main__":
 
   # initilise ros
   rospy.init_node("dqn_node")
   rospy.loginfo("dqn node main has now started")
 
-  # get parameters - are we allowing robot movement?
+  # get input parameters - are we allowing robot movement?
   move_gripper = rospy.get_param("/gripper/dqn/move_gripper")
   move_panda = rospy.get_param("/gripper/dqn/move_panda")
   rospy.loginfo(f"move gripper is {move_gripper}")
@@ -332,19 +362,6 @@ if __name__ == "__main__":
 
   # do we need to import the franka control library
   if move_panda: connect_panda()
-    
-    # try:
-    #   if log_level > 0: rospy.loginfo("Trying to begin panda connection")
-    #   sys.path.insert(0, "/home/luke/franka_interface/build")
-    #   import pyfranka_interface
-
-    #   # create franka controller instance
-    #   franka_instance = pyfranka_interface.Robot_("172.16.0.2", False, False)
-    #   if log_level > 0: rospy.loginfo("Panda connection started successfully")
-    # except Exception as e:
-    #   rospy.logerr(e)
-    #   rospy.logerr("Failed to start panda conenction")
-    #   move_panda = False
     
   # subscriber for gripper data and publisher to send gripper commands
   rospy.Subscriber("/gripper/real/state", GripperState, data_callback)
@@ -356,88 +373,23 @@ if __name__ == "__main__":
 
   # define the model to load and then try to load it
   load = LoadModel()
-  load.folderpath = "/home/luke/mymujoco/rl/dqn/"
+  load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
   load.group_name = "07-11-22"
   load.run_name = "luke-PC_17:39_A8"
   load.run_id = None
   load_model(load)
 
-  # # load the trained model file
-  # try:
-  #   if log_level > 0: rospy.loginfo("Preparing to load model now in dqn node")
-  #   # folderpath = "/home/luke/mymujoco/rl/models/dqn/baselines-oct/"
-  #   # foldername = "sensor_2_thickness_0.9"
-  #   folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-  #   groupname = "07-11-22/"
-  #   foldername = "luke-PC_17:39_A8"
-  #   model.load(id=None, folderpath=folderpath + groupname, foldername=foldername)
-  #   model_loaded = True
-  #   if log_level > 0: rospy.loginfo("Model loaded successfully")
-
-  # except Exception as e:
-  #   rospy.logerr(e)
-  #   rospy.logerr("Failed to load model in dqn node")
-
   # uncomment for more debug information
   # model.env.log_level = 2
   # model.env.mj.set.debug = True
 
+  # begin services for this node
   rospy.Service('/gripper/dqn/start', Empty, execute_grasping_callback)
   rospy.Service('/gripper/dqn/stop', Empty, cancel_grasping_callback)
   rospy.Service('/gripper/dqn/reset', Empty, reset_all)
   rospy.Service("/gripper/dqn/connect_panda", Empty, connect_panda)
   rospy.Service("/gripper/dqn/load_model", LoadModel, load_model)
+  rospy.Service("/gripper/dqn/apply_settings", ApplySettings, apply_settings)
 
-  rospy.spin()
-
-  # rate = rospy.Rate(20)
-
-  # while not rospy.is_shutdown():
-
-  #   if ready_for_new_action and model_loaded:
-
-  #     # evaluate the network and get a new action
-  #     new_target_state, for_franka = generate_action()
-
-  #     # do we delay before performing action (eg 0.5 seconds)
-  #     delay = 1.0
-  #     if delay is not None:
-  #       if log_level > 1: 
-  #         rospy.loginfo(f"Sleeping before action execution for {delay} seconds")
-  #       rospy.sleep(delay)
-  #       if log_level > 1:
-  #         rospy.loginfo("Finished sleeping")
-
-  #     # if the action is for the gripper
-  #     if for_franka == False:
-
-  #       if move_gripper is False:
-  #         if log_level > 1: rospy.loginfo(f"Gripper action ignored as move_gripper=False")
-  #         continue
-
-  #       new_demand = GripperDemand()
-  #       new_demand.state.pose.x = new_target_state[0]
-  #       new_demand.state.pose.y = new_target_state[1]
-  #       new_demand.state.pose.z = new_target_state[2]
-
-  #       if log_level > 0: rospy.loginfo("dqn node is publishing a new gripper demand")
-  #       demand_pub.publish(new_demand)
-
-  #       # data callback will let us know when the gripper demand is fulfilled
-  #       ready_for_new_action = False
-
-  #     # if the action is for the panda
-  #     elif for_franka == True:
-
-  #       if move_panda is False:
-  #         if log_level > 1: rospy.loginfo(f"Panda action ignored as move_panda=False")
-  #         continue
-
-  #       panda_target = -new_target_state[3] # negative/positive flipped
-  #       if log_level > 1: rospy.loginfo(f"dqn is sending a panda control signal to z = {panda_target}")
-  #       move_panda_z_abs(franka_instance, panda_target)
-
-  #       # move panda is blocking, so we know we can now have a new action
-  #       ready_for_new_action = True
-
-  #   rate.sleep()
+  rospy.spin() # and wait for service requests
+  
