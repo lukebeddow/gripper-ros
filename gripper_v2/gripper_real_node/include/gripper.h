@@ -57,6 +57,7 @@ public:
   double xy_max_force = 20;
   double z_max_force = 10;
   double fingertip_radius_min = -1; // ie disabled, old was -20e-3;
+  double limit_switch_allowance = 1.0e-3; // extra slack on min/max with limit switches
 
   // auto generated constants
   constexpr static double hypotenuse = sqrt(pow(finger_length, 2) + pow(hook_length, 2));

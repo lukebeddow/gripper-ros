@@ -359,6 +359,20 @@ class Gripper:
               break
 
           desiredByteLength = 31
+          debugByteLength = 100
+
+          # if the message is very long, it must be a debug message
+          if len(output) > debugByteLength:
+            try:
+              debug_str = output.decode("utf-8")
+              # print the message to the regular terminal, then continue
+              print("Gripper debug information is:")
+              strs = debug_str.split("\n")
+              for s in strs:
+                print(s)
+            except Exception as e:
+              print(e)
+            continue
 
           # print(list(output))
 

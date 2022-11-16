@@ -10,8 +10,12 @@ bool Gripper::update_xy()
 
   bool within_limits = true;
 
+  /* limit switches are at xy_max and z_min. We add extra slack here as the real
+  gripper may exceed the maximum briefly (and to a small extent) whilst approaching
+  the limit switch */
+
   // first check leadscrew physical limits for x, and enforce these
-  if (x > xy_max + limit_tol) {
+  if (x > xy_max + limit_switch_allowance + limit_tol) {
     if (debug) {
       std::cout << "Gripper received out of range (too large) value x = " 
         << x << ", capped at max = " << xy_max << "\n";
@@ -29,7 +33,7 @@ bool Gripper::update_xy()
   }
 
   // check leadscrew physical limits for y as well
-  if (y > xy_max + limit_tol) {
+  if (y > xy_max + limit_switch_allowance + limit_tol) {
     if (debug) {
       std::cout << "Gripper received out of range (too large) value y = "
         << y << ", capped at max = " << xy_max << "\n";
@@ -102,7 +106,7 @@ bool Gripper::update_z()
     z = z_max;
     within_limits = false;
   }
-  if (z < z_min - limit_tol) {
+  if (z < z_min - limit_switch_allowance - limit_tol) {
     if (debug) {
       std::cout << "Gripper received out of range (too small) value z"
         ", capped at min = " << z_min << "\n";

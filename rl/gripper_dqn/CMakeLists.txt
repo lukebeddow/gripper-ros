@@ -60,6 +60,7 @@ add_service_files(
   FILES
   LoadModel.srv
   ApplySettings.srv
+  ResetPanda.srv
 )
 
 ## Generate actions in the 'action' folder

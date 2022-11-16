@@ -42,6 +42,10 @@ def demand_callback(data):
   if data.home: 
     mygripper.send_message(type="home")
     return
+  if data.print_debug:
+    rospy.loginfo("gripper_interface.py: sending request for debug info to gripper")
+    mygripper.send_message(type="print")
+    return
 
   if data.resume: mygripper.send_message(type="resume")
   if data.power_saving_on: mygripper.send_message(type="power_saving_on")
@@ -175,12 +179,14 @@ if __name__ == "__main__":
     gauge3avg = np.zeros(num_for_avg)
     gauge4avg = np.zeros(num_for_avg)
 
-    rate = rospy.Rate(10)
-
+    rate = rospy.Rate(10) # 10Hz
+ 
     while not rospy.is_shutdown():
 
       # get the most recent state of the gripper
       state = mygripper.update_state()
+
+      # mygripper.send_message("print")
 
       # check if the connection is live yet
       connected_pub.publish(mygripper.connected)

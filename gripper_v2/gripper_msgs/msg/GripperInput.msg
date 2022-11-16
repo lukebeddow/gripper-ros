@@ -4,6 +4,7 @@ bool resume
 bool power_saving_on
 bool power_saving_off
 bool ignore_xyz_command
+bool print_debug
 float32 x_m
 float32 y_m
 float32 z_m

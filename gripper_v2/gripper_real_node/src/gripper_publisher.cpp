@@ -124,14 +124,14 @@ void GripperPublisher::demand_callback(const gripper_msgs::GripperDemand& msg)
 
   ROS_INFO("Received a demand in gripper_publisher");
 
-  bool success = false;
+  bool success = true;
   float x = msg.state.pose.x;
   float y = msg.state.pose.y;
   float z = msg.state.pose.z;
   float th = msg.state.angle;
 
-  // if this is a state command
-  if (not msg.ignore_state) {
+  // if this is a state command and not a homing command
+  if (not msg.ignore_state and not msg.home) {
 
     // set the demanded gripper state based on the user selected units
     if (msg.angle_demand) {
@@ -160,7 +160,13 @@ void GripperPublisher::demand_callback(const gripper_msgs::GripperDemand& msg)
   
   // if the demand falls outside the safe limits
   if (not success) {
-    ROS_WARN("Gripper demand outside safe limits, has been clipped\n");
+    bool use_mm = msg.use_mm;
+    bool use_deg = msg.use_deg;
+    ROS_WARN_STREAM("Gripper demand of (x, y, z, th, mm, deg) = ("
+      << x << ", " << y << ", " << z << ", " << th << ", " << use_mm << ", " << use_deg
+      << ") outside safe limits, has been clipped automatically by gripper.cpp");
+    ROS_WARN("Printing gripper state following demand outside safe limits:");
+    gripper_.print();
   }
 
   // prepare publish the demand message

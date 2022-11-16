@@ -19,6 +19,7 @@
 				output="screen"
 	/>
 
+  <!-- this node is currently called in monitor.launch (below)-->
   <!-- <node name="ft_sensor_node"
         type="ft_sensor_node"
         pkg="ft_sensor"

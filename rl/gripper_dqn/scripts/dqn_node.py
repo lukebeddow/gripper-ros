@@ -5,11 +5,11 @@ import sys
 import numpy as np
 
 from std_srvs.srv import Empty
-from gripper_msgs.msg import GripperState, GripperDemand
+from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
-from gripper_dqn.srv import LoadModel, ApplySettings
+from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
 
-# insert the mymujoco path for TrainDQN file
+# insert the mymujoco path for TrainDQN.py file
 sys.path.insert(0, "/home/luke/mymujoco/rl")
 
 # create model instance
@@ -33,8 +33,9 @@ continue_grasping = True
 # these will be ROS publishers once the node starts up
 norm_state_pub = None
 norm_sensor_pub = None
+debug_pub = None
 
-# start position is zero (fingers should be 10mm above the ground)
+# start position should always be zero (fingers should be 10mm above the ground)
 panda_z_height = 0.0
 
 def data_callback(state):
@@ -49,6 +50,11 @@ def data_callback(state):
   state_vec = [
     state.pose.x, state.pose.y, state.pose.z, panda_z_height
   ]
+
+  # TESTING scale up gauge data
+  state.sensor.gauge1 *= 1.5
+  state.sensor.gauge2 *= 1.5
+  state.sensor.gauge3 *= 1.5
 
   sensor_vec = [
     state.sensor.gauge1, state.sensor.gauge2, state.sensor.gauge3, 
@@ -140,7 +146,7 @@ def move_panda_z_abs(franka, target_z):
   rospy.loginfo(f"New panda target is {target_z * 1000} mm")
 
   # hardcoded safety checks
-  min = -10e-3
+  min = -30e-3
   max = 30e-3
   if target_z < min:
     rospy.logwarn(f"panda z target of {target_z} is below the minimum of {min}")
@@ -165,11 +171,13 @@ def execute_grasping_callback(request=None):
   Service callback to complete a dqn grasping task
   """
 
-  if log_level > 0: rospy.loginfo("Entered execute_grasping_callback()")
+  if log_level > 0: rospy.loginfo("dqn node is now starting a grasping task")
 
   global ready_for_new_action
   global action_delay
   global continue_grasping
+
+  # this flag allows grasping to proceed
   continue_grasping = True
 
   reset_all()
@@ -248,20 +256,88 @@ def reset_all(request=None):
   Reset the gripper and panda
   """
 
-  global panda_z_height
+  # reset the gripper position (not blocking, publishes request)
+  if move_gripper:
+    if log_level > 1: rospy.loginfo("dqn node is about to try and reset gripper position")
+    reset_gripper()
+  elif log_level > 1: rospy.loginfo("dqn not reseting gripper position as move_gripper is False")
+
+  # reset the panda position (blocking)
+  if move_panda:
+    if log_level > 1: rospy.loginfo("dqn node is about to try and reset panda position")
+    panda_reset_req = ResetPanda()
+    panda_reset_req.reset_height_mm = 30
+    reset_panda(panda_reset_req)
+  elif log_level > 1: rospy.loginfo("dqn not reseting panda position as move_panda is False")
 
   # reset and prepare environment
-  model.env.reset()
+  rospy.sleep(2.0)  # sleep to allow sensors to settle before recalibration
+  model.env.reset() # recalibrates sensors
+
+  if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
+
+  return []
+
+def reset_panda(request=None):
+  """
+  Reset the panda position to a hardcoded joint state.
+  """
+
+  global franka_instance
+  global move_panda
+  global log_level
+
+  if not move_panda:
+    if log_level > 0: rospy.logwarn("asked to reset_panda() but move_panda is false")
+    return False
+
+  if request is None:
+    reset_to = 20 # default, panda is limited to +-30mm in move_panda_z_abs
+  else:
+    reset_to = request.reset_height_mm
+
+  target_10mm = [-0.05092702, 0.04565765, 0.01508147, -1.6872033, 0.00324706, 1.68476374, 0.84190218]
+  target_20mm = [-0.05092259, 0.04778539, 0.01508953, -1.65900593, 0.00324699, 1.65879122, 0.84199118]
+  target_30mm = [-0.05075001, 0.05096152, 0.01510398, -1.62959202, 0.00312379, 1.6323801, 0.842143]
+  target_40mm = [-0.05073833, 0.05105601, 0.01510398, -1.62956611, 0.00312114, 1.63236365, 0.84214527]
+  target_50mm = [-0.05073251, 0.05984872, 0.01510064, -1.56716055, 0.00307441, 1.57879036, 0.84233036]
+
+  # find which hardcoded joint state to reset to
+  reset_to = int(reset_to + 0.5)
+
+  if reset_to == 10: target_state = target_10mm
+  elif reset_to == 20: target_state = target_20mm
+  elif reset_to == 30: target_state = target_30mm
+  elif reset_to == 40: target_state = target_40mm
+  elif reset_to == 50: target_state = target_50mm
+  else:
+    raise RuntimeError(f"reset_panda given target reset of {reset_to} which does not correspond to known reset")
+
+  # move the joints slowly to the reset position - this could be dangerous!
+  speed_factor = 0.1 # 0.1 is slow movements
+  franka_instance.move_joints(target_state, speed_factor)
+
+  if log_level > 0: rospy.loginfo(f"panda reset to a height of {reset_to}")
+
+  return True
+
+def reset_gripper(request=None):
+  """
+  Publish a homing command for the gripper
+  """
+
+  global demand_pub
+  global move_gripper
+
+  if not move_gripper:
+    if log_level > 0: rospy.logwarn("asked to reset_gripper() but move_gripper is false")
+    return
 
   # create a homing request for the gripper
   homing_demand = GripperDemand()
   homing_demand.home = True
 
-  # HERE WE SHOULD RESET PANDA POSITION BUT THIS IS NOT YET DONE
-  rospy.logwarn("panda position should be reset but is NOT currently, panda_z_height set to 0")
-  panda_z_height = 0.0
-
-  if log_level > 0: rospy.loginfo("dqn node is publishing a homing gripper demand")
+  if log_level > 0: rospy.loginfo("dqn node requests homing gripper position")
   demand_pub.publish(homing_demand)
 
   return []
@@ -285,10 +361,27 @@ def connect_panda(request=None):
     move_panda = True
     if log_level > 0: rospy.loginfo("Panda connection started successfully")
 
+    return []
+
   except Exception as e:
     rospy.logerr(e)
     rospy.logerr("Failed to start panda conenction")
     move_panda = False
+
+def debug_gripper(request=None):
+  """
+  Request debug information from the gripper
+  """
+
+  global debug_pub
+
+  if log_level > 1: rospy.loginfo("dqn node requesting gripper debug information")
+
+  req = GripperInput()
+  req.print_debug = True
+  debug_pub.publish(req)
+
+  return []
 
 def load_model(request):
   """
@@ -337,10 +430,19 @@ def apply_settings(request):
   global move_panda
   global franka_instance
 
-  log_level = request.log_level
-  action_delay = request.action_delay
-  move_gripper = request.move_gripper
-  move_panda = request.move_panda
+  if request.default:
+    # settings overriden with default values
+    log_level = 2
+    action_delay = 0.2
+    move_gripper = True
+    move_panda = True
+
+  else:
+    # settings overriden with user specified values
+    log_level = request.log_level
+    action_delay = request.action_delay
+    move_gripper = request.move_gripper
+    move_panda = request.move_panda
 
   # if starting or ending a panda connection
   if move_panda: connect_panda()
@@ -370,6 +472,7 @@ if __name__ == "__main__":
   # publishers for displaying normalised nn input values
   norm_state_pub = rospy.Publisher("/gripper/dqn/state", NormalisedState, queue_size=10)
   norm_sensor_pub = rospy.Publisher("/gripper/dqn/sensor", NormalisedSensor, queue_size=10)
+  debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
   # define the model to load and then try to load it
   load = LoadModel()
@@ -384,12 +487,16 @@ if __name__ == "__main__":
   # model.env.mj.set.debug = True
 
   # begin services for this node
+  rospy.loginfo("dqn node services now available")
   rospy.Service('/gripper/dqn/start', Empty, execute_grasping_callback)
   rospy.Service('/gripper/dqn/stop', Empty, cancel_grasping_callback)
   rospy.Service('/gripper/dqn/reset', Empty, reset_all)
+  rospy.Service('/gripper/dqn/reset_panda', ResetPanda, reset_panda)
+  rospy.Service("/gripper/dqn/reset_gripper", Empty, reset_gripper)
   rospy.Service("/gripper/dqn/connect_panda", Empty, connect_panda)
   rospy.Service("/gripper/dqn/load_model", LoadModel, load_model)
   rospy.Service("/gripper/dqn/apply_settings", ApplySettings, apply_settings)
+  rospy.Service("/gripper/dqn/debug_gripper", Empty, debug_gripper)
 
-  rospy.spin() # and wait for service requests
+  while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
   
