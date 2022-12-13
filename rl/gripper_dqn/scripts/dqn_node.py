@@ -20,7 +20,7 @@ model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=
 
 # user settings defaults for this node
 log_level = 2
-action_delay = 1.0
+action_delay = 0.0
 move_gripper = False
 move_panda = False
 
@@ -266,7 +266,7 @@ def reset_all(request=None):
   if move_panda:
     if log_level > 1: rospy.loginfo("dqn node is about to try and reset panda position")
     panda_reset_req = ResetPanda()
-    panda_reset_req.reset_height_mm = 30
+    panda_reset_req.reset_height_mm = 10 # dqn episode begins at 10mm height
     reset_panda(panda_reset_req)
   elif log_level > 1: rospy.loginfo("dqn not reseting panda position as move_panda is False")
 
@@ -292,24 +292,42 @@ def reset_panda(request=None):
     return False
 
   if request is None:
-    reset_to = 20 # default, panda is limited to +-30mm in move_panda_z_abs
+    reset_to = 10 # default, panda is limited to +-30mm in move_panda_z_abs
   else:
     reset_to = request.reset_height_mm
 
-  target_10mm = [-0.05092702, 0.04565765, 0.01508147, -1.6872033, 0.00324706, 1.68476374, 0.84190218]
-  target_20mm = [-0.05092259, 0.04778539, 0.01508953, -1.65900593, 0.00324699, 1.65879122, 0.84199118]
-  target_30mm = [-0.05075001, 0.05096152, 0.01510398, -1.62959202, 0.00312379, 1.6323801, 0.842143]
-  target_40mm = [-0.05073833, 0.05105601, 0.01510398, -1.62956611, 0.00312114, 1.63236365, 0.84214527]
-  target_50mm = [-0.05073251, 0.05984872, 0.01510064, -1.56716055, 0.00307441, 1.57879036, 0.84233036]
+  """
+  Heights calibrated by hand, all fingers put to touching table (0mm), then use +mm motions
+  Fingers touch table: 0mm
+  Fingers first touch neoprene: 10mm
+  Fingers all touch neprene: 8mm
+  Lowest height possible before controller aborts (with neoprene): 2mm
 
-  # find which hardcoded joint state to reset to
-  reset_to = int(reset_to + 0.5)
+  Hence: with neoprene, 0 position is 10mm
+  """
+  target_0_mm = [-0.05509114, 0.08494865, 0.00358691, -1.67752536, -0.00399310, 1.69452373, 0.84098394]
+  target_6_mm = [-0.05525132, 0.08799861, 0.00338449, -1.66332317, -0.00395840, 1.67866505, 0.84087103]
+  target_10_mm = [-0.05515629, 0.08709929, 0.00346314, -1.65161046, -0.00396003, 1.66868245, 0.84094963]
+  target_16_mm = [-0.05524815, 0.08916576, 0.00338449, -1.63632929, -0.00395717, 1.65315411, 0.84086777]
+  target_20_mm = [-0.05515193, 0.08893368, 0.00346119, -1.62365382, -0.00396328, 1.64260790, 0.84088849]
+  target_26_mm = [-0.05524827, 0.09149043, 0.00338449, -1.60776543, -0.00395930, 1.62693296, 0.84084929]
+  target_30_mm = [-0.05514753, 0.09176625, 0.00345952, -1.59441761, -0.00396328, 1.61631546, 0.84082899]
+  target_36_mm = [-0.05523857, 0.09492149, 0.00338282, -1.57776986, -0.00396232, 1.60036405, 0.84081025]
+  target_40_mm = [-0.05513947, 0.09566288, 0.00346119, -1.56383533, -0.00396267, 1.58957835, 0.84075323]
+  target_46_mm = [-0.05523381, 0.09913632, 0.00338449, -1.54659639, -0.00396399, 1.57351597, 0.84075759]
+  target_50_mm = [-0.05513489, 0.10048285, 0.00346119, -1.53197880, -0.00396267, 1.56242129, 0.84068724]
+  target_56_mm = [-0.05521145, 0.10445451, 0.00338282, -1.51400512, -0.00396877, 1.54619678, 0.84069480]
+  
+  # find which hardcoded joint state to reset to (0 position = 10mm)
+  reset_to = int(reset_to + 0.5) + 10
 
-  if reset_to == 10: target_state = target_10mm
-  elif reset_to == 20: target_state = target_20mm
-  elif reset_to == 30: target_state = target_30mm
-  elif reset_to == 40: target_state = target_40mm
-  elif reset_to == 50: target_state = target_50mm
+  if reset_to == 0: target_state = target_0_mm
+  elif reset_to == 6: target_state = target_6_mm
+  elif reset_to == 10: target_state = target_10_mm
+  elif reset_to == 20: target_state = target_20_mm
+  elif reset_to == 30: target_state = target_30_mm
+  elif reset_to == 40: target_state = target_40_mm
+  elif reset_to == 50: target_state = target_50_mm
   else:
     raise RuntimeError(f"reset_panda given target reset of {reset_to} which does not correspond to known reset")
 
@@ -450,6 +468,34 @@ def apply_settings(request):
 
   return []
 
+"""
+Problems to address in this code:
+
+1. Not repeatable, you can't run multiple grasps in a row as the gripper
+does not work the 2nd time, it must not be being reset properly
+
+2. panda z height, the controller can send signals that caused the panda to
+hit the table and shut down, the code is unaware of this so grasping breaks
+
+3. local minimum, in rare cases an action is continously chosen that does
+nothing, like action 5 lifting the palm. It could be worth adding some noise
+to sensor inputs to prevent this
+
+4. ease of use, some functions are not that easy to use, for example stopping
+involves cancelling the 'start' call and then writing 'stop'. One better system
+could be to press the soft E-stop, if this code could detect when the franka
+arm refuses to move. Then, this code should make it easier to reset everything
+and start again
+
+5. wrist z sensor signal resetting - this may be working but check again
+
+6. ROS qt freezing - at first signals are seen live, but later in a grasp they
+freeze frame, possibly when panda is moving or as network is evaluated
+
+"""
+
+
+
 if __name__ == "__main__":
 
   # initilise ros
@@ -477,8 +523,8 @@ if __name__ == "__main__":
   # define the model to load and then try to load it
   load = LoadModel()
   load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-  load.group_name = "07-11-22"
-  load.run_name = "luke-PC_17:39_A8"
+  load.group_name = "02-12-22"
+  load.run_name = "luke-PC_16:55_A3"
   load.run_id = None
   load_model(load)
 
