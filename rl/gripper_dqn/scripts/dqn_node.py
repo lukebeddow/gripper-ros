@@ -61,11 +61,9 @@ def data_callback(state):
     state.sensor.gauge4,
     state.ftdata.force.z
   ]
-  
-  timestamp = 0 # not using this for now
 
   # input the data
-  model.env.mj.input_real_data(state_vec, sensor_vec, timestamp)
+  model.env.mj.input_real_data(state_vec, sensor_vec)
 
   # for testing, get the normalised data values as the network will see them
   unnormalise = False # we want normalised values
@@ -131,6 +129,8 @@ def move_panda_z_abs(franka, target_z):
   an instance of which is passed as 'franka'
   """
 
+  global panda_z_height
+
   # create identity matrix (must be floats!)
   T = np.array(
     [[1,0,0,0],
@@ -140,10 +140,13 @@ def move_panda_z_abs(franka, target_z):
      dtype=np.float
   )
 
-  # insert z target into matrix
-  T[2,3] = target_z
+  # determine the change in the z height
+  z_change = target_z - panda_z_height
 
-  rospy.loginfo(f"New panda target is {target_z * 1000} mm")
+  # insert z target into matrix
+  T[2,3] = z_change
+
+  rospy.loginfo(f"New panda target is {target_z * 1000:.1f} mm, old={panda_z_height * 1000:.1f} mm, change is {z_change * 1000:.1f} mm")
 
   # hardcoded safety checks
   min = -30e-3
@@ -161,7 +164,7 @@ def move_panda_z_abs(franka, target_z):
   franka.move("relative", T, duration)
 
   # update with the new target position
-  global panda_z_height
+  
   panda_z_height = target_z
 
   return
@@ -286,6 +289,7 @@ def reset_panda(request=None):
   global franka_instance
   global move_panda
   global log_level
+  global panda_z_height
 
   if not move_panda:
     if log_level > 0: rospy.logwarn("asked to reset_panda() but move_panda is false")
@@ -335,6 +339,8 @@ def reset_panda(request=None):
   speed_factor = 0.1 # 0.1 is slow movements
   franka_instance.move_joints(target_state, speed_factor)
 
+  panda_z_height = 0
+
   if log_level > 0: rospy.loginfo(f"panda reset to a height of {reset_to}")
 
   return True
@@ -382,9 +388,33 @@ def connect_panda(request=None):
     return []
 
   except Exception as e:
+
     rospy.logerr(e)
     rospy.logerr("Failed to start panda conenction")
+
+    handle_panda_error()
+    franka_instance = pyfranka_interface.Robot_("172.16.0.2", False, False)
+    move_panda = True
+    if log_level > 0: rospy.loginfo("Panda connection started successfully")
+
     move_panda = False
+
+def handle_panda_error(request=None):
+  """
+  Return information and try to reset a panda error
+  """
+
+  global franka_instance
+
+  if franka_instance.isError():
+
+    # return information about the error
+    print("Franka currently has an error:", franka_instance.getErrorString())
+
+    # try to reset the error
+    franka_instance.automaticErrorRecovery()
+
+  return
 
 def debug_gripper(request=None):
   """
@@ -405,6 +435,8 @@ def load_model(request):
   """
   Load a dqn model
   """
+
+  # PUT IN BEST_ID CODE? maybe not as only copy across one model
   
   global model_loaded
   global model
@@ -523,10 +555,17 @@ if __name__ == "__main__":
   # define the model to load and then try to load it
   load = LoadModel()
   load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-  load.group_name = "02-12-22"
-  load.run_name = "luke-PC_16:55_A3"
+  # load.group_name = "02-12-22"
+  # load.run_name = "luke-PC_16:55_A3"
+  load.group_name = "06-01-23"
+  load.run_name = "luke-PC_14:44_A48"
   load.run_id = None
   load_model(load)
+
+  # noise settings for real data
+  model.env.mj.set.state_noise_std = 0.025 # add noise to state readings
+  model.env.mj.set.sensor_noise_std = 0.0  # do not add noise to sensor readings
+  model.env.reset()
 
   # uncomment for more debug information
   # model.env.log_level = 2

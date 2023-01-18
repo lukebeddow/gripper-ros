@@ -41,7 +41,16 @@ def demand_callback(data):
     return
   if data.home: 
     mygripper.send_message(type="home")
+
+    # TESTING: delete later
+    # set a lower speed
+    mygripper.command.x = 199
+    mygripper.command.y = 199
+    mygripper.command.z = 199
+    mygripper.send_message(type="set_speed")
+
     return
+    
   if data.print_debug:
     rospy.loginfo("gripper_interface.py: sending request for debug info to gripper")
     mygripper.send_message(type="print")
@@ -127,6 +136,11 @@ def normalise_between(value, min, max):
 
 if __name__ == "__main__":
 
+  # initilise ros
+  rospy.init_node("gripper_real_publisher")
+
+  gripper_initialised = False
+
   try:
 
     # establish connection with the gripper
@@ -134,24 +148,7 @@ if __name__ == "__main__":
     usb_port = "/dev/ttyACM0"
 
     mygripper = Gripper()
-
     mygripper.connect(usb_port)
-    mygripper.send_message(type="resume")
-
-    # set a lower speed
-    mygripper.command.x = 150
-    mygripper.command.y = 150
-    mygripper.command.z = 150
-    mygripper.send_message(type="set_speed")
-
-    # # TESTING - move closer
-    # mygripper.command.x = 0.1
-    # mygripper.command.y = 0.1
-    # mygripper.command.z = 0.01
-    # mygripper.send_message(type="command", units="m")
-
-    # now initilise ros
-    rospy.init_node("gripper_real_publisher")
 
     # create output message
     output_msg = GripperOutput()
@@ -182,6 +179,19 @@ if __name__ == "__main__":
     rate = rospy.Rate(10) # 10Hz
  
     while not rospy.is_shutdown():
+
+      if not gripper_initialised and mygripper.connected:
+
+        mygripper.send_message(type="resume")
+        mygripper.send_message(type="home")
+
+        # set a lower speed
+        mygripper.command.x = 150
+        mygripper.command.y = 150
+        mygripper.command.z = 150
+        mygripper.send_message(type="set_speed")
+
+        gripper_initialised = True
 
       # get the most recent state of the gripper
       state = mygripper.update_state()
@@ -218,12 +228,18 @@ if __name__ == "__main__":
           gauge4avg_pub.publish(np.mean(gauge4avg))
           i = 0
 
+      # otherwise try to reconnect
+      else: 
+        gripper_initialised = False
+        mygripper.connect(usb_port)
+
       rate.sleep()
 
   except rospy.ROSInterruptException:
     pass
 
-  mygripper.send_message("stop")
+  if mygripper.connected: mygripper.send_message("stop")
+
   rospy.logerr("gripper connection node has shut down")
   # except:
   #   # keep broadcasting that the gripper is disconnected for 10 seconds

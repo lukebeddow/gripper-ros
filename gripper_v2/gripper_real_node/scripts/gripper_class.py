@@ -109,14 +109,15 @@ class Gripper:
     """
     self.baud_rate = baud_rate
     tries = 0
-    while tries < 10:
+    while tries < 1:
       try:
         self.serial = serial.Serial(com_port, self.baud_rate)
         self.com_port = com_port
-        # time.sleep(0.5)
+        self.connected = True
         print("Gripper is connected")
         return
       except serial.serialutil.SerialException as e:
+        self.connected = False
         print("Serial connection failed:", e)
         time.sleep(0.5)
         tries += 1
@@ -135,6 +136,10 @@ class Gripper:
       """
       This method publishes a method of the specified type
       """
+
+      if not self.connected: 
+        print("Cannot send a message, gripper is not connected")
+        return
 
       byte_msg = bytearray()
 
@@ -270,6 +275,10 @@ class Gripper:
       """
 
       try:
+
+        if not self.connected:
+          print("Gripper is not connected, get_serial_message(...) aborting")
+          return "gripper not connected"
       
         # are there no bytes in the buffer
         if self.serial.in_waiting == 0:
@@ -332,6 +341,7 @@ class Gripper:
         return "timeout"
 
       except IOError as e:
+
         print("gripper.get_serial_message error:", e)
         self.connect(self.com_port)
 
