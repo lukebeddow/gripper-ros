@@ -8,6 +8,12 @@ from std_srvs.srv import Empty
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
+from gripper_dqn.srv import StartTest, StartTrial, SaveTrial
+
+from capture_depth_image import get_depth_image
+from collections import namedtuple
+from copy import deepcopy
+from dataclasses import dataclass
 
 # insert the mymujoco path for TrainDQN.py file
 sys.path.insert(0, "/home/luke/mymujoco/rl")
@@ -18,17 +24,25 @@ device = "cuda" #none
 dqn_log_level = 1
 model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
 
+# create modelsaver instance
+from ModelSaver import ModelSaver
+saver = ModelSaver("test_data", root="/home/luke/gripper-ros/")
+
 # user settings defaults for this node
 log_level = 2
 action_delay = 0.0
 move_gripper = False
 move_panda = False
+scale_gauge_data = 1.5 # scale real gauge data by this
+scale_wrist_data = 1.0 # scale real wrist data by this
+scale_palm_data = 1.0 # scale real palm data by this
 
 # global flags
 new_demand = False
 model_loaded = False
 ready_for_new_action = False
 continue_grasping = True
+currently_testing = False
 
 # these will be ROS publishers once the node starts up
 norm_state_pub = None
@@ -37,6 +51,120 @@ debug_pub = None
 
 # start position should always be zero (fingers should be 10mm above the ground)
 panda_z_height = 0.0
+
+class GraspTestData:
+
+  # data structures for saving testing data
+  step_data = namedtuple("step_data", ("step_num", "state_vector", "action"))
+  image_data = namedtuple("image_data", ("step_num", "rgb", "depth"))
+
+  @dataclass
+  class TrialData:
+    object_name: str
+    object_num: int
+    trial_num: int
+    steps: list
+    images: list
+    success: int
+    info: str
+
+  @dataclass
+  class TestData:
+    trials: list
+    test_name: str
+    dqn_obj: object
+
+  def __init__(self, test_name, dqn_obj, image_rate):
+    """
+    Data for an entire test
+    """
+
+    # create test data structure
+    self.data = GraspTestData.TestData(
+      [],               # trials
+      test_name,        # test_name
+      deepcopy(dqn_obj) # dqn_obj
+    )
+    
+    # initialise class variables
+    self.image_rate = image_rate
+    self.current_trial = None
+
+  def start_trial(self, object_name, object_num, trial_num):
+    """
+    Begin a new trial
+    """
+
+    self.current_trial = GraspTestData.TrialData(
+      object_name,    # object_name
+      object_num,     # object_num
+      trial_num,      # trial_num
+      [],             # steps
+      [],             # images
+      None,           # success
+      ""              # info
+    )
+
+    self.current_step_count = 0
+
+  def add_step(self, state_vector, action):
+    """
+    Add data for a single step
+    """
+
+    if self.current_trial == None:
+      raise RuntimeError("current_trial is None in GraspTestData class")
+
+    self.current_step_count += 1
+
+    # add step data to the current trial
+    this_step = GraspTestData.step_data(
+      self.current_step_count,    # step_num
+      state_vector,               # state_vector
+      action                      # action
+    )
+    self.current_trial.steps.append(this_step)
+
+    # are we taking a photo and saving that as well
+    if (self.current_step_count - 1) % self.image_rate == 0:
+      rgb, depth = get_depth_image()
+      this_image = GraspTestData.image_data(
+        self.current_step_count,  # step_num
+        rgb,                      # rgb
+        depth                     # depth
+      )
+      self.current_trial.images.append(this_image)
+
+  def finish_trial(self, grasp_success, info):
+    """
+    Finish a trial and save the results
+    """
+
+    self.current_trial.success = grasp_success
+    self.current_trial.info = info
+    self.data.trials.append(deepcopy(self.current_trial))
+    self.current_trial = None
+
+# global for test data structure (GraspTestData)
+current_test_data = None
+
+"""
+Each image is about 400kB (this is both rgb and depth) after compressed pickling.
+
+That means that if each trial is 100 steps, it will be 40MB per trial.
+
+If a test is made up of 30*5 trials, it will be 6GB per test.
+
+This doesn't seem entirely unreasonable. Note that saving 6GB of data will take a LONG
+time, could be several hours. Does the zotac have enough RAM for that? Considering the
+uncompressed images will take up more space. I could have a folder for each test but then
+save multiple times during the test.
+
+Zotac has 16GB of RAM.
+
+These things could be automated, so after we have done 30 trials it saves.
+"""
+image_rate = 1
 
 def data_callback(state):
   """
@@ -51,11 +179,15 @@ def data_callback(state):
     state.pose.x, state.pose.y, state.pose.z, panda_z_height
   ]
 
-  # TESTING scale up gauge data
-  state.sensor.gauge1 *= 1.5
-  state.sensor.gauge2 *= 1.5
-  state.sensor.gauge3 *= 1.5
+  # optional: scale data
+  global scale_gauge_data, scale_palm_data, scale_wrist_data
+  state.sensor.gauge1 *= scale_gauge_data
+  state.sensor.gauge2 *= scale_gauge_data
+  state.sensor.gauge3 *= scale_gauge_data
+  state.sensor.gauge4 *= scale_palm_data
+  state.ftdata.force.z *= scale_palm_data
 
+  # assemble our state vector (order is vitally important! Check mjclass.cpp)
   sensor_vec = [
     state.sensor.gauge1, state.sensor.gauge2, state.sensor.gauge3, 
     state.sensor.gauge4,
@@ -102,18 +234,25 @@ def generate_action():
   Get a new gripper state
   """
 
+  global currently_testing
+
   if log_level > 1: rospy.loginfo("generating a new action")
 
   obs = model.env.mj.get_real_observation()
-  obs = model.to_torch(obs)
+  torch_obs = model.to_torch(obs)
   
   # use the state to predict the best action (test=True means pick best possible, decay_num has no effect)
-  action = model.select_action(obs, decay_num=1, test=True)
+  action = model.select_action(torch_obs, decay_num=1, test=True)
 
   if log_level > 1: rospy.loginfo(f"Action code is: {action.item()}")
 
   # apply the action and get the new target state (vector)
   new_target_state = model.env.mj.set_action(action.item())
+
+  # if at test time, save data for this step
+  if currently_testing:
+    global current_test_data
+    current_test_data.add_step(obs, action.item())
 
   # determine if this action is for the gripper or panda
   if model.env.mj.last_action_gripper(): for_franka = False
@@ -156,9 +295,10 @@ def move_panda_z_abs(franka, target_z):
     return
   if target_z > max:
     rospy.logwarn(f"panda z target of {target_z} is above the maximum of {max}")
+    cancel_grasping_callback() # stop any grasping once we hit maximum height
     return
 
-  # define duration in seconds
+  # define duration in seconds (too low and we get acceleration errors)
   duration = 1.0
 
   franka.move("relative", T, duration)
@@ -300,33 +440,18 @@ def reset_panda(request=None):
   else:
     reset_to = request.reset_height_mm
 
-  """
-  Heights calibrated by hand, all fingers put to touching table (0mm), then use +mm motions
-  Fingers touch table: 0mm
-  Fingers first touch neoprene: 10mm
-  Fingers all touch neprene: 8mm
-  Lowest height possible before controller aborts (with neoprene): 2mm
+  # new calibrations 7/2/23 (0=firm touching neoprene, -6mm=possible, -8mm=failure)
+  target_0_mm = [-0.05360574, 0.36224426, -0.02498490, -1.28254861, 0.00438162, 1.61758563, 0.82279294]
+  target_10_mm = [-0.05384081, 0.37038012, -0.02496675, -1.24878968, 0.00448761, 1.58849793, 0.82276331]
+  target_20_mm = [-0.05406938, 0.37825387, -0.02496313, -1.21092717, 0.00463154, 1.55859002, 0.82265671]
+  target_30_mm = [-0.05441660, 0.38795699, -0.02496313, -1.17022414, 0.00483431, 1.52763658, 0.82253542]
+  target_40_mm = [-0.05480234, 0.39970210, -0.02496146, -1.12615559, 0.00508573, 1.49539334, 0.82241654]
+  target_50_mm = [-0.05526356, 0.41379487, -0.02496675, -1.07801807, 0.00540019, 1.46142950, 0.82228165]
 
-  Hence: with neoprene, 0 position is 10mm
-  """
-  target_0_mm = [-0.05509114, 0.08494865, 0.00358691, -1.67752536, -0.00399310, 1.69452373, 0.84098394]
-  target_6_mm = [-0.05525132, 0.08799861, 0.00338449, -1.66332317, -0.00395840, 1.67866505, 0.84087103]
-  target_10_mm = [-0.05515629, 0.08709929, 0.00346314, -1.65161046, -0.00396003, 1.66868245, 0.84094963]
-  target_16_mm = [-0.05524815, 0.08916576, 0.00338449, -1.63632929, -0.00395717, 1.65315411, 0.84086777]
-  target_20_mm = [-0.05515193, 0.08893368, 0.00346119, -1.62365382, -0.00396328, 1.64260790, 0.84088849]
-  target_26_mm = [-0.05524827, 0.09149043, 0.00338449, -1.60776543, -0.00395930, 1.62693296, 0.84084929]
-  target_30_mm = [-0.05514753, 0.09176625, 0.00345952, -1.59441761, -0.00396328, 1.61631546, 0.84082899]
-  target_36_mm = [-0.05523857, 0.09492149, 0.00338282, -1.57776986, -0.00396232, 1.60036405, 0.84081025]
-  target_40_mm = [-0.05513947, 0.09566288, 0.00346119, -1.56383533, -0.00396267, 1.58957835, 0.84075323]
-  target_46_mm = [-0.05523381, 0.09913632, 0.00338449, -1.54659639, -0.00396399, 1.57351597, 0.84075759]
-  target_50_mm = [-0.05513489, 0.10048285, 0.00346119, -1.53197880, -0.00396267, 1.56242129, 0.84068724]
-  target_56_mm = [-0.05521145, 0.10445451, 0.00338282, -1.51400512, -0.00396877, 1.54619678, 0.84069480]
-  
   # find which hardcoded joint state to reset to (0 position = 10mm)
   reset_to = int(reset_to + 0.5) + 10
 
   if reset_to == 0: target_state = target_0_mm
-  elif reset_to == 6: target_state = target_6_mm
   elif reset_to == 10: target_state = target_10_mm
   elif reset_to == 20: target_state = target_20_mm
   elif reset_to == 30: target_state = target_30_mm
@@ -337,7 +462,8 @@ def reset_panda(request=None):
 
   # move the joints slowly to the reset position - this could be dangerous!
   speed_factor = 0.1 # 0.1 is slow movements
-  franka_instance.move_joints(target_state, speed_factor)
+  franka_instance.move_joints(target_50_mm, speed_factor) # first move to safe height
+  franka_instance.move_joints(target_state, speed_factor) # now approach reset height
 
   panda_z_height = 0
 
@@ -403,6 +529,9 @@ def handle_panda_error(request=None):
   """
   Return information and try to reset a panda error
   """
+
+  # this function crashes the program, this idea did not work
+  return
 
   global franka_instance
 
@@ -500,6 +629,77 @@ def apply_settings(request):
 
   return []
 
+def start_test(request):
+  """
+  Begin a full grasping test
+  """
+
+  if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
+
+  global saver, current_test_data, model_loaded, currently_testing, image_rate
+  saver.new_folder(name=request.name)
+  saver.enter_folder(request.name)
+  current_test_data = GraspTestData(request.name, model_loaded, image_rate)
+  currently_testing = True
+
+  return []
+
+def end_test(request):
+  """
+  Finish a grasping test
+  """
+
+  global current_test_data, currently_testing
+
+  if log_level > 0: 
+    rospy.loginfo(f"Ending test with name: {current_test_data.data.test_name}")
+  if log_level > 1: rospy.loginfo(f"Saving test data now...")
+  
+  saver.save(current_test_data.data.test_name, pyobj=current_test_data)
+
+  if log_level > 1: rospy.loginfo("...finished saving test data")
+
+  currently_testing = False
+
+  return []
+
+def start_trial(request):
+  """
+  Start a trial, testing grasping on a new object
+  """
+
+  if not currently_testing:
+    rospy.logwarn("start_trial(...) called but not currently testing, first call start_test(...)")
+    return False
+
+  if log_level > 1:
+    rospy.loginfo(f"Starting trial: Object={request.object_name} (num={request.object_number}), trial_num={request.trial_number}")
+
+  global current_test_data
+  current_test_data.start_trial(request.object_name, request.object_number, request.trial_number)
+
+  # grasp
+  execute_grasping_callback()
+
+  return []
+
+def save_trial(request):
+  """
+  Save trial data because the trial is finished
+  """
+
+  if not currently_testing:
+    rospy.logwarn("save_trial(...) called but not currently testing, first call start_test(...)")
+    return False
+
+  global current_test_data
+  current_test_data.finish_trial(request.grasp_success, request.info)
+
+  if log_level > 1:
+    rospy.loginfo("Trial data saved")
+
+  return []
+
 """
 Problems to address in this code:
 
@@ -582,6 +782,14 @@ if __name__ == "__main__":
   rospy.Service("/gripper/dqn/load_model", LoadModel, load_model)
   rospy.Service("/gripper/dqn/apply_settings", ApplySettings, apply_settings)
   rospy.Service("/gripper/dqn/debug_gripper", Empty, debug_gripper)
+  rospy.Service("/gripper/dqn/test", StartTest, start_test)
+  rospy.Service("/gripper/dqn/trial", StartTrial, start_trial)
+  rospy.Service("/gripper/dqn/end_test", Empty, end_test)
+  rospy.Service("/gripper/dqn/save_trial", SaveTrial, save_trial)
 
-  while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
+  try:
+    while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
+  except Exception as e:
+    end_test()
+    rospy.logerror(f"dqn_node(...) failed, saved test data - exception is {e}")
   
