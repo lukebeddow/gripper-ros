@@ -356,6 +356,8 @@ class Gripper:
       faulty_messages = 0
       max_faults = 10
 
+      debug = False
+
       # loop until buffer is empty
       while True:
 
@@ -388,9 +390,10 @@ class Gripper:
 
           # check that output fits our requirements (getting errors of 3,8)
           if len(output) != desiredByteLength:
-            error_str = ("Wrong size! The length was %d when it should have been %d"
-              % (len(output), desiredByteLength))
-            print(error_str)
+            if debug:
+              error_str = ("Wrong size! The length was %d when it should have been %d"
+                % (len(output), desiredByteLength))
+              print(error_str)
             faulty_messages += 1
             if faulty_messages > max_faults:
               # clear the buffer

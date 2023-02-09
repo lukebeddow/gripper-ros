@@ -2,7 +2,9 @@
 
 import rospy
 import sys
+import os
 import numpy as np
+from datetime import datetime
 
 from std_srvs.srv import Empty
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
@@ -33,7 +35,7 @@ log_level = 2
 action_delay = 0.0
 move_gripper = False
 move_panda = False
-scale_gauge_data = 1.5 # scale real gauge data by this
+scale_gauge_data = 1.0 # (was 1.5) scale real gauge data by this
 scale_wrist_data = 1.0 # scale real wrist data by this
 scale_palm_data = 1.0 # scale real palm data by this
 
@@ -65,30 +67,78 @@ class GraspTestData:
     trial_num: int
     steps: list
     images: list
-    success: int
+    success: bool
     info: str
 
   @dataclass
   class TestData:
     trials: list
     test_name: str
-    dqn_obj: object
+    finger_width: float
+    finger_thickness: float
+    heuristic: bool
+    bend_gauge: bool
+    palm_sensor: bool
+    wrist_Z_sensor: bool
+    group_name: str
+    run_name: str
+    best_SR: float
+    best_EP: float
 
-  def __init__(self, test_name, dqn_obj, image_rate):
+  @dataclass
+  class TestResults:
+    num_trials: int
+    num_objects: int
+    avg_obj_num_trials: float
+    success_rate: float
+    avg_obj_success_rate: float
+    sphere_SR: float
+    cylinder_SR: float
+    cuboid_SR: float
+    cube_SR: float
+
+  def __init__(self, test_name, dqn_obj, image_rate=1, heuristic=False):
     """
     Data for an entire test
     """
 
+    best_sr, best_ep = dqn_obj.track.calc_best_performance()
+
     # create test data structure
     self.data = GraspTestData.TestData(
-      [],               # trials
-      test_name,        # test_name
-      deepcopy(dqn_obj) # dqn_obj
+      [],                                       # trials
+      test_name,                                # test_name
+      dqn_obj.env.params.finger_width,          # finger width
+      dqn_obj.env.params.finger_thickness,      # finger thickness
+      heuristic,                                # is heuristic test
+      dqn_obj.env.mj.set.bending_gauge.in_use,  # bending sensor
+      dqn_obj.env.mj.set.palm_sensor.in_use,    # palm sensor
+      dqn_obj.env.mj.set.wrist_sensor_Z.in_use, # wrist sensor
+      dqn_obj.group_name,                       # run group name
+      dqn_obj.run_name,                         # run name
+      best_sr,                                  # best test success rate in sim
+      best_ep,                                  # episode at best_sr
+    )
+
+    self.image_data = GraspTestData.TestData(
+      [],                                       # trials
+      test_name,                                # test_name
+      dqn_obj.env.params.finger_width,          # finger width
+      dqn_obj.env.params.finger_thickness,      # finger thickness
+      heuristic,                                # is heuristic test
+      dqn_obj.env.mj.set.bending_gauge.in_use,  # bending sensor
+      dqn_obj.env.mj.set.palm_sensor.in_use,    # palm sensor
+      dqn_obj.env.mj.set.wrist_sensor_Z.in_use, # wrist sensor
+      dqn_obj.group_name,                       # run group name
+      dqn_obj.run_name,                         # run name
+      best_sr,                                  # best test success rate in sim
+      best_ep,                                  # episode at best_sr
     )
     
     # initialise class variables
     self.image_rate = image_rate
     self.current_trial = None
+    self.current_trial_with_images = None
 
   def start_trial(self, object_name, object_num, trial_num):
     """
@@ -96,6 +146,15 @@ class GraspTestData:
     """
 
     self.current_trial = GraspTestData.TrialData(
+      object_name,    # object_name
+      object_num,     # object_num
+      trial_num,      # trial_num
+      [],             # steps
+      [],             # images
+      None,           # success
+      ""              # info
+    )
+    self.current_trial_with_images = GraspTestData.TrialData(
       object_name,    # object_name
       object_num,     # object_num
       trial_num,      # trial_num
@@ -125,7 +184,7 @@ class GraspTestData:
     )
     self.current_trial.steps.append(this_step)
 
-    # are we taking a photo and saving that as well
+    # are we taking a photo this step
     if (self.current_step_count - 1) % self.image_rate == 0:
       rgb, depth = get_depth_image()
       this_image = GraspTestData.image_data(
@@ -133,7 +192,9 @@ class GraspTestData:
         rgb,                      # rgb
         depth                     # depth
       )
-      self.current_trial.images.append(this_image)
+      # add step image pairs
+      self.current_trial_with_images.steps.append(this_step)
+      self.current_trial_with_images.images.append(this_image)
 
   def finish_trial(self, grasp_success, info):
     """
@@ -144,6 +205,121 @@ class GraspTestData:
     self.current_trial.info = info
     self.data.trials.append(deepcopy(self.current_trial))
     self.current_trial = None
+
+    self.current_trial_with_images.success = grasp_success
+    self.current_trial_with_images.info = info
+    self.image_data.trials.append(deepcopy(self.current_trial_with_images))
+    self.current_trial_with_images = None
+
+  def get_test_results(self):
+    """
+    Get data structure of test information
+    """
+    entries = []
+    object_nums = []
+    entry = ["obj_name", "object_num", "num_trials", "num_successes", "info_strings"]
+    entry[0] = ""
+    entry[1] = 0
+    entry[2] = 0
+    entry[3] = 0
+    entry[4] = []
+
+    if len(self.data.trials) == 0:
+      rospy.logwarn("get_test_results() found 0 trials, aborting")
+      return None
+
+    # sort trial data
+    for trial in self.data.trials:
+
+      found = False
+      for j in range(len(object_nums)):
+        if object_nums[j] == trial.object_num:
+          found = True
+          break
+
+      if not found:
+
+        # create a new entry
+        new_entry = deepcopy(entry)
+        new_entry[0] = trial.object_name
+        new_entry[1] = trial.object_num
+        new_entry[2] += 1
+        new_entry[3] += trial.success
+        new_entry[4].append(trial.info)
+
+        entries.append(new_entry)
+        object_nums.append(trial.object_num)
+
+      else:
+
+        # add to the existing entry
+        entries[j][2] += 1
+        entries[j][3] += trial.success
+        entries[j].append(trial.info)
+
+    # now process trial data
+    object_SRs = []
+    object_trials = []
+    total_successes = 0
+    for i in range(len(entries)):
+
+      total_successes += entries[i][3]
+      this_SR = (entries[i][3] / float(entries[i][2]))
+      object_SRs.append(this_SR)
+      object_trials.append(entries[i][2])
+  
+    # round up
+    total_SR = total_successes / float(len(self.data.trials))
+    avg_obj_SR = np.mean(np.array(object_SRs))
+    avg_obj_trials = np.mean(np.array(object_trials))
+
+    return GraspTestData.TestResults(
+      len(self.data.trials),        # num_trials
+      len(object_nums),             # num_objects
+      avg_obj_trials,               # avg_obj_num_trials
+      total_SR,                     # success_rate
+      avg_obj_SR,                   # avg_obj_success_rate
+      0.0,                          # sphere_SR
+      0.0,                          # cylinder_SR
+      0.0,                          # cuboid_SR
+      0.0,                          # cube_SR
+    )
+
+  def get_test_string(self):
+    """
+    Print out information about the current test
+    """
+
+    info_str = """"""
+
+    info_str += f"\nTest information\n\n"
+    info_str += f"Test name: {current_test_data.data.test_name}\n"
+    info_str += f"Finger width: {current_test_data.data.finger_width}\n"
+    info_str += f"Finger thickness: {current_test_data.data.finger_thickness:.4f}\n"
+    info_str += f"heuristic test: {current_test_data.data.heuristic}\n"
+    info_str += f"Bending gauge in use: {current_test_data.data.bend_gauge}\n"
+    info_str += f"Palm sensor in use: {current_test_data.data.palm_sensor}\n"
+    info_str += f"Wrist Z sensor in use: {current_test_data.data.wrist_Z_sensor}\n"
+    info_str += f"Loaded group name: {current_test_data.data.group_name}\n"
+    info_str += f"Loaded run name: {current_test_data.data.run_name}\n"
+    info_str += f"Loaded best SR: {current_test_data.data.best_SR}\n"
+
+    results = self.get_test_results()
+
+    if results is None: return
+
+    info_str += f"\nResults information:\n\n"
+    info_str += f"Total number of trials: {results.num_trials}\n"
+    info_str += f"Total number of objects: {results.num_objects}\n"
+    info_str += f"Avg. trials per object: {results.avg_obj_num_trials:.4f}\n"
+    info_str += f"Overall success rate: {results.success_rate:.4f}\n"
+    info_str += f"Avg. success rate per object: {results.avg_obj_success_rate:.4f}\n"
+    info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
+    info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
+    info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
+    info_str += f"cube success rate: {results.cube_SR:.4f}\n"
+
+    return info_str
 
 # global for test data structure (GraspTestData)
 current_test_data = None
@@ -163,8 +339,18 @@ save multiple times during the test.
 Zotac has 16GB of RAM.
 
 These things could be automated, so after we have done 30 trials it saves.
+
+60.8MB took 36.8 seconds to save. Lets call it 0.5s per MB. That means 20seconds per trial
+so a batch of 5 would take 1min 40s. The entire test of 150 trials would take 50mins.
+
+Since I need to reset the object after each trial which takes some time, it is tempting to
+save after every trial and use the time more efficiently. The downside is that we end up
+with a lot of saved files (150 per test!)
 """
 image_rate = 1
+
+# are we autosaving images in batches of trials, 0 disables
+image_batch_size = 1
 
 def data_callback(state):
   """
@@ -415,6 +601,7 @@ def reset_all(request=None):
 
   # reset and prepare environment
   rospy.sleep(2.0)  # sleep to allow sensors to settle before recalibration
+  model.env.mj.calibrate_real_sensors()
   model.env.reset() # recalibrates sensors
 
   if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
@@ -447,9 +634,9 @@ def reset_panda(request=None):
   target_30_mm = [-0.05441660, 0.38795699, -0.02496313, -1.17022414, 0.00483431, 1.52763658, 0.82253542]
   target_40_mm = [-0.05480234, 0.39970210, -0.02496146, -1.12615559, 0.00508573, 1.49539334, 0.82241654]
   target_50_mm = [-0.05526356, 0.41379487, -0.02496675, -1.07801807, 0.00540019, 1.46142950, 0.82228165]
-
-  # find which hardcoded joint state to reset to (0 position = 10mm)
-  reset_to = int(reset_to + 0.5) + 10
+ 
+  # find which hardcoded joint state to reset to
+  reset_to = int(reset_to + 0.5)
 
   if reset_to == 0: target_state = target_0_mm
   elif reset_to == 10: target_state = target_10_mm
@@ -462,7 +649,7 @@ def reset_panda(request=None):
 
   # move the joints slowly to the reset position - this could be dangerous!
   speed_factor = 0.1 # 0.1 is slow movements
-  franka_instance.move_joints(target_50_mm, speed_factor) # first move to safe height
+  # franka_instance.move_joints(target_50_mm, speed_factor) # first move to safe height
   franka_instance.move_joints(target_state, speed_factor) # now approach reset height
 
   panda_z_height = 0
@@ -587,6 +774,10 @@ def load_model(request):
     model_loaded = True
     if log_level > 0: rospy.loginfo("Model loaded successfully")
 
+    # overwrite model 'run' and 'group' names with original
+    model.run_name = request.run_name
+    model.group_name = request.group_name
+
     return True
 
   except Exception as e:
@@ -636,11 +827,24 @@ def start_test(request):
 
   if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
 
-  global saver, current_test_data, model_loaded, currently_testing, image_rate
-  saver.new_folder(name=request.name)
-  saver.enter_folder(request.name)
-  current_test_data = GraspTestData(request.name, model_loaded, image_rate)
+  global saver, current_test_data, model, currently_testing, image_rate
+  saver.enter_folder(request.name, forcecreate=True)
+  current_test_data = GraspTestData(request.name, model,
+                                    image_rate=image_rate)
   currently_testing = True
+
+  # save the model in use if this file does not exist already
+  savepath = saver.get_current_path()
+  if not os.path.exists(savepath + "dqn_model" + saver.file_ext):
+    saver.save("dqn_model", pyobj=model, suffix_numbering=False)
+  else:
+    rospy.loginfo("start_test() is not saving the dqn model as it already exists")
+
+  # load any existing test data
+  recent_data = saver.get_recent_file(name="test_data")
+  if recent_data is not None:
+    rospy.loginfo("start_test() found existing test data, loading it now")
+    current_test_data.data = saver.load(fullfilepath=recent_data)
 
   return []
 
@@ -655,7 +859,7 @@ def end_test(request):
     rospy.loginfo(f"Ending test with name: {current_test_data.data.test_name}")
   if log_level > 1: rospy.loginfo(f"Saving test data now...")
   
-  saver.save(current_test_data.data.test_name, pyobj=current_test_data)
+  saver.save("test_data", pyobj=current_test_data.data)
 
   if log_level > 1: rospy.loginfo("...finished saving test data")
 
@@ -692,13 +896,75 @@ def save_trial(request):
     rospy.logwarn("save_trial(...) called but not currently testing, first call start_test(...)")
     return False
 
+  # first, reset the scene as the trial is over
+  # do this so I can place a new object whilst pickle is saving the image data
+  reset_all()
+
   global current_test_data
   current_test_data.finish_trial(request.grasp_success, request.info)
+
+  global image_batch_size
+  if image_batch_size:
+    num_trials = len(current_test_data.image_data.trials)
+    if num_trials >= image_batch_size:
+
+      if log_level > 1: rospy.loginfo("Saving batch of image data...")
+
+      # save
+      saver.save("trial_image_batch", pyobj=current_test_data.image_data)
+
+      # wipe old images
+      current_test_data.image_data.trials = []
+
+      # save temporary data of the test in case the program crashes
+      saver.save("temp_test_data", pyobj=current_test_data.data,
+                 suffix_numbering=False)
+
+      if log_level > 1: rospy.loginfo("Saving batch of image data complete")
 
   if log_level > 1:
     rospy.loginfo("Trial data saved")
 
   return []
+
+def delete_last_trial(request=None):
+  """
+  Delete the last saved trial, along with image data
+  """
+
+  global current_test_data
+
+  # remove the information about the last trial
+  try:
+    current_test_data.data.trials.pop()
+  except IndexError as e:
+    rospy.logwarn(f"delete_last_trial() tried to pop empty data list: {e}")
+  try:
+    current_test_data.image_data.trials.pop()
+  except IndexError as e:
+    rospy.loginfo(f"delete_last_trial() tried to pop empty image_data list: {e}")
+
+  # 'delete' any saved image data by renaming (temp test data will be overwritten)
+  most_recent_file = saver.get_recent_file(name="trial_image_batch")
+
+  if most_recent_file is None:
+    rospy.logwarn("delete_last_trial() could not find any recent 'trial_image_batch' files")
+    return []
+
+  time_now = datetime.now().strftime("%d-%m-%y-%H:%M")
+  os.rename(most_recent_file, most_recent_file + ".deleted_" + time_now)
+
+  return []
+
+def print_test_results(request=None):
+  """
+  Print test result details
+  """
+
+  global current_test_data
+  details_str = current_test_data.get_test_string()
+
+  rospy.loginfo(details_str)
 
 """
 Problems to address in this code:
@@ -767,6 +1033,9 @@ if __name__ == "__main__":
   model.env.mj.set.sensor_noise_std = 0.0  # do not add noise to sensor readings
   model.env.reset()
 
+  # IMPORTANT: have to run calibration function to setup real sensors
+  model.env.mj.calibrate_real_sensors()
+
   # uncomment for more debug information
   # model.env.log_level = 2
   # model.env.mj.set.debug = True
@@ -786,6 +1055,8 @@ if __name__ == "__main__":
   rospy.Service("/gripper/dqn/trial", StartTrial, start_trial)
   rospy.Service("/gripper/dqn/end_test", Empty, end_test)
   rospy.Service("/gripper/dqn/save_trial", SaveTrial, save_trial)
+  rospy.Service("/gripper/dqn/delete_trial", Empty, delete_last_trial)
+  rospy.Service("/gripper/dqn/print_test", Empty, print_test_results)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
