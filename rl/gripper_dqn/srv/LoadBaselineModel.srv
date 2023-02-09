@@ -1,0 +1,5 @@
+float32 thickness
+float32 width
+int32 sensors
+---
+bool success

@@ -64,6 +64,7 @@ add_service_files(
   StartTest.srv
   StartTrial.srv
   SaveTrial.srv
+  LoadBaselineModel.srv
 )
 
 ## Generate actions in the 'action' folder

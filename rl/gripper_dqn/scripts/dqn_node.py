@@ -10,7 +10,7 @@ from std_srvs.srv import Empty
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
-from gripper_dqn.srv import StartTest, StartTrial, SaveTrial
+from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
 
 from capture_depth_image import get_depth_image
 from collections import namedtuple
@@ -225,7 +225,7 @@ class GraspTestData:
     entry[4] = []
 
     if len(self.data.trials) == 0:
-      rospy.logwarn("get_test_results() found 0 trials, aborting")
+      rospy.logwarn("get_test_results() found 0 trials")
       return None
 
     # sort trial data
@@ -292,7 +292,7 @@ class GraspTestData:
 
     info_str = """"""
 
-    info_str += f"\nTest information\n\n"
+    info_str += f"Test information\n\n"
     info_str += f"Test name: {current_test_data.data.test_name}\n"
     info_str += f"Finger width: {current_test_data.data.finger_width}\n"
     info_str += f"Finger thickness: {current_test_data.data.finger_thickness:.4f}\n"
@@ -306,7 +306,9 @@ class GraspTestData:
 
     results = self.get_test_results()
 
-    if results is None: return
+    if results is None: 
+      info_str += "\nNO TRIAL DATA FOUND FOR THIS TEST"
+      return info_str
 
     info_str += f"\nResults information:\n\n"
     info_str += f"Total number of trials: {results.num_trials}\n"
@@ -351,6 +353,10 @@ image_rate = 1
 
 # are we autosaving images in batches of trials, 0 disables
 image_batch_size = 1
+
+# noise
+state_noise = 0.0
+sensor_noise = 0.0
 
 def data_callback(state):
   """
@@ -755,7 +761,10 @@ def load_model(request):
   # PUT IN BEST_ID CODE? maybe not as only copy across one model
   
   global model_loaded
-  global model
+  global model, dqn_log_level
+  global sensor_noise, state_noise
+
+  model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
 
   # apply defaults
   if request.folderpath == "":
@@ -777,6 +786,14 @@ def load_model(request):
     # overwrite model 'run' and 'group' names with original
     model.run_name = request.run_name
     model.group_name = request.group_name
+
+    # noise settings for real data
+    model.env.mj.set.state_noise_std = state_noise # add noise to state readings
+    model.env.mj.set.sensor_noise_std = sensor_noise  # do not add noise to sensor readings
+    model.env.reset()
+
+    # IMPORTANT: have to run calibration function to setup real sensors
+    model.env.mj.calibrate_real_sensors()
 
     return True
 
@@ -966,6 +983,91 @@ def print_test_results(request=None):
 
   rospy.loginfo(details_str)
 
+def load_baseline_model(request=None):
+  """
+  Load a new dqn model
+  """
+
+  # defaults
+  folderpath = "/home/luke/mymujoco/rl/models/dqn/paper_baseline_1"
+  id = None
+
+  tol = 1e-5
+
+  if (abs(request.thickness - 9e-4) < tol and
+      abs(request.width - 28e-3) < tol):
+     finger = 0
+  elif (abs(request.thickness - 10e-4) < tol and
+      abs(request.width - 24e-3) < tol):
+     finger = 1
+  elif (abs(request.thickness - 10e-4) < tol and
+      abs(request.width - 28e-3) < tol):
+     finger = 2
+  else:
+    rospy.logwarn(f"Width={request.width} and thickness={request.thickness} not valid in load_baseline_model()")
+
+  if finger == 0:
+
+    rospy.loginfo("Loading model for finger 0.9mm thick and 28mm width")
+
+    if request.sensors == 0:
+      group = "16-01-23"
+      name = "luke-PC_14_21_A10"
+
+    elif request.sensors == 1:
+      group = "16-01-23"
+      name = "luke-PC_14_21_A39"
+
+    elif request.sensors == 2:
+      group = "16-01-23"
+      name = "luke-PC_14_21_A72"
+
+    elif request.sensors == 3:
+      group = "23-01-23"
+      name = "luke-PC_11_18_A102"
+
+    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
+
+  elif finger == 1:
+
+    rospy.loginfo("Loading model for finger 1.0mm thick and 24mm width")
+    rospy.logwarn("1.0mm thick 24mm width finger not implemented yet")
+    return
+
+  elif finger == 2:
+
+    rospy.loginfo("Loading model for finger 1.0mm thick and 28mm width")
+
+    if request.sensors == 0:
+      group = "16-01-23"
+      name = "luke-PC_14_21_A25"
+
+    elif request.sensors == 1:
+      group = "16-01-23"
+      name = "luke-PC_14_21_A59"
+
+    elif request.sensors == 2:
+      group = "23-01-23"
+      name = "luke-PC_11_18_A84"
+
+    elif request.sensors == 3:
+      group = "23-01-23"
+      name = "luke-PC_11_18_A116"
+
+    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
+
+  rospy.loginfo(f"Number of sensors is {request.sensors}")
+  rospy.loginfo(f"Group name: {group}, run name: {name}")
+
+  load = LoadModel()
+  load.folderpath = folderpath
+  load.group_name = group
+  load.run_name = name
+  load.run_id = id
+  load_model(load)
+
+  return True
+
 """
 Problems to address in this code:
 
@@ -1018,23 +1120,20 @@ if __name__ == "__main__":
   norm_sensor_pub = rospy.Publisher("/gripper/dqn/sensor", NormalisedSensor, queue_size=10)
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
-  # define the model to load and then try to load it
-  load = LoadModel()
-  load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-  # load.group_name = "02-12-22"
-  # load.run_name = "luke-PC_16:55_A3"
-  load.group_name = "06-01-23"
-  load.run_name = "luke-PC_14:44_A48"
-  load.run_id = None
-  load_model(load)
+  # # load a model with a given path (uncomment only one load)
+  # load = LoadModel()
+  # load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
+  # load.group_name = "06-01-23"
+  # load.run_name = "luke-PC_14:44_A48"
+  # load.run_id = None
+  # load_model(load)
 
-  # noise settings for real data
-  model.env.mj.set.state_noise_std = 0.025 # add noise to state readings
-  model.env.mj.set.sensor_noise_std = 0.0  # do not add noise to sensor readings
-  model.env.reset()
-
-  # IMPORTANT: have to run calibration function to setup real sensors
-  model.env.mj.calibrate_real_sensors()
+  # load a specific model baseline (uncomment only one load)
+  load = LoadBaselineModel()
+  load.thickness = 0.9e-3
+  load.width = 28e-3
+  load.sensors = 3
+  load_baseline_model(load)
 
   # uncomment for more debug information
   # model.env.log_level = 2
@@ -1057,6 +1156,7 @@ if __name__ == "__main__":
   rospy.Service("/gripper/dqn/save_trial", SaveTrial, save_trial)
   rospy.Service("/gripper/dqn/delete_trial", Empty, delete_last_trial)
   rospy.Service("/gripper/dqn/print_test", Empty, print_test_results)
+  rospy.Service("/gripper/dqn/load_baseline_model", LoadBaselineModel, load_baseline_model)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
