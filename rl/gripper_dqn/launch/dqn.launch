@@ -1,17 +1,20 @@
 <launch>
 
-  <arg name="move_all" default="false"/>
-  <arg name="move_gripper" default="false"/>
-  <arg name="move_panda" default="false"/>
+  <!-- <arg name="move_all" default="false"/> -->
+  <arg name="move_gripper" default="true"/>
+  <arg name="move_panda" default="true"/>
 
-  <group if="$(arg move_all)">
+  <param name="/gripper/dqn/move_gripper" value="$(arg move_gripper)"/>
+  <param name="/gripper/dqn/move_panda" value="$(arg move_panda)"/>
+
+  <!-- <group if="$(arg move_all)">
     <param name="/gripper/dqn/move_gripper" value="true"/>
     <param name="/gripper/dqn/move_panda" value="true"/>
   </group>
   <group unless="$(arg move_all)">
     <param name="/gripper/dqn/move_gripper" value="$(arg move_gripper)"/>
     <param name="/gripper/dqn/move_panda" value="$(arg move_panda)"/>
-  </group>
+  </group> -->
 
 	<node name="gripper_dqn_node"
 				type="dqn_node.py"
