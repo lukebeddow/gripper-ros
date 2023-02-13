@@ -67,7 +67,16 @@ class GraspTestData:
     trial_num: int
     steps: list
     images: list
-    success: bool
+    stable_height: bool
+    target_height: bool
+    lifted: bool
+    exceed_bending: bool
+    exceed_axial: bool
+    exceed_limits: bool
+    loop: bool
+    dropped: bool
+    out_of_bounds: bool
+    exceed_palm: bool
     info: str
 
   @dataclass
@@ -151,8 +160,17 @@ class GraspTestData:
       trial_num,      # trial_num
       [],             # steps
       [],             # images
-      None,           # success
-      ""              # info
+      0,              # stable_height
+      0,              # target_height
+      0,              # lifted
+      0,              # exceed_bending
+      0,              # exceed_axial
+      0,              # exceed_limits
+      0,              # loop
+      0,              # dropped
+      0,              # out_of_bounds
+      0,              # exceed_palm
+      "",             # info string
     )
     self.current_trial_with_images = GraspTestData.TrialData(
       object_name,    # object_name
@@ -160,8 +178,17 @@ class GraspTestData:
       trial_num,      # trial_num
       [],             # steps
       [],             # images
-      None,           # success
-      ""              # info
+      0,              # stable_height
+      0,              # target_height
+      0,              # lifted
+      0,              # exceed_bending
+      0,              # exceed_axial
+      0,              # exceed_limits
+      0,              # loop
+      0,              # dropped
+      0,              # out_of_bounds
+      0,              # exceed_palm
+      "",             # info string
     )
 
     self.current_step_count = 0
@@ -196,18 +223,41 @@ class GraspTestData:
       self.current_trial_with_images.steps.append(this_step)
       self.current_trial_with_images.images.append(this_image)
 
-  def finish_trial(self, grasp_success, info):
+  def finish_trial(self, request):
     """
     Finish a trial and save the results
     """
 
-    self.current_trial.success = grasp_success
-    self.current_trial.info = info
+    # special cases where one flag implies another
+    if request.s_h: request.t_h = 1 # ie True
+    if request.t_h: request.lft = 1
+    if request.drp: request.lft = 1
+
+    self.current_trial.stable_height = request.s_h
+    self.current_trial.target_height = request.t_h
+    self.current_trial.lifted = request.lft
+    self.current_trial.exceed_bending = request.xBnd
+    self.current_trial.exceed_axial = request.xAxl
+    self.current_trial.exceed_limits = request.xLim
+    self.current_trial.exceed_palm = request.xPlm
+    self.current_trial.loop = request.loop
+    self.current_trial.dropped = request.drp
+    self.current_trial.out_of_bounds = request.oob
+    self.current_trial.info = request.info
     self.data.trials.append(deepcopy(self.current_trial))
     self.current_trial = None
 
-    self.current_trial_with_images.success = grasp_success
-    self.current_trial_with_images.info = info
+    self.current_trial_with_images.stable_height = request.s_h
+    self.current_trial_with_images.target_height = request.t_h
+    self.current_trial_with_images.lifted = request.lft
+    self.current_trial_with_images.exceed_bending = request.xBnd
+    self.current_trial_with_images.exceed_axial = request.xAxl
+    self.current_trial_with_images.exceed_limits = request.xLim
+    self.current_trial_with_images.exceed_palm = request.xPlm
+    self.current_trial_with_images.loop = request.loop
+    self.current_trial_with_images.dropped = request.drp
+    self.current_trial_with_images.out_of_bounds = request.oob
+    self.current_trial_with_images.info = request.info
     self.image_data.trials.append(deepcopy(self.current_trial_with_images))
     self.current_trial_with_images = None
 
@@ -244,7 +294,7 @@ class GraspTestData:
         new_entry[0] = trial.object_name
         new_entry[1] = trial.object_num
         new_entry[2] += 1
-        new_entry[3] += trial.success
+        new_entry[3] += trial.stable_height
         new_entry[4].append(trial.info)
 
         entries.append(new_entry)
@@ -254,7 +304,7 @@ class GraspTestData:
 
         # add to the existing entry
         entries[j][2] += 1
-        entries[j][3] += trial.success
+        entries[j][3] += trial.stable_height
         entries[j].append(trial.info)
 
     # now process trial data
@@ -487,7 +537,6 @@ def move_panda_z_abs(franka, target_z):
     return
   if target_z > max:
     rospy.logwarn(f"panda z target of {target_z} is above the maximum of {max}")
-    cancel_grasping_callback() # stop any grasping once we hit maximum height
     return
 
   # define duration in seconds (too low and we get acceleration errors)
@@ -496,7 +545,6 @@ def move_panda_z_abs(franka, target_z):
   franka.move("relative", T, duration)
 
   # update with the new target position
-  
   panda_z_height = target_z
 
   return
@@ -511,6 +559,7 @@ def execute_grasping_callback(request=None):
   global ready_for_new_action
   global action_delay
   global continue_grasping
+  global panda_z_height
 
   # this flag allows grasping to proceed
   continue_grasping = True
@@ -522,6 +571,11 @@ def execute_grasping_callback(request=None):
   while not rospy.is_shutdown():
 
     if ready_for_new_action and model_loaded:
+
+      # if we have reached our target position, terminate grasping
+      if panda_z_height > 30e-3:
+        rospy.loginfo("Panda height has reached 30mm, stopping grasping")
+        cancel_grasping_callback()
 
       # evaluate the network and get a new action
       new_target_state, for_franka = generate_action()
@@ -918,7 +972,7 @@ def save_trial(request):
   reset_all()
 
   global current_test_data
-  current_test_data.finish_trial(request.grasp_success, request.info)
+  current_test_data.finish_trial(request)
 
   global image_batch_size
   if image_batch_size:

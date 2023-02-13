@@ -1,3 +1,12 @@
-int32 grasp_success
 string info
+int32 oob
+int32 drp
+int32 loop
+int32 xPlm
+int32 xLim
+int32 xAxl
+int32 xBnd
+int32 lft
+int32 t_h
+int32 s_h
 ---
