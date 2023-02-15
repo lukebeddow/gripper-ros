@@ -73,7 +73,7 @@ debug_pub = None                # ROS publisher for gripper debug information
 class GraspTestData:
 
   # data structures for saving testing data
-  step_data = namedtuple("step_data", ("step_num", "state_vector", "action"))
+  step_data = namedtuple("step_data", ("step_num", "state_vector", "SI_state", "action"))
   image_data = namedtuple("image_data", ("step_num", "rgb", "depth"))
 
   @dataclass
@@ -209,7 +209,7 @@ class GraspTestData:
 
     self.current_step_count = 0
 
-  def add_step(self, state_vector, action):
+  def add_step(self, state_vector, action, SI_vector=None):
     """
     Add data for a single step
     """
@@ -223,6 +223,7 @@ class GraspTestData:
     this_step = GraspTestData.step_data(
       self.current_step_count,    # step_num
       state_vector,               # state_vector
+      SI_vector,                  # SI_state (state vector calibrated but not normalised)
       action                      # action
     )
     self.current_trial.steps.append(this_step)
@@ -436,6 +437,7 @@ def data_callback(state):
   norm_state = NormalisedState()
   norm_sensor = NormalisedSensor()
 
+  # can visualise 'raw' data, 'SI' calibrated data, or 'normalised' network input data
   norm_state.gripper_x = model.env.mj.real_sensors.normalised.read_x_motor_position()
   norm_state.gripper_y = model.env.mj.real_sensors.normalised.read_y_motor_position()
   norm_state.gripper_z = model.env.mj.real_sensors.normalised.read_z_motor_position()
@@ -479,7 +481,6 @@ def generate_action():
   if log_level > 1: rospy.loginfo(f"Generated action, action code is: {action}")
 
   # if we are preventing palm backwards actions
-  global prevent_back_palm
   if prevent_back_palm and action == 5:
     if log_level > 0: rospy.loginfo(f"prevent_back_palm=TRUE, backwards palm prevented")
     action = 4
@@ -488,21 +489,17 @@ def generate_action():
   new_target_state = model.env.mj.set_action(action)
 
   # if using a simulated ft sensor, resolve the action in simulation
-  if use_sim_ftsensor or render_sim_view: 
+  if use_sim_ftsensor or render_sim_view:
+    if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, taking simulated action")
     model.env.mj.action_step()
     if render_sim_view: model.env.mj.render()
 
   # if at test time, save data for this step
   if currently_testing:
     global current_test_data
-    current_test_data.add_step(obs, action)
-
-  # # if using a simulated ftsensor, apply action in simulation
-  # global use_sim_ftsensor, ftenv
-  # if use_sim_ftsensor and ftenv is not None:
-  #   if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, taking simulated action")
-  #   ftenv._take_action(action)
-    # ftenv.mj.render()
+    SI_state_vector = model.env.mj.get_simple_state_vector(model.env.mj.real_sensors.SI)
+    print(SI_state_vector)
+    current_test_data.add_step(obs, action, SI_vector=SI_state_vector)
 
   # determine if this action is for the gripper or panda
   if model.env.mj.last_action_gripper(): for_franka = False
@@ -684,21 +681,6 @@ def reset_all(request=None):
   model.env.mj.calibrate_real_sensors()
   model.env.reset() # recalibrates sensors
   model.env.mj.reset_object() # remove any object from the scene
-
-  # # if using a simulated ftsensor, reset
-  # global ftenv, use_sim_ftsensor
-  # if use_sim_ftsensor:
-  #   if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, reseting ftenv now")
-  #   ftenv.mj.reset()
-  #   # are we lowering the height so the simulated gripper hits the ground sooner
-  #   H_plus_action = 6
-  #   for i in range(sim_ft_sensor_step_offset): ftenv._take_action(H_plus_action)
-
-  #   state_unnormalise = True
-  #   state_readings = ftenv.mj.get_state_readings(state_unnormalise)
-  #   rospy.loginfo(f"ftenv Z state reading is {state_readings[-1]}")
-
-  #   if log_level > 0: rospy.loginfo(f"ftenv reset done, sim_ft_sensor_step_offset = {sim_ft_sensor_step_offset}")
 
   if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
 
