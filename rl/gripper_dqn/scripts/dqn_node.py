@@ -17,42 +17,58 @@ from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
 
-# insert the mymujoco path for TrainDQN.py file
+# insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, "/home/luke/mymujoco/rl")
+from TrainDQN import TrainDQN
+from ModelSaver import ModelSaver
+
+# ----- essential settings and global variable declarations ----- #
 
 # create model instance
-from TrainDQN import TrainDQN
 device = "cuda" #none
 dqn_log_level = 1
 model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
 
-# create modelsaver instance
-from ModelSaver import ModelSaver
-saver = ModelSaver("test_data", root="/home/luke/gripper-ros/")
+# create modelsaver instance for saving test data
+testsaver = ModelSaver("test_data", root="/home/luke/gripper-ros/")
 
-# user settings defaults for this node
-log_level = 2
-action_delay = 0.0
-move_gripper = False
-move_panda = False
-scale_gauge_data = 1.0 # (was 1.5) scale real gauge data by this
-scale_wrist_data = 1.0 # scale real wrist data by this
-scale_palm_data = 1.0 # scale real palm data by this
+# important user settings
+log_level = 2                   # debug log level, 0 disables all
+action_delay = None             # safety delay between action generation and publishing
+panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
+scale_gauge_data = 1.0          # scale real gauge data by this
+scale_wrist_data = 1.0          # scale real wrist data by this
+scale_palm_data = 1.0           # scale real palm data by this
+state_noise = 0.0               # noise stddev to add on real state readings
+sensor_noise = 0.0              # noise stddev to add on real sensor readings
+image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
+image_batch_size = 1            # are we autosaving images in batches of trials, 0 disables
+
+# experimental feature settings
+use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
+sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
+prevent_back_palm = False       # swap any backward palm actions for forwards
+render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
 
 # global flags
-new_demand = False
-model_loaded = False
-ready_for_new_action = False
-continue_grasping = True
-currently_testing = False
+move_gripper = False            # is the gripper allowed to move
+move_panda = False              # is the panda allowed to move
+new_demand = False              # have we had a new demand for action
+model_loaded = False            # has the dqn model been loaded
+ready_for_new_action = False    # is the gripper ready for a new action
+continue_grasping = True        # is grasping currently in progress and continuing
+currently_testing = False       # is a test currently in progress
 
-# these will be ROS publishers once the node starts up
-norm_state_pub = None
-norm_sensor_pub = None
-debug_pub = None
+# declare global variables, these will be overwritten
+step_num = 0                    # number of steps in our grasp
+panda_z_height = 0.0            # panda z height state reading (=0 @ 10mm above gnd)
+current_test_data = None        # current live test data structure
+ftenv = None                    # simulated environment for fake force/torque sensor readings
+norm_state_pub = None           # ROS publisher for normalised state readings
+norm_sensor_pub = None          # ROS publisher for normalised sensor readings
+debug_pub = None                # ROS publisher for gripper debug information
 
-# start position should always be zero (fingers should be 10mm above the ground)
-panda_z_height = 0.0
+# ----- test time data structure for saving information ----- #
 
 class GraspTestData:
 
@@ -373,40 +389,7 @@ class GraspTestData:
 
     return info_str
 
-# global for test data structure (GraspTestData)
-current_test_data = None
-
-"""
-Each image is about 400kB (this is both rgb and depth) after compressed pickling.
-
-That means that if each trial is 100 steps, it will be 40MB per trial.
-
-If a test is made up of 30*5 trials, it will be 6GB per test.
-
-This doesn't seem entirely unreasonable. Note that saving 6GB of data will take a LONG
-time, could be several hours. Does the zotac have enough RAM for that? Considering the
-uncompressed images will take up more space. I could have a folder for each test but then
-save multiple times during the test.
-
-Zotac has 16GB of RAM.
-
-These things could be automated, so after we have done 30 trials it saves.
-
-60.8MB took 36.8 seconds to save. Lets call it 0.5s per MB. That means 20seconds per trial
-so a batch of 5 would take 1min 40s. The entire test of 150 trials would take 50mins.
-
-Since I need to reset the object after each trial which takes some time, it is tempting to
-save after every trial and use the time more efficiently. The downside is that we end up
-with a lot of saved files (150 per test!)
-"""
-image_rate = 1
-
-# are we autosaving images in batches of trials, 0 disables
-image_batch_size = 1
-
-# noise
-state_noise = 0.0
-sensor_noise = 0.0
+# ----- callbacks and functions to run grasping ----- #
 
 def data_callback(state):
   """
@@ -418,7 +401,10 @@ def data_callback(state):
 
   # create vectors of observation data, order is very important!
   state_vec = [
-    state.pose.x, state.pose.y, state.pose.z, panda_z_height
+    state.pose.x, 
+    state.pose.y, 
+    state.pose.z, 
+    panda_z_height
   ]
 
   # optional: scale data
@@ -427,11 +413,17 @@ def data_callback(state):
   state.sensor.gauge2 *= scale_gauge_data
   state.sensor.gauge3 *= scale_gauge_data
   state.sensor.gauge4 *= scale_palm_data
-  state.ftdata.force.z *= scale_palm_data
+  state.ftdata.force.z *= scale_wrist_data
+
+  # if use a simulated ftsensor, override with simulated data
+  if use_sim_ftsensor:
+    state.ftdata.force.z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
 
   # assemble our state vector (order is vitally important! Check mjclass.cpp)
   sensor_vec = [
-    state.sensor.gauge1, state.sensor.gauge2, state.sensor.gauge3, 
+    state.sensor.gauge1, 
+    state.sensor.gauge2, 
+    state.sensor.gauge3, 
     state.sensor.gauge4,
     state.ftdata.force.z
   ]
@@ -439,28 +431,25 @@ def data_callback(state):
   # input the data
   model.env.mj.input_real_data(state_vec, sensor_vec)
 
-  # for testing, get the normalised data values as the network will see them
-  unnormalise = False # we want normalised values
-  [g1, g2, g3] = model.env.mj.get_bend_gauge_readings(unnormalise)
-  p = model.env.mj.get_palm_reading(unnormalise)
-  wZ = model.env.mj.get_wrist_reading(unnormalise)
-  [gx, gy, gz, bz] = model.env.mj.get_state_readings(unnormalise)
-
   # publish the dqn network normalised input values
   global norm_state_pub, norm_sensor_pub
   norm_state = NormalisedState()
   norm_sensor = NormalisedSensor()
 
-  norm_state.gripper_x = gx
-  norm_state.gripper_y = gy
-  norm_state.gripper_z = gz
-  norm_state.base_z = bz
+  norm_state.gripper_x = model.env.mj.real_sensors.normalised.read_x_motor_position()
+  norm_state.gripper_y = model.env.mj.real_sensors.normalised.read_y_motor_position()
+  norm_state.gripper_z = model.env.mj.real_sensors.normalised.read_z_motor_position()
+  norm_state.base_z = model.env.mj.real_sensors.normalised.read_z_base_position()
 
-  norm_sensor.gauge1 = g1
-  norm_sensor.gauge2 = g2 
-  norm_sensor.gauge3 = g3 
-  norm_sensor.palm = p
-  norm_sensor.wrist_z = wZ
+  norm_sensor.gauge1 = model.env.mj.real_sensors.normalised.read_finger1_gauge()
+  norm_sensor.gauge2 = model.env.mj.real_sensors.normalised.read_finger2_gauge()
+  norm_sensor.gauge3 = model.env.mj.real_sensors.normalised.read_finger3_gauge ()
+  norm_sensor.palm = model.env.mj.real_sensors.normalised.read_palm_sensor()
+  norm_sensor.wrist_z = model.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
+
+  # if using a simulated ft sensor, replace with this data instead
+  if use_sim_ftsensor:
+    norm_sensor.wrist_z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
 
   norm_state_pub.publish(norm_state)
   norm_sensor_pub.publish(norm_sensor)
@@ -478,23 +467,42 @@ def generate_action():
 
   global currently_testing
 
-  if log_level > 1: rospy.loginfo("generating a new action")
+  if log_level > 2: rospy.loginfo("generating a new action")
 
   obs = model.env.mj.get_real_observation()
   torch_obs = model.to_torch(obs)
   
   # use the state to predict the best action (test=True means pick best possible, decay_num has no effect)
   action = model.select_action(torch_obs, decay_num=1, test=True)
+  action = action.item()
 
-  if log_level > 1: rospy.loginfo(f"Action code is: {action.item()}")
+  if log_level > 1: rospy.loginfo(f"Generated action, action code is: {action}")
+
+  # if we are preventing palm backwards actions
+  global prevent_back_palm
+  if prevent_back_palm and action == 5:
+    if log_level > 0: rospy.loginfo(f"prevent_back_palm=TRUE, backwards palm prevented")
+    action = 4
 
   # apply the action and get the new target state (vector)
-  new_target_state = model.env.mj.set_action(action.item())
+  new_target_state = model.env.mj.set_action(action)
+
+  # if using a simulated ft sensor, resolve the action in simulation
+  if use_sim_ftsensor or render_sim_view: 
+    model.env.mj.action_step()
+    if render_sim_view: model.env.mj.render()
 
   # if at test time, save data for this step
   if currently_testing:
     global current_test_data
-    current_test_data.add_step(obs, action.item())
+    current_test_data.add_step(obs, action)
+
+  # # if using a simulated ftsensor, apply action in simulation
+  # global use_sim_ftsensor, ftenv
+  # if use_sim_ftsensor and ftenv is not None:
+  #   if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, taking simulated action")
+  #   ftenv._take_action(action)
+    # ftenv.mj.render()
 
   # determine if this action is for the gripper or panda
   if model.env.mj.last_action_gripper(): for_franka = False
@@ -560,9 +568,12 @@ def execute_grasping_callback(request=None):
   global action_delay
   global continue_grasping
   global panda_z_height
+  global step_num
 
   # this flag allows grasping to proceed
   continue_grasping = True
+
+  step_num = 0
 
   reset_all()
 
@@ -570,14 +581,21 @@ def execute_grasping_callback(request=None):
 
   while not rospy.is_shutdown():
 
-    if ready_for_new_action and model_loaded:
+    if ready_for_new_action and model_loaded and continue_grasping:
 
       # if we have reached our target position, terminate grasping
-      if panda_z_height > 30e-3:
-        rospy.loginfo("Panda height has reached 30mm, stopping grasping")
+      if panda_z_height > 30e-3 - 1e-6:
+        if log_level > 0: rospy.loginfo("Panda height has reached 30mm, stopping grasping")
+        cancel_grasping_callback()
+
+      # if we have reached our step limit, terminate grasping
+      if step_num > model.env.params.max_episode_steps:
+        if log_level > 0: rospy.loginfo(f"Max episode steps of {model.env.params.max_episode_steps} exceeded, stopping grasping")
         cancel_grasping_callback()
 
       # evaluate the network and get a new action
+      step_num += 1
+      if log_level > 0: rospy.loginfo(f"Grasping step {step_num}")
       new_target_state, for_franka = generate_action()
 
       # do we delay before performing action (eg 0.5 seconds)
@@ -588,7 +606,9 @@ def execute_grasping_callback(request=None):
         if log_level > 1: rospy.loginfo("Finished sleeping")
 
       # has the grasping task been cancelled
-      if not continue_grasping: break
+      if not continue_grasping:
+        if log_level > 1: rospy.loginfo("Grasping cancelled, action not executed") 
+        break
 
       # if the action is for the gripper
       if not for_franka:
@@ -616,7 +636,7 @@ def execute_grasping_callback(request=None):
           continue
 
         panda_target = -new_target_state[3] # negative/positive flipped
-        if log_level > 1: rospy.loginfo(f"dqn is sending a panda control signal to z = {panda_target}")
+        if log_level > 1: rospy.loginfo(f"dqn is sending a panda control signal to z = {panda_target:.6f}")
         move_panda_z_abs(franka_instance, panda_target)
 
         # move panda is blocking, so we know we can now have a new action
@@ -653,9 +673,9 @@ def reset_all(request=None):
 
   # reset the panda position (blocking)
   if move_panda:
-    if log_level > 1: rospy.loginfo("dqn node is about to try and reset panda position")
+    if log_level > 1: rospy.loginfo(f"dqn node is about to try and reset panda position to {panda_reset_height_mm}")
     panda_reset_req = ResetPanda()
-    panda_reset_req.reset_height_mm = 10 # dqn episode begins at 10mm height
+    panda_reset_req.reset_height_mm = panda_reset_height_mm # dqn episode begins at 10mm height
     reset_panda(panda_reset_req)
   elif log_level > 1: rospy.loginfo("dqn not reseting panda position as move_panda is False")
 
@@ -663,6 +683,22 @@ def reset_all(request=None):
   rospy.sleep(2.0)  # sleep to allow sensors to settle before recalibration
   model.env.mj.calibrate_real_sensors()
   model.env.reset() # recalibrates sensors
+  model.env.mj.reset_object() # remove any object from the scene
+
+  # # if using a simulated ftsensor, reset
+  # global ftenv, use_sim_ftsensor
+  # if use_sim_ftsensor:
+  #   if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, reseting ftenv now")
+  #   ftenv.mj.reset()
+  #   # are we lowering the height so the simulated gripper hits the ground sooner
+  #   H_plus_action = 6
+  #   for i in range(sim_ft_sensor_step_offset): ftenv._take_action(H_plus_action)
+
+  #   state_unnormalise = True
+  #   state_readings = ftenv.mj.get_state_readings(state_unnormalise)
+  #   rospy.loginfo(f"ftenv Z state reading is {state_readings[-1]}")
+
+  #   if log_level > 0: rospy.loginfo(f"ftenv reset done, sim_ft_sensor_step_offset = {sim_ft_sensor_step_offset}")
 
   if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
 
@@ -765,10 +801,10 @@ def connect_panda(request=None):
     rospy.logerr(e)
     rospy.logerr("Failed to start panda conenction")
 
-    handle_panda_error()
-    franka_instance = pyfranka_interface.Robot_("172.16.0.2", False, False)
-    move_panda = True
-    if log_level > 0: rospy.loginfo("Panda connection started successfully")
+    # handle_panda_error()
+    # franka_instance = pyfranka_interface.Robot_("172.16.0.2", False, False)
+    # move_panda = True
+    # if log_level > 0: rospy.loginfo("Panda connection started successfully")
 
     move_panda = False
 
@@ -849,6 +885,18 @@ def load_model(request):
     # IMPORTANT: have to run calibration function to setup real sensors
     model.env.mj.calibrate_real_sensors()
 
+    # # if we are using a simulated ftsensor
+    # global use_sim_ftsensor, ftenv
+    # if use_sim_ftsensor:
+    #   use_sim_ftsensor = False
+    #   if log_level > 0: rospy.loginfo("USE_SIM_FTSENSOR=TRUE, creating ftenv now")
+    #   tempmodel = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
+    #   tempmodel.load(id=request.run_id, folderpath=pathtofolder, foldername=foldername)
+    #   ftenv = tempmodel.env #deepcopy(model.env)
+    #   ftenv.mj.reset()
+    #   if log_level > 0: rospy.loginfo("ftenv created")
+    #   use_sim_ftsensor = True
+
     return True
 
   except Exception as e:
@@ -898,24 +946,24 @@ def start_test(request):
 
   if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
 
-  global saver, current_test_data, model, currently_testing, image_rate
-  saver.enter_folder(request.name, forcecreate=True)
+  global testsaver, current_test_data, model, currently_testing, image_rate
+  testsaver.enter_folder(request.name, forcecreate=True)
   current_test_data = GraspTestData(request.name, model,
                                     image_rate=image_rate)
   currently_testing = True
 
   # save the model in use if this file does not exist already
-  savepath = saver.get_current_path()
-  if not os.path.exists(savepath + "dqn_model" + saver.file_ext):
-    saver.save("dqn_model", pyobj=model, suffix_numbering=False)
+  savepath = testsaver.get_current_path()
+  if not os.path.exists(savepath + "dqn_model" + testsaver.file_ext):
+    testsaver.save("dqn_model", pyobj=model, suffix_numbering=False)
   else:
     rospy.loginfo("start_test() is not saving the dqn model as it already exists")
 
   # load any existing test data
-  recent_data = saver.get_recent_file(name="test_data")
+  recent_data = testsaver.get_recent_file(name="test_data")
   if recent_data is not None:
     rospy.loginfo("start_test() found existing test data, loading it now")
-    current_test_data.data = saver.load(fullfilepath=recent_data)
+    current_test_data.data = testsaver.load(fullfilepath=recent_data)
 
   return []
 
@@ -930,7 +978,7 @@ def end_test(request):
     rospy.loginfo(f"Ending test with name: {current_test_data.data.test_name}")
   if log_level > 1: rospy.loginfo(f"Saving test data now...")
   
-  saver.save("test_data", pyobj=current_test_data.data)
+  testsaver.save("test_data", pyobj=current_test_data.data)
 
   if log_level > 1: rospy.loginfo("...finished saving test data")
 
@@ -982,13 +1030,13 @@ def save_trial(request):
       if log_level > 1: rospy.loginfo("Saving batch of image data...")
 
       # save
-      saver.save("trial_image_batch", pyobj=current_test_data.image_data)
+      testsaver.save("trial_image_batch", pyobj=current_test_data.image_data)
 
       # wipe old images
       current_test_data.image_data.trials = []
 
       # save temporary data of the test in case the program crashes
-      saver.save("temp_test_data", pyobj=current_test_data.data,
+      testsaver.save("temp_test_data", pyobj=current_test_data.data,
                  suffix_numbering=False)
 
       if log_level > 1: rospy.loginfo("Saving batch of image data complete")
@@ -1016,7 +1064,7 @@ def delete_last_trial(request=None):
     rospy.loginfo(f"delete_last_trial() tried to pop empty image_data list: {e}")
 
   # 'delete' any saved image data by renaming (temp test data will be overwritten)
-  most_recent_file = saver.get_recent_file(name="trial_image_batch")
+  most_recent_file = testsaver.get_recent_file(name="trial_image_batch")
 
   if most_recent_file is None:
     rospy.logwarn("delete_last_trial() could not find any recent 'trial_image_batch' files")
@@ -1122,33 +1170,7 @@ def load_baseline_model(request=None):
 
   return True
 
-"""
-Problems to address in this code:
-
-1. Not repeatable, you can't run multiple grasps in a row as the gripper
-does not work the 2nd time, it must not be being reset properly
-
-2. panda z height, the controller can send signals that caused the panda to
-hit the table and shut down, the code is unaware of this so grasping breaks
-
-3. local minimum, in rare cases an action is continously chosen that does
-nothing, like action 5 lifting the palm. It could be worth adding some noise
-to sensor inputs to prevent this
-
-4. ease of use, some functions are not that easy to use, for example stopping
-involves cancelling the 'start' call and then writing 'stop'. One better system
-could be to press the soft E-stop, if this code could detect when the franka
-arm refuses to move. Then, this code should make it easier to reset everything
-and start again
-
-5. wrist z sensor signal resetting - this may be working but check again
-
-6. ROS qt freezing - at first signals are seen live, but later in a grasp they
-freeze frame, possibly when panda is moving or as network is evaluated
-
-"""
-
-
+# ----- scripting to initialise and run node ----- #
 
 if __name__ == "__main__":
 
@@ -1174,22 +1196,28 @@ if __name__ == "__main__":
   norm_sensor_pub = rospy.Publisher("/gripper/dqn/sensor", NormalisedSensor, queue_size=10)
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
-  # # load a model with a given path (uncomment only one load)
-  # load = LoadModel()
-  # load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-  # load.group_name = "06-01-23"
-  # load.run_name = "luke-PC_14:44_A48"
-  # load.run_id = None
-  # load_model(load)
+  # user set - what do we load by default
+  if True:
 
-  # load a specific model baseline (uncomment only one load)
-  load = LoadBaselineModel()
-  load.thickness = 0.9e-3
-  load.width = 28e-3
-  load.sensors = 3
-  load_baseline_model(load)
+    # load a model with a given path
+    load = LoadModel()
+    load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
+    load.folderpath += "paper_baseline_2_noise_test/"
+    load.group_name = "13-02-23"
+    load.run_name = "luke-PC_17_37_A95"
+    load.run_id = None
+    load_model(load)
 
-  # uncomment for more debug information
+  else:
+
+    # load a specific model baseline
+    load = LoadBaselineModel()
+    load.thickness = 0.9e-3
+    load.width = 28e-3
+    load.sensors = 3
+    load_baseline_model(load)
+
+  # # uncomment for more debug information
   # model.env.log_level = 2
   # model.env.mj.set.debug = True
 
