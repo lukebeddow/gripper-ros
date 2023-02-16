@@ -6,7 +6,7 @@ import os
 import numpy as np
 from datetime import datetime
 
-from std_srvs.srv import Empty
+from std_srvs.srv import Empty, SetBool
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
@@ -42,13 +42,15 @@ scale_palm_data = 1.0           # scale real palm data by this
 state_noise = 0.0               # noise stddev to add on real state readings
 sensor_noise = 0.0              # noise stddev to add on real sensor readings
 image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
-image_batch_size = 1            # are we autosaving images in batches of trials, 0 disables
+image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 
 # experimental feature settings
-use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
+use_sim_ftsensor = True        # use a simulated ft sensor instead of real life
 sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
 prevent_back_palm = False       # swap any backward palm actions for forwards
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
+
+# for rendering I think there is a close() method I need to call
 
 # global flags
 move_gripper = False            # is the gripper allowed to move
@@ -278,7 +280,7 @@ class GraspTestData:
     self.image_data.trials.append(deepcopy(self.current_trial_with_images))
     self.current_trial_with_images = None
 
-  def get_test_results(self):
+  def get_test_results(self, print_trials=False):
     """
     Get data structure of test information
     """
@@ -324,6 +326,10 @@ class GraspTestData:
         entries[j][3] += trial.stable_height
         entries[j].append(trial.info)
 
+    # if True:
+    #   for i in range(len(entries)):
+    #     print(f"Object num = {entries[1]}, num trials = {entries[2]}")
+
     # now process trial data
     object_SRs = []
     object_trials = []
@@ -334,6 +340,8 @@ class GraspTestData:
       this_SR = (entries[i][3] / float(entries[i][2]))
       object_SRs.append(this_SR)
       object_trials.append(entries[i][2])
+
+      print(f"Object num = {entries[i][1]}, num trials = {entries[i][2]}, SR = {this_SR}")
   
     # round up
     total_SR = total_successes / float(len(self.data.trials))
@@ -680,7 +688,7 @@ def reset_all(request=None):
   rospy.sleep(2.0)  # sleep to allow sensors to settle before recalibration
   model.env.mj.calibrate_real_sensors()
   model.env.reset() # recalibrates sensors
-  model.env.mj.reset_object() # remove any object from the scene
+  model.env.mj.reset_object() # remove any object from the scene in simulation
 
   if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
 
@@ -713,11 +721,25 @@ def reset_panda(request=None):
   target_40_mm = [-0.05480234, 0.39970210, -0.02496146, -1.12615559, 0.00508573, 1.49539334, 0.82241654]
   target_50_mm = [-0.05526356, 0.41379487, -0.02496675, -1.07801807, 0.00540019, 1.46142950, 0.82228165]
  
+  # new calibrations 16/2/23 (only need to recalibrate 0-14mm, decide what '10mm' is)
+  # 0=light touch neoprene, -8mm=possible, -10mm=failure
+  new_0_mm = [-0.05736815, 0.45885982, -0.01876041, -1.13191855, 0.01099079, 1.56983831, 0.74956970]
+  new_2_mm = [-0.05737439, 0.46047147, -0.01875025, -1.12430958, 0.01100159, 1.56388907, 0.74956903]
+  new_4_mm = [-0.05739482, 0.46253642, -0.01875387, -1.11599621, 0.01100374, 1.55756571, 0.74957605]
+  new_6_mm = [-0.05751211, 0.46463015, -0.01875554, -1.10742017, 0.01101201, 1.55123021, 0.74958010]
+  new_8_mm = [-0.05755324, 0.46684607, -0.01875387, -1.09881346, 0.01103526, 1.54480933, 0.74958314]
+  new_10_mm = [-0.05760255, 0.46926905, -0.01875721, -1.09001171, 0.01106341, 1.53826451, 0.74958722]
+  new_12_mm = [-0.05763645, 0.47334958, -0.01888476, -1.08222997, 0.01087975, 1.53125487, 0.74958493]
+  new_14_mm = [-0.05767118, 0.47588157, -0.01888209, -1.07310271, 0.01091761, 1.52457547, 0.74958462]
+
+  calibrated_0mm = new_0_mm       # what joints for the floor
+  calibrated_start = new_10_mm    # what start position before grasping, can adjust
+
   # find which hardcoded joint state to reset to
   reset_to = int(reset_to + 0.5)
 
-  if reset_to == 0: target_state = target_0_mm
-  elif reset_to == 10: target_state = target_10_mm
+  if reset_to == 0: target_state = calibrated_0mm
+  elif reset_to == 10: target_state = calibrated_start
   elif reset_to == 20: target_state = target_20_mm
   elif reset_to == 30: target_state = target_30_mm
   elif reset_to == 40: target_state = target_40_mm
@@ -939,13 +961,17 @@ def start_test(request):
   if not os.path.exists(savepath + "dqn_model" + testsaver.file_ext):
     testsaver.save("dqn_model", pyobj=model, suffix_numbering=False)
   else:
-    rospy.loginfo("start_test() is not saving the dqn model as it already exists")
+    if log_level > 1:
+      rospy.loginfo("start_test() is not saving the dqn model as it already exists")
 
   # load any existing test data
   recent_data = testsaver.get_recent_file(name="test_data")
   if recent_data is not None:
-    rospy.loginfo("start_test() found existing test data, loading it now")
+    if log_level > 1:
+      rospy.loginfo("start_test() found existing test data, loading it now")
     current_test_data.data = testsaver.load(fullfilepath=recent_data)
+
+  if log_level > 0: rospy.loginfo("Ready to start testing")
 
   return []
 
@@ -1152,6 +1178,19 @@ def load_baseline_model(request=None):
 
   return True
 
+def set_ft_sensor_callback(request):
+  """
+  Set the flag for using a simulated force torque sensor
+  """
+
+  global use_sim_ftsensor
+
+  if log_level > 1: rospy.loginfo(f"use_sim_ftsensor originally set to {use_sim_ftsensor}")
+
+  use_sim_ftsensor = request.data
+
+  if log_level > 0: rospy.loginfo(f"use_sim_ftsensor is now set to {request.data}")
+
 # ----- scripting to initialise and run node ----- #
 
 if __name__ == "__main__":
@@ -1221,6 +1260,7 @@ if __name__ == "__main__":
   rospy.Service("/gripper/dqn/delete_trial", Empty, delete_last_trial)
   rospy.Service("/gripper/dqn/print_test", Empty, print_test_results)
   rospy.Service("/gripper/dqn/load_baseline_model", LoadBaselineModel, load_baseline_model)
+  rospy.Service("/gripper/dqn/set_use_sim_ft_sensor", SetBool, set_ft_sensor_callback)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
