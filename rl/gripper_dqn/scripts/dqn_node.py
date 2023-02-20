@@ -34,7 +34,7 @@ testsaver = ModelSaver("test_data", root="/home/luke/gripper-ros/")
 
 # important user settings
 log_level = 2                   # debug log level, 0 disables all
-action_delay = None             # safety delay between action generation and publishing
+action_delay = 0.1             # safety delay between action generation and publishing
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
@@ -45,8 +45,8 @@ image_rate = 1                  # 1=take pictures every step, 2=every two steps 
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 
 # experimental feature settings
-use_sim_ftsensor = True        # use a simulated ft sensor instead of real life
-sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
+use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
+# sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
 prevent_back_palm = False       # swap any backward palm actions for forwards
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
 
@@ -391,10 +391,10 @@ class GraspTestData:
     info_str += f"Avg. trials per object: {results.avg_obj_num_trials:.4f}\n"
     info_str += f"Overall success rate: {results.success_rate:.4f}\n"
     info_str += f"Avg. success rate per object: {results.avg_obj_success_rate:.4f}\n"
-    info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
-    info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
-    info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
-    info_str += f"cube success rate: {results.cube_SR:.4f}\n"
+    # info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
+    # info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
+    # info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
+    # info_str += f"cube success rate: {results.cube_SR:.4f}\n"
 
     return info_str
 
@@ -502,18 +502,16 @@ def generate_action():
     model.env.mj.action_step()
     if render_sim_view: model.env.mj.render()
 
-  # if at test time, save data for this step
+  # if at test time, save simple, unnormalised state data for this step
   if currently_testing:
     global current_test_data
     SI_state_vector = model.env.mj.get_simple_state_vector(model.env.mj.real_sensors.SI)
-    print(SI_state_vector)
     current_test_data.add_step(obs, action, SI_vector=SI_state_vector)
 
   # determine if this action is for the gripper or panda
   if model.env.mj.last_action_gripper(): for_franka = False
   elif model.env.mj.last_action_panda(): for_franka = True
-  else:
-    raise RuntimeError("last action not on gripper or on panda")
+  else: raise RuntimeError("last action not on gripper or on panda")
 
   return new_target_state, for_franka
 
@@ -587,6 +585,8 @@ def execute_grasping_callback(request=None):
   while not rospy.is_shutdown():
 
     if ready_for_new_action and model_loaded and continue_grasping:
+
+      ready_for_new_action = False
 
       # if we have reached our target position, terminate grasping
       if panda_z_height > 30e-3 - 1e-6:
@@ -1025,7 +1025,10 @@ def save_trial(request):
 
   # first, reset the scene as the trial is over
   # do this so I can place a new object whilst pickle is saving the image data
-  reset_all()
+  try:
+    reset_all()
+  except Exception as e:
+    rospy.logwarn(f"Unable to reset in save_trail(), error: {e}")
 
   global current_test_data
   current_test_data.finish_trial(request)
@@ -1223,9 +1226,9 @@ if __name__ == "__main__":
     # load a model with a given path
     load = LoadModel()
     load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-    load.folderpath += "paper_baseline_2_noise_test/"
-    load.group_name = "13-02-23"
-    load.run_name = "luke-PC_17_37_A95"
+    load.folderpath += "paper_baseline_2/"
+    load.group_name = "31-01-23"
+    load.run_name = "luke-PC_10_54_A117"
     load.run_id = None
     load_model(load)
 
