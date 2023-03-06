@@ -47,7 +47,7 @@ that when the sensor moves, the new values will update correclty. However, when 
 sensor is still, new values are lost and we keep receiving the old value. This means
 the sensor uncertainty is around +-0.5N. This also means that if the sensor is
 disconnected, the code will never notice and keep spamming the last known value. */
-#define LUKE_HACK_SENSOR 1
+#define LUKE_HACK_SENSOR_LOCK_CONNECTION 1
 
 //////////
 //Includes
@@ -173,7 +173,7 @@ static void rq_state_run()
 		current_state = RQ_STATE_INIT;
 
 // added by luke
-#if LUKE_HACK_SENSOR
+#if LUKE_HACK_SENSOR_LOCK_CONNECTION
     // ignore invalid signals, override with run signal
     current_state = RQ_STATE_RUN;
 #endif

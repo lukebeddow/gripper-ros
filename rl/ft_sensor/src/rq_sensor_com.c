@@ -40,6 +40,10 @@
  *  \maintener Nicolas Lauzier <nicolas@robotiq.com>
  */
 
+/* added by luke: the sensor often reports that the crc is not valid and rejects
+messages, we can assume all messages are fine and skip this crc check */
+#define LUKE_HACK_SENSOR_IGNORE_CRC_CHECK 1
+
 //////////
 //Includes
 
@@ -406,7 +410,10 @@ void rq_com_listen_stream(void)
 
 
 				//The crc is valid.. the message can be used
-				if(rq_com_computed_crc == rq_com_crc)
+        /* there are frequently issues here - many messages are rejected because
+        the crc is wrong. Hence we can 'hack' the sensor by setting this always
+        to true and assuming the messages are in fact good */
+				if(LUKE_HACK_SENSOR_IGNORE_CRC_CHECK || rq_com_computed_crc == rq_com_crc)
 				{
 					last_byte = i + 15; //will erase the message
 
