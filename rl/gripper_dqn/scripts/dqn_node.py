@@ -39,18 +39,15 @@ panda_reset_height_mm = 10      # real world panda height to reset to before a g
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
 scale_palm_data = 1.0           # scale real palm data by this
-state_noise = 0.0               # noise stddev to add on real state readings
-sensor_noise = 0.0              # noise stddev to add on real sensor readings
 image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 
 # experimental feature settings
 use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
+dynamic_recal_ftsensor = True  # recalibrate ftsensor to zero whenever connection is lost
 # sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
-prevent_back_palm = False       # swap any backward palm actions for forwards
+# prevent_back_palm = False       # swap any backward palm actions for forwards
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
-
-# for rendering I think there is a close() method I need to call
 
 # global flags
 move_gripper = False            # is the gripper allowed to move
@@ -69,6 +66,7 @@ ftenv = None                    # simulated environment for fake force/torque se
 norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
+last_ft_value = None            # last ftsensor value, used to detect lost connection
 
 # ----- test time data structure for saving information ----- #
 
@@ -280,10 +278,14 @@ class GraspTestData:
     self.image_data.trials.append(deepcopy(self.current_trial_with_images))
     self.current_trial_with_images = None
 
-  def get_test_results(self, print_trials=False):
+  def get_test_results(self, print_trials=False, data=None):
     """
     Get data structure of test information
     """
+
+    if data is None:
+      data = self.data
+
     entries = []
     object_nums = []
     entry = ["obj_name", "object_num", "num_trials", "num_successes", "info_strings"]
@@ -293,12 +295,12 @@ class GraspTestData:
     entry[3] = 0
     entry[4] = []
 
-    if len(self.data.trials) == 0:
+    if len(data.trials) == 0:
       rospy.logwarn("get_test_results() found 0 trials")
       return None
 
     # sort trial data
-    for trial in self.data.trials:
+    for trial in data.trials:
 
       found = False
       for j in range(len(object_nums)):
@@ -344,12 +346,12 @@ class GraspTestData:
       print(f"Object num = {entries[i][1]}, num trials = {entries[i][2]}, SR = {this_SR}")
   
     # round up
-    total_SR = total_successes / float(len(self.data.trials))
+    total_SR = total_successes / float(len(data.trials))
     avg_obj_SR = np.mean(np.array(object_SRs))
     avg_obj_trials = np.mean(np.array(object_trials))
 
     return GraspTestData.TestResults(
-      len(self.data.trials),        # num_trials
+      len(data.trials),        # num_trials
       len(object_nums),             # num_objects
       avg_obj_trials,               # avg_obj_num_trials
       total_SR,                     # success_rate
@@ -360,26 +362,30 @@ class GraspTestData:
       0.0,                          # cube_SR
     )
 
-  def get_test_string(self):
+  def get_test_string(self, data=None):
     """
     Print out information about the current test
     """
 
+    # by default use any current test data
+    if data is None:
+      data = current_test_data
+
     info_str = """"""
 
     info_str += f"Test information\n\n"
-    info_str += f"Test name: {current_test_data.data.test_name}\n"
-    info_str += f"Finger width: {current_test_data.data.finger_width}\n"
-    info_str += f"Finger thickness: {current_test_data.data.finger_thickness:.4f}\n"
-    info_str += f"heuristic test: {current_test_data.data.heuristic}\n"
-    info_str += f"Bending gauge in use: {current_test_data.data.bend_gauge}\n"
-    info_str += f"Palm sensor in use: {current_test_data.data.palm_sensor}\n"
-    info_str += f"Wrist Z sensor in use: {current_test_data.data.wrist_Z_sensor}\n"
-    info_str += f"Loaded group name: {current_test_data.data.group_name}\n"
-    info_str += f"Loaded run name: {current_test_data.data.run_name}\n"
-    info_str += f"Loaded best SR: {current_test_data.data.best_SR}\n"
+    info_str += f"Test name: {data.test_name}\n"
+    info_str += f"Finger width: {data.finger_width}\n"
+    info_str += f"Finger thickness: {data.finger_thickness:.4f}\n"
+    info_str += f"heuristic test: {data.heuristic}\n"
+    info_str += f"Bending gauge in use: {data.bend_gauge}\n"
+    info_str += f"Palm sensor in use: {data.palm_sensor}\n"
+    info_str += f"Wrist Z sensor in use: {data.wrist_Z_sensor}\n"
+    info_str += f"Loaded group name: {data.group_name}\n"
+    info_str += f"Loaded run name: {data.run_name}\n"
+    info_str += f"Loaded best SR: {data.best_SR}\n"
 
-    results = self.get_test_results()
+    results = self.get_test_results(data=data)
 
     if results is None: 
       info_str += "\nNO TRIAL DATA FOUND FOR THIS TEST"
@@ -405,6 +411,8 @@ def data_callback(state):
   Receives new state data for the gripper
   """
 
+  global model
+
   # we cannot start saving data until the model class is ready (else silent crash)
   if not model_loaded: return
 
@@ -427,6 +435,17 @@ def data_callback(state):
   # if use a simulated ftsensor, override with simulated data
   if use_sim_ftsensor:
     state.ftdata.force.z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
+
+  # if we rezero ftsensor every time values repeat (ie connection lost)
+  if dynamic_recal_ftsensor:
+    global last_ft_value
+    # rospy.loginfo(f"last value = {last_ft_value}, new value = {state.ftdata.force.z}")
+    # if new value and old are exactly floating-point equal
+    if state.ftdata.force.z == last_ft_value:
+      model.env.mj.real_sensors.wrist_Z.offset = last_ft_value
+      # if log_level > 1:
+      #   rospy.loginfo("RECALIBRATED FTSENSOR TO ZERO")
+    last_ft_value = state.ftdata.force.z
 
   # assemble our state vector (order is vitally important! Check mjclass.cpp)
   sensor_vec = [
@@ -488,10 +507,10 @@ def generate_action():
 
   if log_level > 1: rospy.loginfo(f"Generated action, action code is: {action}")
 
-  # if we are preventing palm backwards actions
-  if prevent_back_palm and action == 5:
-    if log_level > 0: rospy.loginfo(f"prevent_back_palm=TRUE, backwards palm prevented")
-    action = 4
+  # # if we are preventing palm backwards actions
+  # if prevent_back_palm and action == 5:
+  #   if log_level > 0: rospy.loginfo(f"prevent_back_palm=TRUE, backwards palm prevented")
+  #   action = 4
 
   # apply the action and get the new target state (vector)
   new_target_state = model.env.mj.set_action(action)
@@ -690,6 +709,11 @@ def reset_all(request=None):
   model.env.reset() # recalibrates sensors
   model.env.mj.reset_object() # remove any object from the scene in simulation
 
+  # check for settings clashes
+  if use_sim_ftsensor and dynamic_recal_ftsensor:
+      if log_level > 0: 
+        rospy.logwarn("use_sim_ftsensor and dynamic_recal_ft_sensor both True at the same time")
+
   if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
 
   return []
@@ -856,7 +880,6 @@ def load_model(request):
   
   global model_loaded
   global model, dqn_log_level
-  global sensor_noise, state_noise
 
   model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
 
@@ -882,8 +905,12 @@ def load_model(request):
     model.group_name = request.group_name
 
     # noise settings for real data
-    model.env.mj.set.state_noise_std = state_noise # add noise to state readings
-    model.env.mj.set.sensor_noise_std = sensor_noise  # do not add noise to sensor readings
+    # model.env.mj.set.state_noise_std = 0.0            # no state noise
+    # model.env.mj.set.sensor_noise_std = 0.0           # no sensor noise
+    # model.env.mj.set.state_noise_mu = 0.0             # no mean noise
+    # model.env.mj.set.sensor_noise_mu = 0.0            # no mean noise
+
+    model.env.mj.set.set_use_noise(False) # disable all noise
     model.env.reset()
 
     # IMPORTANT: have to run calibration function to setup real sensors
@@ -1096,6 +1123,8 @@ def print_test_results(request=None):
 
   rospy.loginfo(details_str)
 
+  return []
+
 def load_baseline_model(request=None):
   """
   Load a new dqn model
@@ -1181,18 +1210,31 @@ def load_baseline_model(request=None):
 
   return True
 
-def set_ft_sensor_callback(request):
+def set_sim_ft_sensor_callback(request):
   """
   Set the flag for using a simulated force torque sensor
   """
 
   global use_sim_ftsensor
-
   if log_level > 1: rospy.loginfo(f"use_sim_ftsensor originally set to {use_sim_ftsensor}")
-
   use_sim_ftsensor = request.data
-
   if log_level > 0: rospy.loginfo(f"use_sim_ftsensor is now set to {request.data}")
+
+  return []
+
+def set_dynamic_recal_ft_callback(request):
+  """
+  Set the bool value of whether we dynamically reset the ftsensor to zero
+  every time we get two exactly repeated values (indicating a connection drop,
+  which implies the sensor is in steady state and under no force)
+  """
+
+  global dynamic_recal_ftsensor
+  if log_level > 1: rospy.loginfo(f"dynamic_recal_ftsensor originally set to {dynamic_recal_ftsensor}")
+  dynamic_recal_ftsensor = request.data
+  if log_level > 0: rospy.loginfo(f"dynamic_recal_ftsensor is now set to {dynamic_recal_ftsensor}")
+
+  return []
 
 # ----- scripting to initialise and run node ----- #
 
@@ -1226,9 +1268,9 @@ if __name__ == "__main__":
     # load a model with a given path
     load = LoadModel()
     load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-    load.folderpath += "paper_baseline_2/"
-    load.group_name = "31-01-23"
-    load.run_name = "luke-PC_10_54_A117"
+    load.folderpath += "anti_overfit/"
+    load.group_name = "24-02-23"
+    load.run_name = "luke-PC_18_17_A37"
     load.run_id = None
     load_model(load)
 
@@ -1263,7 +1305,8 @@ if __name__ == "__main__":
   rospy.Service("/gripper/dqn/delete_trial", Empty, delete_last_trial)
   rospy.Service("/gripper/dqn/print_test", Empty, print_test_results)
   rospy.Service("/gripper/dqn/load_baseline_model", LoadBaselineModel, load_baseline_model)
-  rospy.Service("/gripper/dqn/set_use_sim_ft_sensor", SetBool, set_ft_sensor_callback)
+  rospy.Service("/gripper/dqn/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
+  rospy.Service("/gripper/dqn/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
