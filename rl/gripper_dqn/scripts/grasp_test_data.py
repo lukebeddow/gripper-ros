@@ -55,7 +55,20 @@ class GraspTestData:
     cuboid_SR: float
     cube_SR: float
 
-  def __init__(self, test_name, dqn_obj, image_rate=1, heuristic=False):
+  def __init__(self):
+    """
+    Empty initialisation, should now call start_test(...)
+    """
+
+    pass
+
+  def capture_depth_image(self):
+    """
+    This should be overloaded with a viable function
+    """
+    raise NotImplementedError
+
+  def start_test(self, test_name, dqn_obj, depth_image_fcn, image_rate=1, heuristic=False):
     """
     Data for an entire test
     """
@@ -97,6 +110,9 @@ class GraspTestData:
     self.image_rate = image_rate
     self.current_trial = None
     self.current_trial_with_images = None
+
+    # assign depth function pointer to this class
+    self.capture_depth_image = depth_image_fcn
 
   def start_trial(self, object_name, object_num, trial_num):
     """
@@ -163,7 +179,7 @@ class GraspTestData:
 
     # are we taking a photo this step
     if (self.current_step_count - 1) % self.image_rate == 0:
-      rgb, depth = get_depth_image()
+      rgb, depth = self.capture_depth_image()
       this_image = GraspTestData.image_data(
         self.current_step_count,  # step_num
         rgb,                      # rgb
@@ -216,8 +232,7 @@ class GraspTestData:
     Get data structure of test information
     """
 
-    if data is None:
-      data = self.data
+    if data is None: data = self.data
 
     entries = []
     object_nums = []
@@ -229,7 +244,7 @@ class GraspTestData:
     entry[4] = []
 
     if len(data.trials) == 0:
-      print("get_test_results() found 0 trials")
+      print("WARNING: get_test_results() found 0 trials")
       return None
 
     # sort trial data
@@ -276,7 +291,8 @@ class GraspTestData:
       object_SRs.append(this_SR)
       object_trials.append(entries[i][2])
 
-      print(f"Object num = {entries[i][1]}, num trials = {entries[i][2]}, SR = {this_SR}")
+      if print_trials:
+        print(f"Object num = {entries[i][1]}, num trials = {entries[i][2]}, SR = {this_SR}")
   
     # round up
     total_SR = total_successes / float(len(data.trials))
@@ -295,14 +311,13 @@ class GraspTestData:
       0.0,                          # cube_SR
     )
 
-  def get_test_string(self, data=None):
+  def get_test_string(self, data=None, print_trials=False):
     """
     Print out information about the current test
     """
 
     # by default use any current test data
-    if data is None:
-      data = self.data
+    if data is None: data = self.data
 
     info_str = """"""
 
@@ -316,9 +331,9 @@ class GraspTestData:
     info_str += f"Wrist Z sensor in use: {data.wrist_Z_sensor}\n"
     info_str += f"Loaded group name: {data.group_name}\n"
     info_str += f"Loaded run name: {data.run_name}\n"
-    info_str += f"Loaded best SR: {data.best_SR}\n"
+    info_str += f"Loaded best SR: {data.best_SR:.3f}\n"
 
-    results = self.get_test_results(data=data)
+    results = self.get_test_results(data=data, print_trials=print_trials)
 
     if results is None: 
       info_str += "\nNO TRIAL DATA FOUND FOR THIS TEST"
