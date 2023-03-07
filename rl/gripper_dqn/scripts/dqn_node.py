@@ -60,7 +60,6 @@ model_loaded = False            # has the dqn model been loaded
 ready_for_new_action = False    # is the gripper ready for a new action
 continue_grasping = True        # is grasping currently in progress and continuing
 currently_testing = False       # is a test currently in progress
-preparing_action = False        # are we in the process of generating an action
 
 # declare global variables, these will be overwritten
 step_num = 0                    # number of steps in our grasp
@@ -261,7 +260,6 @@ def execute_grasping_callback(request=None):
   global continue_grasping
   global panda_z_height
   global step_num
-  global preparing_action
 
   # this flag allows grasping to proceed
   continue_grasping = True
@@ -274,11 +272,7 @@ def execute_grasping_callback(request=None):
 
   while not rospy.is_shutdown() and continue_grasping:
 
-    print("loop")
-
     if ready_for_new_action and model_loaded:
-
-      print("START")
 
       ready_for_new_action = False
 
@@ -340,8 +334,6 @@ def execute_grasping_callback(request=None):
 
         # move panda is blocking, so we know we can now have a new action
         ready_for_new_action = True
-
-      print("END")
 
     rate.sleep()
 
