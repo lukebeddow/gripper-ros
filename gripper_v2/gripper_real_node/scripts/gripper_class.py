@@ -45,8 +45,9 @@ class Gripper:
   
   startEndSize = 3          # number of bytes for each of start/end markers
   
-  debug = True                    # are we in debug mode
-  connected = False
+  debug = True              # are we in debug mode
+  log_level = 1             # 0=disabled, 1=essential, 2=debug
+  connected = False         # are we connected over Serial
   
   #------------------------------------------------------------------------#
 
@@ -109,28 +110,29 @@ class Gripper:
     """
     self.baud_rate = baud_rate
     tries = 0
-    while tries < 1:
+    while tries < 10:
       try:
         self.serial = serial.Serial(com_port, self.baud_rate)
         self.com_port = com_port
         self.connected = True
-        print("Gripper is connected")
+        self.debug_print("Gripper is connected", log_level=1)
         return
       except serial.serialutil.SerialException as e:
         self.connected = False
-        print("Serial connection failed:", e)
-        time.sleep(0.5)
+        self.debug_print("Serial connection failed: " + repr(e), log_level=2)
+        time.sleep(2)
         tries += 1
-        print("Trying again...this is try number", tries)
-    print("Failed to get a connection with the gripper after", tries, "tries")
+        self.debug_print("Trying again...this is try number " + str(tries), log_level=2)
+    self.debug_print("Failed to get a connection with the gripper after " + str(tries) + " tries",
+                     log_level=1)
       
-  def debug_print(self,print_string):
+  def debug_print(self, print_string, log_level=2):
       """
       This method prints an output string if we are in debug mode
       """
-      if self.debug == True:
+
+      if log_level <= self.log_level:
           print(print_string)
-      return
 
   def send_message(self, type="command", units=None):
       """
@@ -138,7 +140,8 @@ class Gripper:
       """
 
       if not self.connected: 
-        print("Cannot send a message, gripper is not connected")
+        self.debug_print("Cannot send a message, gripper is not connected", 
+                         log_level=2)
         return
 
       byte_msg = bytearray()
@@ -202,7 +205,8 @@ class Gripper:
           byte_msg += bytearray(self.printByte)
 
       else:
-          print("incorrect type given to gripper_class send_message()")
+          self.debug_print("incorrect type given to gripper_class send_message()",
+                           log_level=1)
           return
 
       # set the end markers
@@ -244,29 +248,14 @@ class Gripper:
       
       # now flush the input buffer
       # self.serial.flushInput()
-      self.debug_print("Sending command")
+      self.debug_print("Sending command", log_level=2)
       
       # send the message
       self.serial.write(byte_msg)
 
-      # TEMPORARY MEASURE
+      # ignore any potential responses
+
       return True
-      
-      # wait for a response
-      response = self.get_next_output()
-      
-      if response == self.messageReceivedByte:
-          self.debug_print("Message received successfully")
-          return True
-      else:
-          self.debug_print("Message sending failed")
-          if response == self.messageFailedByte:
-              self.debug_print("Received failure byte from Arduino")
-          elif response == "timeout":
-              self.debug_print("No message received before timeout")
-          else:
-              self.debug_print("Unknown error, response was: " + str(response))
-          return False
       
   def get_serial_message(self, timeout=0.5):
       """
@@ -277,7 +266,8 @@ class Gripper:
       try:
 
         if not self.connected:
-          print("Gripper is not connected, get_serial_message(...) aborting")
+          self.debug_print("Gripper is not connected, get_serial_message(...) aborting",
+                           log_level=2)
           return "gripper not connected"
       
         # are there no bytes in the buffer
@@ -366,8 +356,7 @@ class Gripper:
           # if buffer is empty or something went wrong
           if type(output) == str:
               if output != "empty buffer":
-                  self.debug_print("Error in gauge read: ")
-                  self.debug_print(output)
+                  self.debug_print("Error in gauge read: " + output, log_level=2)
               break
 
           desiredByteLength = 31
@@ -393,12 +382,13 @@ class Gripper:
             if debug:
               error_str = ("Wrong size! The length was %d when it should have been %d"
                 % (len(output), desiredByteLength))
-              print(error_str)
+              self.debug_print(error_str, log_level=2)
             faulty_messages += 1
             if faulty_messages > max_faults:
               # clear the buffer
               self.serial.read_all()
-              print("Clearing the buffer, flushing away all pending messages")
+              self.debug_print("Clearing the buffer, flushing away all pending messages", 
+                               log_level=1)
             continue
 
           informationByte = output[0]

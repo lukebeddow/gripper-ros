@@ -20,30 +20,22 @@ from dataclasses import dataclass
 # import the test data structure class
 from grasp_test_data import GraspTestData
 
-# insert the mymujoco path for TrainDQN.py and ModelSaver.py files
-sys.path.insert(0, "/home/luke/mymujoco/rl")
-from TrainDQN import TrainDQN
-from ModelSaver import ModelSaver
-
 # ----- essential settings and global variable declarations ----- #
 
-# create model instance
-device = "cuda" #none
-dqn_log_level = 1
-model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
-
-# create modelsaver instance for saving test data
-testsaver = ModelSaver("test_data", root="/home/luke/gripper-ros/")
-
 # important user settings
-log_level = 2                   # debug log level, 0 disables all
-action_delay = 0.1             # safety delay between action generation and publishing
+log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug
+action_delay = 0.1              # safety delay between action generation and publishing
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
 scale_palm_data = 1.0           # scale real palm data by this
 image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
+
+# important paths
+test_save_path = "/home/luke/gripper-ros/"
+mymujoco_rl_path = "/home/luke/mymujoco/rl"
+pyfranka_path = "/home/luke/franka/franka_interface/build"
 
 # experimental feature settings
 use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
@@ -70,6 +62,19 @@ norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
 last_ft_value = None            # last ftsensor value, used to detect lost connection
+
+# insert the mymujoco path for TrainDQN.py and ModelSaver.py files
+sys.path.insert(0, mymujoco_rl_path)
+from TrainDQN import TrainDQN
+from ModelSaver import ModelSaver
+
+# create model instance
+device = "cuda" #none
+dqn_log_level = 1 if log_level > 1 else 0
+model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
+
+# create modelsaver instance for saving test data
+testsaver = ModelSaver("test_data", root=test_save_path)
 
 # ----- callbacks and functions to run grasping ----- #
 
@@ -164,8 +169,6 @@ def generate_action():
   """
 
   global currently_testing
-
-  if log_level > 2: rospy.loginfo("generating a new action")
 
   obs = model.env.mj.get_real_observation()
   torch_obs = model.to_torch(obs)
@@ -406,37 +409,34 @@ def reset_panda(request=None):
   else:
     reset_to = request.reset_height_mm
 
-  # new calibrations 7/2/23 (0=firm touching neoprene, -6mm=possible, -8mm=failure)
-  target_0_mm = [-0.05360574, 0.36224426, -0.02498490, -1.28254861, 0.00438162, 1.61758563, 0.82279294]
-  target_10_mm = [-0.05384081, 0.37038012, -0.02496675, -1.24878968, 0.00448761, 1.58849793, 0.82276331]
-  target_20_mm = [-0.05406938, 0.37825387, -0.02496313, -1.21092717, 0.00463154, 1.55859002, 0.82265671]
-  target_30_mm = [-0.05441660, 0.38795699, -0.02496313, -1.17022414, 0.00483431, 1.52763658, 0.82253542]
-  target_40_mm = [-0.05480234, 0.39970210, -0.02496146, -1.12615559, 0.00508573, 1.49539334, 0.82241654]
-  target_50_mm = [-0.05526356, 0.41379487, -0.02496675, -1.07801807, 0.00540019, 1.46142950, 0.82228165]
- 
-  # new calibrations 16/2/23 (only need to recalibrate 0-14mm, decide what '10mm' is)
-  # 0=light touch neoprene, -8mm=possible, -10mm=failure
-  new_0_mm = [-0.05736815, 0.45885982, -0.01876041, -1.13191855, 0.01099079, 1.56983831, 0.74956970]
-  new_2_mm = [-0.05737439, 0.46047147, -0.01875025, -1.12430958, 0.01100159, 1.56388907, 0.74956903]
-  new_4_mm = [-0.05739482, 0.46253642, -0.01875387, -1.11599621, 0.01100374, 1.55756571, 0.74957605]
-  new_6_mm = [-0.05751211, 0.46463015, -0.01875554, -1.10742017, 0.01101201, 1.55123021, 0.74958010]
-  new_8_mm = [-0.05755324, 0.46684607, -0.01875387, -1.09881346, 0.01103526, 1.54480933, 0.74958314]
-  new_10_mm = [-0.05760255, 0.46926905, -0.01875721, -1.09001171, 0.01106341, 1.53826451, 0.74958722]
-  new_12_mm = [-0.05763645, 0.47334958, -0.01888476, -1.08222997, 0.01087975, 1.53125487, 0.74958493]
-  new_14_mm = [-0.05767118, 0.47588157, -0.01888209, -1.07310271, 0.01091761, 1.52457547, 0.74958462]
+  # new calibrations 22/3/23, 0=firm neoprene press, -6=fails
+  cal_0_mm = [-0.04460928, 0.38211982, -0.00579623, -1.20211819, -0.01439458, 1.61249259, 0.75540974]
+  cal_2_mm = [-0.04462827, 0.38808571, -0.00581715, -1.18840848, -0.01443909, 1.59992939, 0.75540858]
+  cal_4_mm = [-0.04465780, 0.39017143, -0.00584690, -1.18030717, -0.01449511, 1.59377803, 0.75539456]
+  cal_6_mm = [-0.04465780, 0.39229479, -0.00584523, -1.17205779, -0.01450923, 1.58758239, 0.75534843]
+  cal_8_mm = [-0.04465585, 0.39438331, -0.00584356, -1.16354128, -0.01450720, 1.58123078, 0.75526212]
+  cal_10_mm = [-0.04465586, 0.39663358, -0.00584523, -1.15490750, -0.01450791, 1.57477994, 0.75516820]
+  cal_12_mm = [-0.04481524, 0.40074865, -0.00589660, -1.14791929, -0.01460787, 1.56819993, 0.75505090]
+  cal_14_mm = [-0.04481524, 0.40295305, -0.00589637, -1.13912490, -0.01460929, 1.56178082, 0.75500080]
+  cal_16_mm = [-0.04481162, 0.40537550, -0.00589997, -1.13007187, -0.01460378, 1.55529318, 0.75492834]
+  cal_18_mm = [-0.04481337, 0.40787476, -0.00589885, -1.12109334, -0.01459970, 1.54875262, 0.75484305]
+  cal_20_mm = [-0.04469420, 0.41042913, -0.00585969, -1.11176795, -0.01456532, 1.54207928, 0.75484156]
+  cal_30_mm = [-0.04473575, 0.42504616, -0.00586498, -1.06289308, -0.01454851, 1.50777675, 0.75434994]
+  cal_40_mm = [-0.04478521, 0.44279476, -0.00585969, -1.00850484, -0.01452637, 1.47115869, 0.75380754]
+  cal_50_mm = [-0.04487317, 0.46457349, -0.00585969, -0.94686224, -0.01449903, 1.43148042, 0.75321650]
 
-  calibrated_0mm = new_0_mm       # what joints for the floor
-  calibrated_start = new_10_mm    # what start position before grasping, can adjust
+  calibrated_0mm = cal_2_mm       # what joints for the floor
+  calibrated_start = cal_12_mm    # what start position before grasping, can adjust
 
   # find which hardcoded joint state to reset to
   reset_to = int(reset_to + 0.5)
 
   if reset_to == 0: target_state = calibrated_0mm
   elif reset_to == 10: target_state = calibrated_start
-  elif reset_to == 20: target_state = target_20_mm
-  elif reset_to == 30: target_state = target_30_mm
-  elif reset_to == 40: target_state = target_40_mm
-  elif reset_to == 50: target_state = target_50_mm
+  elif reset_to == 20: target_state = cal_20_mm
+  elif reset_to == 30: target_state = cal_30_mm
+  elif reset_to == 40: target_state = cal_40_mm
+  elif reset_to == 50: target_state = cal_50_mm
   else:
     raise RuntimeError(f"reset_panda given target reset of {reset_to} which does not correspond to known reset")
 
@@ -483,7 +483,8 @@ def connect_panda(request=None):
   try:
 
     if log_level > 0: rospy.loginfo("Trying to begin panda connection")
-    sys.path.insert(0, "/home/luke/franka_interface/build")
+    sys.path.insert(0, pyfranka_path)
+    
     import pyfranka_interface
 
     # create franka controller instance
@@ -987,6 +988,114 @@ def load_baseline_3_model(request=None):
 
   return True
 
+def load_baseline_4_model(request=None):
+  """
+  Load a new dqn model
+  """
+
+  # defaults
+  folderpath = "/home/luke/mymujoco/rl/models/paper_baseline_4"
+  id = None
+
+  tol = 1e-5
+
+  if (abs(request.thickness - 9e-4) < tol and
+      abs(request.width - 28e-3) < tol):
+     finger = 0
+  elif (abs(request.thickness - 10e-4) < tol and
+      abs(request.width - 24e-3) < tol):
+     finger = 1
+  elif (abs(request.thickness - 10e-4) < tol and
+      abs(request.width - 28e-3) < tol):
+     finger = 2
+  else:
+    rospy.logwarn(f"Width={request.width} and thickness={request.thickness} not valid in load_baseline_model()")
+
+  if finger == 0:
+
+    rospy.loginfo("Loading model for finger 0.9mm thick and 28mm width")
+
+    if request.sensors == 0:
+      group = "17-03-23"
+      name = "luke-PC_13:15_A17"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 1:
+      group = "13-03-23"
+      name = "luke-PC_17:23_A74"
+
+    elif request.sensors == 2:
+      group = "13-03-23"
+      name = "luke-PC_17:23_A138"
+
+    elif request.sensors == 3:
+      group = "07-03-23"
+      name = "luke-PC_13:37_A10"
+
+    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
+
+  elif finger == 1:
+
+    rospy.loginfo("Loading model for finger 1.0mm thick and 24mm width")
+
+    if request.sensors == 0:
+      # group = "16-01-23"
+      # name = "luke-PC_14_21_A10"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 1:
+      # group = "16-01-23"
+      # name = "luke-PC_14_21_A10"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 2:
+      # group = "16-01-23"
+      # name = "luke-PC_14_21_A10"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 3:
+      group = "12-03-23"
+      name = "luke-PC_17:37_A220"
+
+    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
+
+  elif finger == 2:
+
+    rospy.loginfo("Loading model for finger 1.0mm thick and 28mm width")
+
+    if request.sensors == 0:
+      # group = "16-01-23"
+      # name = "luke-PC_14_21_A10"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 1:
+      # group = "16-01-23"
+      # name = "luke-PC_14_21_A10"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 2:
+      # group = "16-01-23"
+      # name = "luke-PC_14_21_A10"
+      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+
+    elif request.sensors == 3:
+      group = "10-03-23"
+      name = "luke-PC_17:27_A239"
+
+    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
+
+  rospy.loginfo(f"Number of sensors is {request.sensors}")
+  rospy.loginfo(f"Group name: {group}, run name: {name}")
+
+  load = LoadModel()
+  load.folderpath = folderpath
+  load.group_name = group
+  load.run_name = name
+  load.run_id = id
+  load_model(load)
+
+  return True
+
 def set_sim_ft_sensor_callback(request):
   """
   Set the flag for using a simulated force torque sensor
@@ -1020,10 +1129,13 @@ if __name__ == "__main__":
   # initilise ros
   rospy.init_node("dqn_node")
   rospy.loginfo("dqn node main has now started")
+  
+  # what namespace will we use in this node for publishers/services
+  node_ns = "dqn" # gripper/dqn
 
   # get input parameters - are we allowing robot movement?
-  move_gripper = rospy.get_param("/gripper/dqn/move_gripper")
-  move_panda = rospy.get_param("/gripper/dqn/move_panda")
+  move_gripper = True # rospy.get_param(f"/{node_ns}/move_gripper")
+  move_panda = True # rospy.get_param(f"/{node_ns}/dqn/move_panda")
   rospy.loginfo(f"move gripper is {move_gripper}")
   rospy.loginfo(f"move panda is {move_panda}")
 
@@ -1035,8 +1147,8 @@ if __name__ == "__main__":
   demand_pub = rospy.Publisher("/gripper/demand", GripperDemand, queue_size=10)
 
   # publishers for displaying normalised nn input values
-  norm_state_pub = rospy.Publisher("/gripper/dqn/state", NormalisedState, queue_size=10)
-  norm_sensor_pub = rospy.Publisher("/gripper/dqn/sensor", NormalisedSensor, queue_size=10)
+  norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
+  norm_sensor_pub = rospy.Publisher(f"/{node_ns}/sensor", NormalisedSensor, queue_size=10)
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
   # user set - what do we load by default
@@ -1057,33 +1169,33 @@ if __name__ == "__main__":
     load = LoadBaselineModel()
     load.thickness = 0.9e-3
     load.width = 28e-3
-    load.sensors = 2
-    load_baseline_3_model(load)
+    load.sensors = 3
+    load_baseline_4_model(load)
 
   # # uncomment for more debug information
   # model.env.log_level = 2
   # model.env.mj.set.debug = True
 
   # begin services for this node
-  rospy.loginfo("dqn node services now available")
-  rospy.Service('/gripper/dqn/start', Empty, execute_grasping_callback)
-  rospy.Service('/gripper/dqn/stop', Empty, cancel_grasping_callback)
-  rospy.Service('/gripper/dqn/reset', Empty, reset_all)
-  rospy.Service('/gripper/dqn/reset_panda', ResetPanda, reset_panda)
-  rospy.Service("/gripper/dqn/reset_gripper", Empty, reset_gripper)
-  rospy.Service("/gripper/dqn/connect_panda", Empty, connect_panda)
-  rospy.Service("/gripper/dqn/load_model", LoadModel, load_model)
-  rospy.Service("/gripper/dqn/apply_settings", ApplySettings, apply_settings)
-  rospy.Service("/gripper/dqn/debug_gripper", Empty, debug_gripper)
-  rospy.Service("/gripper/dqn/test", StartTest, start_test)
-  rospy.Service("/gripper/dqn/trial", StartTrial, start_trial)
-  rospy.Service("/gripper/dqn/end_test", Empty, end_test)
-  rospy.Service("/gripper/dqn/save_trial", SaveTrial, save_trial)
-  rospy.Service("/gripper/dqn/delete_trial", Empty, delete_last_trial)
-  rospy.Service("/gripper/dqn/print_test", Empty, print_test_results)
-  rospy.Service("/gripper/dqn/load_baseline_model", LoadBaselineModel, load_baseline_3_model)
-  rospy.Service("/gripper/dqn/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
-  rospy.Service("/gripper/dqn/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
+  rospy.loginfo(f"dqn node services now available under namespace /{node_ns}/")
+  rospy.Service(f"/{node_ns}/start", Empty, execute_grasping_callback)
+  rospy.Service(f"/{node_ns}/stop", Empty, cancel_grasping_callback)
+  rospy.Service(f"/{node_ns}/reset", Empty, reset_all)
+  rospy.Service(f"/{node_ns}/reset_panda", ResetPanda, reset_panda)
+  rospy.Service(f"/{node_ns}/reset_gripper", Empty, reset_gripper)
+  rospy.Service(f"/{node_ns}/connect_panda", Empty, connect_panda)
+  rospy.Service(f"/{node_ns}/load_model", LoadModel, load_model)
+  rospy.Service(f"/{node_ns}/apply_settings", ApplySettings, apply_settings)
+  rospy.Service(f"/{node_ns}/debug_gripper", Empty, debug_gripper)
+  rospy.Service(f"/{node_ns}/test", StartTest, start_test)
+  rospy.Service(f"/{node_ns}/trial", StartTrial, start_trial)
+  rospy.Service(f"/{node_ns}/end_test", Empty, end_test)
+  rospy.Service(f"/{node_ns}/save_trial", SaveTrial, save_trial)
+  rospy.Service(f"/{node_ns}/delete_trial", Empty, delete_last_trial)
+  rospy.Service(f"/{node_ns}/print_test", Empty, print_test_results)
+  rospy.Service(f"/{node_ns}/load_baseline_model", LoadBaselineModel, load_baseline_4_model)
+  rospy.Service(f"/{node_ns}/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
+  rospy.Service(f"/{node_ns}/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests

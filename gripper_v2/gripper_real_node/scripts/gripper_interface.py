@@ -109,9 +109,6 @@ if __name__ == "__main__":
     mygripper = Gripper()
     mygripper.connect(usb_port)
 
-    # if we want to disable debug messages
-    mygripper.debug = False
-
     # create output message
     output_msg = GripperOutput()
 
