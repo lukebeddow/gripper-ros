@@ -9,6 +9,16 @@ class GraspTestData:
   step_data = namedtuple("step_data", ("step_num", "state_vector", "SI_state", "action"))
   image_data = namedtuple("image_data", ("step_num", "rgb", "depth"))
 
+  # define which shapes are which in the object set
+  sphere_min = 1
+  sphere_max = 6
+  cuboid_min = 7
+  cuboid_max = 15
+  cylinder_min = 16
+  cylinder_max = 27
+  cube_min = 28
+  cube_max = 30
+
   @dataclass
   class TrialData:
     object_name: str
@@ -45,15 +55,30 @@ class GraspTestData:
 
   @dataclass
   class TestResults:
-    num_trials: int
-    num_objects: int
-    avg_obj_num_trials: float
-    success_rate: float
-    avg_obj_success_rate: float
-    sphere_SR: float
-    cylinder_SR: float
-    cuboid_SR: float
-    cube_SR: float
+    num_trials: int = 0
+    num_objects: int = 0
+    num_sphere: int = 0
+    num_cuboid: int = 0
+    num_cylinder: int = 0
+    num_cube: int = 0
+    avg_obj_num_trials: float = 0
+    success_rate: float = 0
+    avg_obj_success_rate: float = 0
+    sphere_SR: float = 0
+    cylinder_SR: float = 0
+    cuboid_SR: float = 0
+    cube_SR: float = 0
+    avg_steps: float = 0
+    avg_stable_height: float = 0
+    avg_target_height: float = 0
+    avg_lifted: float = 0
+    avg_exceed_bending: float = 0
+    avg_exceed_axial: float = 0
+    avg_exceed_limits: float = 0
+    avg_loop: float = 0
+    avg_dropped: float = 0
+    avg_out_of_bounds: float = 0
+    avg_exceed_palm: float = 0
 
   def __init__(self):
     """
@@ -236,12 +261,7 @@ class GraspTestData:
 
     entries = []
     object_nums = []
-    entry = ["obj_name", "object_num", "num_trials", "num_successes", "info_strings"]
-    entry[0] = ""
-    entry[1] = 0
-    entry[2] = 0
-    entry[3] = 0
-    entry[4] = []
+    num_trials = 0
 
     if len(data.trials) == 0:
       print("WARNING: get_test_results() found 0 trials")
@@ -249,6 +269,11 @@ class GraspTestData:
 
     # sort trial data
     for trial in data.trials:
+
+      # ignore any object number over 100
+      if trial.object_num > 100: continue
+
+      num_trials += 1
 
       found = False
       for j in range(len(object_nums)):
@@ -258,60 +283,98 @@ class GraspTestData:
 
       if not found:
 
-        # create a new entry
-        new_entry = deepcopy(entry)
-        new_entry[0] = trial.object_name
-        new_entry[1] = trial.object_num
-        new_entry[2] += 1
-        new_entry[3] += trial.stable_height
-        new_entry[4].append(trial.info)
-
+        # create a new entry for this object
+        new_entry = deepcopy(trial)
+        new_entry.trial_num = 1
         entries.append(new_entry)
         object_nums.append(trial.object_num)
 
       else:
 
-        # add to the existing entry
-        entries[j][2] += 1
-        entries[j][3] += trial.stable_height
-        entries[j].append(trial.info)
+        # add to the existing entry for this object
+        entries[j].object_name += trial.object_name
+        entries[j].trial_num += 1
+        entries[j].steps += trial.steps
+        entries[j].stable_height += trial.stable_height
+        entries[j].target_height += trial.target_height
+        entries[j].lifted += trial.lifted
+        entries[j].exceed_bending += trial.exceed_bending
+        entries[j].exceed_axial += trial.exceed_axial
+        entries[j].exceed_limits += trial.exceed_limits
+        entries[j].loop += trial.loop
+        entries[j].dropped += trial.dropped
+        entries[j].out_of_bounds += trial.out_of_bounds
+        entries[j].exceed_palm += trial.exceed_palm
+        entries[j].info += trial.info
 
-    # if True:
-    #   for i in range(len(entries)):
-    #     print(f"Object num = {entries[1]}, num trials = {entries[2]}")
+    # create TestResults to return
+    result = GraspTestData.TestResults()
 
     # now process trial data
-    object_SRs = []
-    object_trials = []
-    total_successes = 0
     for i in range(len(entries)):
 
-      total_successes += entries[i][3]
-      this_SR = (entries[i][3] / float(entries[i][2]))
-      object_SRs.append(this_SR)
-      object_trials.append(entries[i][2])
-
       if print_trials:
-        print(f"Object num = {entries[i][1]}, num trials = {entries[i][2]}, SR = {this_SR}")
-  
-    # round up
-    total_SR = total_successes / float(len(data.trials))
-    avg_obj_SR = np.mean(np.array(object_SRs))
-    avg_obj_trials = np.mean(np.array(object_trials))
+        print(f"Object num = {entries[i].object_num}, num trials = {entries[i].trial_num}, TH = {entries[i].target_height} SH = {entries[i].stable_height}")
 
-    return GraspTestData.TestResults(
-      len(data.trials),        # num_trials
-      len(object_nums),             # num_objects
-      avg_obj_trials,               # avg_obj_num_trials
-      total_SR,                     # success_rate
-      avg_obj_SR,                   # avg_obj_success_rate
-      0.0,                          # sphere_SR
-      0.0,                          # cylinder_SR
-      0.0,                          # cuboid_SR
-      0.0,                          # cube_SR
-    )
+      result.num_trials += entries[i].trial_num
+      result.num_objects += 1
 
-  def get_test_string(self, data=None, print_trials=False):
+      result.avg_steps += len(entries[i].steps)
+      result.avg_stable_height += entries[i].stable_height
+      result.avg_target_height += entries[i].target_height
+      result.avg_lifted += entries[i].lifted
+      result.avg_exceed_bending += entries[i].exceed_bending
+      result.avg_exceed_axial += entries[i].exceed_axial
+      result.avg_exceed_limits += entries[i].exceed_limits
+      result.avg_loop += entries[i].loop
+      result.avg_dropped += entries[i].dropped
+      result.avg_out_of_bounds += entries[i].out_of_bounds
+      result.avg_exceed_palm += entries[i].exceed_palm
+
+      if (entries[i].object_num >= self.sphere_min and
+          entries[i].object_num <= self.sphere_max):
+        result.num_sphere += entries[i].trial_num
+        result.sphere_SR += entries[i].stable_height
+
+      if (entries[i].object_num >= self.cuboid_min and
+          entries[i].object_num <= self.cuboid_max):
+        result.num_cuboid += entries[i].trial_num
+        result.cuboid_SR += entries[i].stable_height
+
+
+      if (entries[i].object_num >= self.cube_min and
+          entries[i].object_num <= self.cube_max):
+        result.num_cube += entries[i].trial_num
+        result.cube_SR += entries[i].stable_height
+
+
+      if (entries[i].object_num >= self.cylinder_min and
+          entries[i].object_num <= self.cylinder_max):
+        result.num_cylinder += entries[i].trial_num
+        result.cylinder_SR += entries[i].stable_height
+
+
+    # finalise and normalise
+    result.avg_steps /= result.num_trials
+    result.avg_stable_height /= result.num_trials
+    result.avg_target_height /= result.num_trials
+    result.avg_lifted /= result.num_trials
+    result.avg_exceed_bending /= result.num_trials
+    result.avg_exceed_axial /= result.num_trials
+    result.avg_exceed_limits /= result.num_trials
+    result.avg_loop /= result.num_trials
+    result.avg_dropped /= result.num_trials
+    result.avg_out_of_bounds /= result.num_trials
+    result.avg_exceed_palm /= result.num_trials
+
+    result.sphere_SR /= result.num_sphere
+    result.cuboid_SR /= result.num_cuboid
+    result.cylinder_SR /= result.num_cylinder
+    result.cube_SR /= result.num_cube
+    
+    return result
+
+  def get_test_string(self, data=None, print_trials=False, detailed=False):
     """
     Print out information about the current test
     """
@@ -340,14 +403,35 @@ class GraspTestData:
       return info_str
 
     info_str += f"\nResults information:\n\n"
+    if detailed:
+      info_str += f"num_sphere = {results.num_sphere}\n"
+      info_str += f"num_cuboid = {results.num_cuboid}\n"
+      info_str += f"num_cylinder = {results.num_cylinder}\n"
+      info_str += f"num_cube = {results.num_cube}\n"
+      info_str += f"sphere_SR = {results.sphere_SR:.4f}\n"
+      info_str += f"cylinder_SR = {results.cylinder_SR:.4f}\n"
+      info_str += f"cuboid_SR = {results.cuboid_SR:.4f}\n"
+      info_str += f"cube_SR = {results.cube_SR:.4f}\n"
+      info_str += f"avg_steps = {results.avg_steps:.4f}\n"
+      info_str += f"avg_stable_height = {results.avg_stable_height:.4f}\n"
+      info_str += f"avg_target_height = {results.avg_target_height:.4f}\n"
+      info_str += f"avg_lifted = {results.avg_lifted:.4f}\n"
+      info_str += f"avg_exceed_bending = {results.avg_exceed_bending:.4f}\n"
+      info_str += f"avg_exceed_axial = {results.avg_exceed_axial:.4f}\n"
+      info_str += f"avg_exceed_limits = {results.avg_exceed_limits:.4f}\n"
+      info_str += f"avg_loop = {results.avg_loop:.4f}\n"
+      info_str += f"avg_dropped = {results.avg_dropped:.4f}\n"
+      info_str += f"avg_out_of_bounds = {results.avg_out_of_bounds:.4f}\n"
+      info_str += f"avg_exceed_palm = {results.avg_exceed_palm:.4f}\n"
+      info_str += "\n"
+    info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
+    info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
+    info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
+    info_str += f"cube success rate: {results.cube_SR:.4f}\n"
+    info_str += "\n"
     info_str += f"Total number of trials: {results.num_trials}\n"
     info_str += f"Total number of objects: {results.num_objects}\n"
-    info_str += f"Avg. trials per object: {results.avg_obj_num_trials:.4f}\n"
-    info_str += f"Overall success rate: {results.success_rate:.4f}\n"
-    info_str += f"Avg. success rate per object: {results.avg_obj_success_rate:.4f}\n"
-    # info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
-    # info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
-    # info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
-    # info_str += f"cube success rate: {results.cube_SR:.4f}\n"
+    info_str += f"Overall success rate: {results.avg_stable_height:.4f}\n"
+    
 
     return info_str
