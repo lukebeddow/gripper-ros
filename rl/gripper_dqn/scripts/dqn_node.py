@@ -169,13 +169,18 @@ def generate_action():
   """
 
   global currently_testing
+  global current_test_data
 
   obs = model.env.mj.get_real_observation()
   torch_obs = model.to_torch(obs)
   
-  # use the state to predict the best action (test=True means pick best possible, decay_num has no effect)
-  action = model.select_action(torch_obs, decay_num=1, test=True)
-  action = action.item()
+  if currently_testing and current_test_data.data.heuristic:
+    # if we are doing heuristic grasping
+    action = model.env.get_heuristic_action()
+  else:
+    # use the state to predict the best action (test=True means pick best possible, decay_num has no effect)
+    action = model.select_action(torch_obs, decay_num=1, test=True)
+    action = action.item()
 
   if log_level > 1: rospy.loginfo(f"Generated action, action code is: {action}")
 
@@ -195,7 +200,6 @@ def generate_action():
 
   # if at test time, save simple, unnormalised state data for this step
   if currently_testing:
-    global current_test_data
     SI_state_vector = model.env.mj.get_simple_state_vector(model.env.mj.real_sensors.SI)
     current_test_data.add_step(obs, action, SI_vector=SI_state_vector)
 
@@ -380,6 +384,9 @@ def reset_all(request=None):
   model.env.mj.calibrate_real_sensors()
   model.env.reset() # recalibrates sensors
   model.env.mj.reset_object() # remove any object from the scene in simulation
+
+  if currently_testing and current_test_data.data.heuristic:
+    model.env.start_heuristic_grasping(realworld=True)
 
   # check for settings clashes
   if use_sim_ftsensor and dynamic_recal_ftsensor:
@@ -1122,6 +1129,17 @@ def set_dynamic_recal_ft_callback(request):
 
   return []
 
+def make_test_heurisitc(request=None):
+  """
+  Set the given test to be heuristic grasping
+  """
+  global current_test_data
+  if log_level > 1: rospy.loginfo(f"test heuristic was set to {current_test_data.data.heuristic}")
+  current_test_data.data.heuristic = True
+  if log_level > 0: rospy.loginfo(f"test heurisitc now set to TRUE")
+
+  return []
+
 # ----- scripting to initialise and run node ----- #
 
 if __name__ == "__main__":
@@ -1196,6 +1214,7 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/load_baseline_model", LoadBaselineModel, load_baseline_4_model)
   rospy.Service(f"/{node_ns}/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
   rospy.Service(f"/{node_ns}/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
+  rospy.Service(f"/{node_ns}/make_test_heuristic", Empty, make_test_heurisitc)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests

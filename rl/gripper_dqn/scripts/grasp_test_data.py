@@ -435,3 +435,54 @@ class GraspTestData:
     
 
     return info_str
+
+  def print_trial(self, trial, steps=[0], state=True, sensor_state=[1, 5], SI=True, action=True):
+    """
+    Prints a given trial
+    """
+
+    from itertools import chain
+
+    if state:
+      print("Printing trial.state_vector data for the given steps:")
+      col_format = ":<8"
+      float_format = ".4f"
+      top_str = "{0" + col_format[:] + "} "
+      SI_str = "{0" + col_format[:] + "} "
+      for x in range(len(trial.steps[0].state_vector)):
+        top_str += "{" + str(x + 1) + col_format + "} "
+        SI_str += "{" + str(x + 1) + col_format + float_format + "} "
+
+
+      print(*("step", *[j for i in [("a", "b") for i in range(sensor_state[0])] for j in i]))
+
+
+
+      print(top_str.format(
+        "step", 
+        *("bend1-1", *[j for i in [("diff", "bend1-" + str(i+2)) for i in range(sensor_state[0])] for j in i]), 
+        *("bend2-1", *[j for i in [("diff", "bend2-" + str(i+2)) for i in range(sensor_state[0])] for j in i]), 
+        *("bend3-1", *[j for i in [("diff", "bend3-" + str(i+2)) for i in range(sensor_state[0])] for j in i]), 
+        *("palm-1", *[j for i in [("diff", "palm-" + str(i+2)) for i in range(sensor_state[0])] for j in i]), 
+        *("wrist-1", *[j for i in [("diff", "wrist-" + str(i+2)) for i in range(sensor_state[0])] for j in i]), 
+        *("x-1", *[j for i in [("diff", "x-" + str(i+2)) for i in range(sensor_state[1])] for j in i]), 
+        *("y-1", *[j for i in [("diff", "y-" + str(i+2)) for i in range(sensor_state[1])] for j in i]), 
+        *("z-1", *[j for i in [("diff", "z-" + str(i+2)) for i in range(sensor_state[1])] for j in i]), 
+        *("H-1", *[j for i in [("diff", "H-" + str(i+2)) for i in range(sensor_state[1])] for j in i]), 
+      )) 
+      for i in steps:
+        print(SI_str.format(i, *trial.steps[i].state_vector))
+
+    if SI:
+      print("Printing trial.SI_state data for the given steps:")
+      col_format = ":<8"
+      float_format = ".4f"
+      top_str = "{0" + col_format[:] + "} "
+      SI_str = "{0" + col_format[:] + "} "
+      for x in range(len(trial.steps[0].SI_state)):
+        top_str += "{" + str(x + 1) + col_format + "} "
+        SI_str += "{" + str(x + 1) + col_format + float_format + "} "
+      print(top_str.format("step", "bend1", "bend2", "bend3", "palm", "wrist", "x", "y", "z", "H"))
+      for i in steps:
+        print(SI_str.format(i, *trial.steps[i].SI_state))
+      
