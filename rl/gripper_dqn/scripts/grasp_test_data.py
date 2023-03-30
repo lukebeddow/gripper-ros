@@ -367,11 +367,26 @@ class GraspTestData:
     result.avg_out_of_bounds /= result.num_trials
     result.avg_exceed_palm /= result.num_trials
 
-    result.sphere_SR /= result.num_sphere
-    result.cuboid_SR /= result.num_cuboid
-    result.cylinder_SR /= result.num_cylinder
-    result.cube_SR /= result.num_cube
-    
+    if result.num_sphere > 0:
+      result.sphere_SR /= result.num_sphere
+    else:
+      result.sphere_SR = 0
+
+    if result.num_cuboid > 0:
+      result.cuboid_SR /= result.num_cuboid
+    else:
+      result.cuboid_SR = 0
+
+    if result.num_cylinder > 0:
+      result.cylinder_SR /= result.num_cylinder
+    else:
+      result.cylinder_SR = 0
+      
+    if result.num_cube > 0:
+      result.cube_SR /= result.num_cube
+    else:
+      result.cube_SR = 0
+
     return result
 
   def get_test_string(self, data=None, print_trials=False, detailed=False):

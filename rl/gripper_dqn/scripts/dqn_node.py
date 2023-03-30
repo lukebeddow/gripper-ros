@@ -42,6 +42,7 @@ use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
 dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connection is lost
 # sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
 # prevent_back_palm = False       # swap any backward palm actions for forwards
+prevent_x_open = False           # swap action 1 (X open) for action 2 (Y close)
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
 
 # global flags
@@ -189,6 +190,11 @@ def generate_action():
   #   if log_level > 0: rospy.loginfo(f"prevent_back_palm=TRUE, backwards palm prevented")
   #   action = 4
 
+  # prevent x open
+  if prevent_x_open and action == 1:
+    if log_level > 0: rospy.loginfo(f"prevent_x_open=TRUE, setting Y close instead")
+    action = 2
+
   # apply the action and get the new target state (vector)
   new_target_state = model.env.mj.set_action(action)
 
@@ -268,12 +274,12 @@ def execute_grasping_callback(request=None):
   global panda_z_height
   global step_num
 
+  reset_all() # note this calls 'cancel_grasping_callback' if continue_grasping == True
+
   # this flag allows grasping to proceed
   continue_grasping = True
 
   step_num = 0
-
-  reset_all()
 
   rate = rospy.Rate(20)
 
@@ -364,6 +370,10 @@ def reset_all(request=None):
   """
   Reset the gripper and panda
   """
+
+  # ensure grasping is cancelled
+  if continue_grasping:
+    cancel_grasping_callback()
 
   # reset the gripper position (not blocking, publishes request)
   if move_gripper:
@@ -1185,7 +1195,7 @@ if __name__ == "__main__":
 
     # load a specific model baseline
     load = LoadBaselineModel()
-    load.thickness = 0.9e-3
+    load.thickness = 1.0e-3
     load.width = 28e-3
     load.sensors = 3
     load_baseline_4_model(load)
