@@ -1097,7 +1097,7 @@ def load_baseline_4_model(request=None):
 
     elif request.sensors == 3:
       group = "10-03-23"
-      name = "luke-PC_17:27_A239"
+      name = "luke-PC_17:27_A239_continued"
 
     else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
 

@@ -120,7 +120,7 @@ class Gripper:
       except serial.serialutil.SerialException as e:
         self.connected = False
         self.debug_print("Serial connection failed: " + repr(e), log_level=2)
-        time.sleep(2)
+        time.sleep(1)
         tries += 1
         self.debug_print("Trying again...this is try number " + str(tries), log_level=2)
     self.debug_print("Failed to get a connection with the gripper after " + str(tries) + " tries",
