@@ -12,7 +12,13 @@ from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
 
-from capture_depth_image import get_depth_image
+try:
+  global depth_camera_connected
+  depth_camera_connected = True
+  from capture_depth_image import get_depth_image
+except: 
+  print("DEPTH CAMERA NOT CONNECTED")
+  depth_camera_connected = False
 from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
@@ -44,6 +50,7 @@ dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connecti
 # prevent_back_palm = False       # swap any backward palm actions for forwards
 prevent_x_open = False           # swap action 1 (X open) for action 2 (Y close)
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
+quit_on_palm = None               # quit grasping with a palm value above this (during test only), set None for off
 
 # global flags
 move_gripper = False            # is the gripper allowed to move
@@ -208,6 +215,11 @@ def generate_action():
   if currently_testing:
     SI_state_vector = model.env.mj.get_simple_state_vector(model.env.mj.real_sensors.SI)
     current_test_data.add_step(obs, action, SI_vector=SI_state_vector)
+    if quit_on_palm is not None:
+      palm_force = model.env.mj.real_sensors.SI.read_palm_sensor()
+      if palm_force > quit_on_palm:
+        print(f"PALM FORCE OF {palm_force:.1f} UNSAFE, CANCELLING GRASPING")
+        cancel_grasping_callback()
 
   # determine if this action is for the gripper or panda
   if model.env.mj.last_action_gripper(): for_franka = False
@@ -664,6 +676,10 @@ def start_test(request):
 
   if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
 
+  if not depth_camera_connected:
+    rospy.logwarn("Depth camera is not connected, test aborted")
+    return False
+
   global testsaver, current_test_data, model, currently_testing, image_rate
   testsaver.enter_folder(request.name, forcecreate=True)
   current_test_data = GraspTestData() # wipe data clean
@@ -686,6 +702,16 @@ def start_test(request):
     current_test_data.data = testsaver.load(fullfilepath=recent_data)
 
   if log_level > 0: rospy.loginfo("Ready to start testing")
+
+  return []
+
+def heuristic_test(request):
+  """
+  Begin a heuristic grasping test
+  """
+
+  start_test(request)
+  make_test_heurisitc()
 
   return []
 
@@ -1035,7 +1061,6 @@ def load_baseline_4_model(request=None):
     if request.sensors == 0:
       group = "17-03-23"
       name = "luke-PC_13:15_A17"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
 
     elif request.sensors == 1:
       group = "13-03-23"
@@ -1043,7 +1068,7 @@ def load_baseline_4_model(request=None):
 
     elif request.sensors == 2:
       group = "13-03-23"
-      name = "luke-PC_17:23_A138"
+      name = "luke-PC_17:23_A122"
 
     elif request.sensors == 3:
       group = "07-03-23"
@@ -1061,18 +1086,19 @@ def load_baseline_4_model(request=None):
       rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
 
     elif request.sensors == 1:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      group = "31-03-23"
+      name = "luke-PC_16:46_A90"
 
     elif request.sensors == 2:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      group = "27-03-23"
+      name = "luke-PC_17:29_A142"
 
     elif request.sensors == 3:
-      group = "12-03-23"
-      name = "luke-PC_17:37_A220"
+      # group = "12-03-23"
+      # name = "luke-PC_17:37_A220"
+      # alternative training
+      group = "06-04-23"
+      name = "luke-PC_16:54_A217"
 
     else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
 
@@ -1086,18 +1112,16 @@ def load_baseline_4_model(request=None):
       rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
 
     elif request.sensors == 1:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      group = "31-03-23"
+      name = "luke-PC_16:46_A104"
 
     elif request.sensors == 2:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
-
+      group = "27-03-23"
+      name = "luke-PC_17:29_A170"
+      
     elif request.sensors == 3:
       group = "10-03-23"
-      name = "luke-PC_17:27_A239_continued"
+      name = "luke-PC_17:27_A239"
 
     else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
 
@@ -1180,22 +1204,22 @@ if __name__ == "__main__":
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
   # user set - what do we load by default
-  if False:
+  if True:
 
     # load a model with a given path
     load = LoadModel()
     load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-    load.folderpath += "paper_baseline_3_extra/"
-    load.group_name = "27-02-23"
-    load.run_name = "luke-PC_17_51_A118"
-    load.run_id = 12 # 44000 eps, 0.90 SR
+    # load.folderpath += "paper_baseline_3_extra/"
+    load.group_name = "26-04-23"
+    load.run_name = "luke-PC_15:26_A64"
+    load.run_id = None
     load_model(load)
 
   else:
 
     # load a specific model baseline
     load = LoadBaselineModel()
-    load.thickness = 1.0e-3
+    load.thickness = 0.9e-3
     load.width = 28e-3
     load.sensors = 3
     load_baseline_4_model(load)
@@ -1216,6 +1240,7 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/apply_settings", ApplySettings, apply_settings)
   rospy.Service(f"/{node_ns}/debug_gripper", Empty, debug_gripper)
   rospy.Service(f"/{node_ns}/test", StartTest, start_test)
+  rospy.Service(f"/{node_ns}/heuristic_test", StartTest, heuristic_test)
   rospy.Service(f"/{node_ns}/trial", StartTrial, start_trial)
   rospy.Service(f"/{node_ns}/end_test", Empty, end_test)
   rospy.Service(f"/{node_ns}/save_trial", SaveTrial, save_trial)
