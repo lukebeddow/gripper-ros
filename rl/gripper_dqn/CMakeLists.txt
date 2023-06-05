@@ -65,6 +65,8 @@ add_service_files(
   StartTrial.srv
   SaveTrial.srv
   LoadBaselineModel.srv
+  PandaMoveToInt.srv
+  Demo.srv
 )
 
 ## Generate actions in the 'action' folder

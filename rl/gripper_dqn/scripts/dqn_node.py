@@ -5,20 +5,37 @@ import sys
 import os
 import numpy as np
 from datetime import datetime
+import multiprocessing as mp
+
+# from: https://stackoverflow.com/questions/19924104/python-multiprocessing-handling-child-errors-in-parent
+class Process(mp.Process):
+  def __init__(self, *args, **kwargs):
+    mp.Process.__init__(self, *args, **kwargs)
+    self._pconn, self._cconn = mp.Pipe()
+    self._exception = None
+
+  def run(self):
+    try:
+      mp.Process.run(self)
+      self._cconn.send(None)
+    except Exception as e:
+      # tb = traceback.format_exc()
+      # self._cconn.send((e, tb))
+      raise e  # You can still rise this exception if you need to
+
+  @property
+  def exception(self):
+    if self._pconn.poll():
+      self._exception = self._pconn.recv()
+    return self._exception
 
 from std_srvs.srv import Empty, SetBool
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
+from gripper_dqn.srv import PandaMoveToInt, Demo
 
-try:
-  global depth_camera_connected
-  depth_camera_connected = True
-  from capture_depth_image import get_depth_image
-except: 
-  print("DEPTH CAMERA NOT CONNECTED")
-  depth_camera_connected = False
 from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
@@ -29,8 +46,13 @@ from grasp_test_data import GraspTestData
 # ----- essential settings and global variable declarations ----- #
 
 # important user settings
-log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug
+camera = False                  # do we want to take camera images, is the camera connected
+use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
+photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
+use_panda_threads = False       # do we run panda in a seperate thread
+log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
 action_delay = 0.1              # safety delay between action generation and publishing
+panda_z_move_duration = 0.5     # how long to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
@@ -40,7 +62,8 @@ image_batch_size = 1            # 1=save pictures every trial, 2=every two trial
 
 # important paths
 test_save_path = "/home/luke/gripper-ros/"
-mymujoco_rl_path = "/home/luke/mymujoco/rl"
+if use_devel: mymujoco_rl_path = "/home/luke/mujoco-devel/rl"
+else: mymujoco_rl_path = "/home/luke/mymujoco/rl"
 pyfranka_path = "/home/luke/franka/franka_interface/build"
 
 # experimental feature settings
@@ -51,6 +74,8 @@ dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connecti
 prevent_x_open = False           # swap action 1 (X open) for action 2 (Y close)
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
 quit_on_palm = None               # quit grasping with a palm value above this (during test only), set None for off
+reject_wrist_noise = False       # try to ignore large spikes in the wrist sensor
+prevent_table_hit = True         # prevent the gripper from going below a certain height
 
 # global flags
 move_gripper = False            # is the gripper allowed to move
@@ -60,6 +85,10 @@ model_loaded = False            # has the dqn model been loaded
 ready_for_new_action = False    # is the gripper ready for a new action
 continue_grasping = True        # is grasping currently in progress and continuing
 currently_testing = False       # is a test currently in progress
+continue_demo = False           # is the demo currently in progress and continuing
+demo_panda_is_at = -1           # flag for the position the panda is in (only applies to a demo)
+demo_loop_int = -1              # where in the demo loop are we
+risk_table_hit = False
 
 # declare global variables, these will be overwritten
 step_num = 0                    # number of steps in our grasp
@@ -70,6 +99,23 @@ norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
 last_ft_value = None            # last ftsensor value, used to detect lost connection
+
+# dummy define camera function for cases where no camera is loaded
+depth_camera_connected = False
+def get_depth_image():
+  """
+  Empty function (returning rgb, depth) since no camera connected
+  """
+  rospy.logwarn("Warning: no camera connected, no images collected")
+  return None, None
+
+# try to start the camera connection and override the camera function
+try:
+  if camera is False: raise NotImplementedError
+  depth_camera_connected = True
+  from capture_depth_image import get_depth_image
+except NotImplementedError: rospy.loginfo("use camera is False, no images will be taken")
+except: rospy.logerr("DEPTH CAMERA NOT CONNECTED but camera is True, beware")
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -117,8 +163,8 @@ def data_callback(state):
     state.ftdata.force.z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
 
   # if we rezero ftsensor every time values repeat (ie connection lost)
+  global last_ft_value
   if dynamic_recal_ftsensor:
-    global last_ft_value
     # rospy.loginfo(f"last value = {last_ft_value}, new value = {state.ftdata.force.z}")
     # if new value and old are exactly floating-point equal
     if state.ftdata.force.z == last_ft_value:
@@ -126,6 +172,16 @@ def data_callback(state):
       # if log_level > 1:
       #   rospy.loginfo("RECALIBRATED FTSENSOR TO ZERO")
     last_ft_value = state.ftdata.force.z
+
+  # if we are trying to reject noise from the wrist sensor
+  if reject_wrist_noise:
+    rejection_threshold = 5
+    new_reading = state.ftdata.force.z
+    if last_ft_value is None:
+      pass
+    elif abs(state.ftdata.force.z - last_ft_value) > rejection_threshold:
+      state.ftdata.force.z = last_ft_value
+    last_ft_value = new_reading
 
   # assemble our state vector (order is vitally important! Check mjclass.cpp)
   sensor_vec = [
@@ -159,6 +215,14 @@ def data_callback(state):
   # if using a simulated ft sensor, replace with this data instead
   if use_sim_ftsensor:
     norm_sensor.wrist_z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
+
+  # if we are trying to prevent hitting the table
+  if prevent_table_hit:
+    global risk_table_hit
+    if norm_sensor.wrist_z > 0.99 and norm_sensor.palm > 0.99:
+      risk_table_hit = True
+    else:
+      risk_table_hit = False
 
   norm_state_pub.publish(norm_state)
   norm_sensor_pub.publish(norm_sensor)
@@ -201,6 +265,11 @@ def generate_action():
   if prevent_x_open and action == 1:
     if log_level > 0: rospy.loginfo(f"prevent_x_open=TRUE, setting Y close instead")
     action = 2
+
+  # prevent the controller from hitting the table
+  if prevent_table_hit and action == 6 and risk_table_hit:
+    action = 7
+    rospy.loginfo("Risk of table hit")
 
   # apply the action and get the new target state (vector)
   new_target_state = model.env.mj.set_action(action)
@@ -264,16 +333,21 @@ def move_panda_z_abs(franka, target_z):
     return
 
   # define duration in seconds (too low and we get acceleration errors)
-  duration = 1.0
+  global panda_z_move_duration
 
-  franka.move("relative", T, duration)
+  if use_panda_threads:
+    process = Process(target=franka.move, args=("relative", T, panda_z_move_duration))
+    process.start()
+    process.join()
+  else:
+    franka.move("relative", T, panda_z_move_duration)
 
   # update with the new target position
   panda_z_height = target_z
 
   return
 
-def execute_grasping_callback(request=None):
+def execute_grasping_callback(request=None, reset=True):
   """
   Service callback to complete a dqn grasping task
   """
@@ -286,7 +360,8 @@ def execute_grasping_callback(request=None):
   global panda_z_height
   global step_num
 
-  reset_all() # note this calls 'cancel_grasping_callback' if continue_grasping == True
+  if reset:
+    reset_all() # note this calls 'cancel_grasping_callback' if continue_grasping == True
 
   # this flag allows grasping to proceed
   continue_grasping = True
@@ -378,7 +453,7 @@ def cancel_grasping_callback(request=None):
 
   return []
 
-def reset_all(request=None):
+def reset_all(request=None, skip_panda=False):
   """
   Reset the gripper and panda
   """
@@ -394,7 +469,7 @@ def reset_all(request=None):
   elif log_level > 1: rospy.loginfo("dqn not reseting gripper position as move_gripper is False")
 
   # reset the panda position (blocking)
-  if move_panda:
+  if move_panda and not skip_panda:
     if log_level > 1: rospy.loginfo(f"dqn node is about to try and reset panda position to {panda_reset_height_mm}")
     panda_reset_req = ResetPanda()
     panda_reset_req.reset_height_mm = panda_reset_height_mm # dqn episode begins at 10mm height
@@ -428,6 +503,7 @@ def reset_panda(request=None):
   global move_panda
   global log_level
   global panda_z_height
+  global photoshoot_calibration
 
   if not move_panda:
     if log_level > 0: rospy.logwarn("asked to reset_panda() but move_panda is false")
@@ -438,24 +514,42 @@ def reset_panda(request=None):
   else:
     reset_to = request.reset_height_mm
 
-  # new calibrations 22/3/23, 0=firm neoprene press, -6=fails
-  cal_0_mm = [-0.04460928, 0.38211982, -0.00579623, -1.20211819, -0.01439458, 1.61249259, 0.75540974]
-  cal_2_mm = [-0.04462827, 0.38808571, -0.00581715, -1.18840848, -0.01443909, 1.59992939, 0.75540858]
-  cal_4_mm = [-0.04465780, 0.39017143, -0.00584690, -1.18030717, -0.01449511, 1.59377803, 0.75539456]
-  cal_6_mm = [-0.04465780, 0.39229479, -0.00584523, -1.17205779, -0.01450923, 1.58758239, 0.75534843]
-  cal_8_mm = [-0.04465585, 0.39438331, -0.00584356, -1.16354128, -0.01450720, 1.58123078, 0.75526212]
-  cal_10_mm = [-0.04465586, 0.39663358, -0.00584523, -1.15490750, -0.01450791, 1.57477994, 0.75516820]
-  cal_12_mm = [-0.04481524, 0.40074865, -0.00589660, -1.14791929, -0.01460787, 1.56819993, 0.75505090]
-  cal_14_mm = [-0.04481524, 0.40295305, -0.00589637, -1.13912490, -0.01460929, 1.56178082, 0.75500080]
-  cal_16_mm = [-0.04481162, 0.40537550, -0.00589997, -1.13007187, -0.01460378, 1.55529318, 0.75492834]
-  cal_18_mm = [-0.04481337, 0.40787476, -0.00589885, -1.12109334, -0.01459970, 1.54875262, 0.75484305]
-  cal_20_mm = [-0.04469420, 0.41042913, -0.00585969, -1.11176795, -0.01456532, 1.54207928, 0.75484156]
-  cal_30_mm = [-0.04473575, 0.42504616, -0.00586498, -1.06289308, -0.01454851, 1.50777675, 0.75434994]
-  cal_40_mm = [-0.04478521, 0.44279476, -0.00585969, -1.00850484, -0.01452637, 1.47115869, 0.75380754]
-  cal_50_mm = [-0.04487317, 0.46457349, -0.00585969, -0.94686224, -0.01449903, 1.43148042, 0.75321650]
+  if photoshoot_calibration:
 
-  calibrated_0mm = cal_2_mm       # what joints for the floor
-  calibrated_start = cal_12_mm    # what start position before grasping, can adjust
+    # calibrations 31/5/23 for side on videos (tie palm cable back), 0=v. firm neoprene press
+    cal_0_mm = [-0.10402882, 0.50120518, 0.10778944, -1.01105512, -0.04686748, 1.50164708, -1.26073515]
+    cal_2_mm = [-0.10387006, 0.50527945, 0.10769805, -1.00157544, -0.04692841, 1.49511798, -1.26073252]
+    cal_4_mm = [-0.10330050, 0.50944433, 0.10765647, -0.99195720, -0.04720724, 1.48748527, -1.26073653]
+    cal_6_mm = [-0.10260091, 0.51340940, 0.10745183, -0.98116904, -0.04766048, 1.47974774, -1.26075086]
+    cal_10_mm = [-0.10159385, 0.52105691, 0.10745041, -0.95851852, -0.04829950, 1.46465763, -1.26075028]
+    cal_12_mm = [-0.10102108, 0.52506261, 0.10745403, -0.94637724, -0.04867820, 1.45684754, -1.26076261]
+    cal_14_mm = [-0.10039027, 0.52930519, 0.10745403, -0.93433454, -0.04912472, 1.44883549, -1.26076231]
+    cal_16_mm = [-0.09971443, 0.53378781, 0.10745403, -0.92148019, -0.04960671, 1.44069648, -1.26076865]
+    cal_20_mm = [-0.09815959, 0.54329784, 0.10745573, -0.89504912, -0.05062444, 1.42390813, -1.26081059]
+    cal_30_mm = [-0.09425711, 0.57439487, 0.10747072, -0.82226615, -0.05352376, 1.37814662, -1.26075268]
+    cal_40_mm = [-0.08839450, 0.61583667, 0.10746761, -0.72435514, -0.05777517, 1.32181706, -1.26131619]
+    cal_50_mm = [-0.07592334, 0.70676842, 0.10747491, -0.53616111, -0.06762633, 1.22484667, -1.26360272]
+
+  else:
+
+    # new calibrations 22/3/23, 0=firm neoprene press, -6=fails
+    cal_0_mm = [-0.04460928, 0.38211982, -0.00579623, -1.20211819, -0.01439458, 1.61249259, 0.75540974]
+    cal_2_mm = [-0.04462827, 0.38808571, -0.00581715, -1.18840848, -0.01443909, 1.59992939, 0.75540858]
+    cal_4_mm = [-0.04465780, 0.39017143, -0.00584690, -1.18030717, -0.01449511, 1.59377803, 0.75539456]
+    cal_6_mm = [-0.04465780, 0.39229479, -0.00584523, -1.17205779, -0.01450923, 1.58758239, 0.75534843]
+    cal_8_mm = [-0.04465585, 0.39438331, -0.00584356, -1.16354128, -0.01450720, 1.58123078, 0.75526212]
+    cal_10_mm = [-0.04465586, 0.39663358, -0.00584523, -1.15490750, -0.01450791, 1.57477994, 0.75516820]
+    cal_12_mm = [-0.04481524, 0.40074865, -0.00589660, -1.14791929, -0.01460787, 1.56819993, 0.75505090]
+    cal_14_mm = [-0.04481524, 0.40295305, -0.00589637, -1.13912490, -0.01460929, 1.56178082, 0.75500080]
+    cal_16_mm = [-0.04481162, 0.40537550, -0.00589997, -1.13007187, -0.01460378, 1.55529318, 0.75492834]
+    cal_18_mm = [-0.04481337, 0.40787476, -0.00589885, -1.12109334, -0.01459970, 1.54875262, 0.75484305]
+    cal_20_mm = [-0.04469420, 0.41042913, -0.00585969, -1.11176795, -0.01456532, 1.54207928, 0.75484156]
+    cal_30_mm = [-0.04473575, 0.42504616, -0.00586498, -1.06289308, -0.01454851, 1.50777675, 0.75434994]
+    cal_40_mm = [-0.04478521, 0.44279476, -0.00585969, -1.00850484, -0.01452637, 1.47115869, 0.75380754]
+    cal_50_mm = [-0.04487317, 0.46457349, -0.00585969, -0.94686224, -0.01449903, 1.43148042, 0.75321650]
+
+  calibrated_0mm = cal_2_mm       # what joints for the floor, old=cal_2_mm
+  calibrated_start = cal_12_mm    # what start position before grasping, can adjust, old=cal_12_mm
 
   # find which hardcoded joint state to reset to
   reset_to = int(reset_to + 0.5)
@@ -471,8 +565,13 @@ def reset_panda(request=None):
 
   # move the joints slowly to the reset position - this could be dangerous!
   speed_factor = 0.1 # 0.1 is slow movements
-  # franka_instance.move_joints(target_50_mm, speed_factor) # first move to safe height
-  franka_instance.move_joints(target_state, speed_factor) # now approach reset height
+
+  if use_panda_threads:
+    process = Process(target=franka_instance.move_joints, args=(target_state, speed_factor))
+    process.start()
+    process.join()
+  else:
+    franka_instance.move_joints(target_state, speed_factor) # now approach reset height
 
   panda_z_height = 0
 
@@ -1163,6 +1262,20 @@ def set_dynamic_recal_ft_callback(request):
 
   return []
 
+def set_reject_wrist_noise_callback(request):
+  """
+  Set the bool value of whether we dynamically reset the ftsensor to zero
+  every time we get two exactly repeated values (indicating a connection drop,
+  which implies the sensor is in steady state and under no force)
+  """
+
+  global reject_wrist_noise
+  if log_level > 1: rospy.loginfo(f"reject_wrist_noise originally set to {reject_wrist_noise}")
+  reject_wrist_noise = request.data
+  if log_level > 0: rospy.loginfo(f"reject_wrist_noise is now set to {reject_wrist_noise}")
+
+  return []
+
 def make_test_heurisitc(request=None):
   """
   Set the given test to be heuristic grasping
@@ -1173,6 +1286,358 @@ def make_test_heurisitc(request=None):
   if log_level > 0: rospy.loginfo(f"test heurisitc now set to TRUE")
 
   return []
+
+def gentle_place(request=None):
+  """
+  Place an object gently below the gripper
+  """
+
+  # ensure there is no graspng going on
+  cancel_grasping_callback()
+
+  # what is the current gripper position
+  [gx, gy, gz, h] = model.env.mj.get_state_metres(True) # realworld=True for real data
+
+  # # move the panda to a lower height
+  # panda_reset_req = ResetPanda()
+  # panda_reset_req.reset_height_mm = 20 # 10mm
+  # reset_panda(panda_reset_req)
+
+  # send a command to the gripper to open the fingers
+  gy = gx + 5e-3
+  if gy > 133.9e-3: 
+    gx = 128.0e-3
+    gy = 133.0e-3
+  new_demand = GripperDemand()
+  new_demand.state.pose.x = gx
+  new_demand.state.pose.y = gy
+  new_demand.state.pose.z = 5e-3
+
+  if log_level > 0: rospy.loginfo("dqn node is publishing gripper demand for gentle place")
+  demand_pub.publish(new_demand)
+
+def move_panda_to(request=None):
+  """
+  Move the panda to a known joint position. These joint positions should
+  be calibrated and tested by hand, do NOT run this function with untested
+  joint positions
+  """
+
+  global move_panda
+  if not move_panda:
+    rospy.logwarn("move_panda_to() aborted as move_panda = False")
+    return False
+
+  if request.move_to_int == 0:
+    # regular calibrated spot
+    cal_0_mm = [-0.04460928, 0.38211982, -0.00579623, -1.20211819, -0.01439458, 1.61249259, 0.75540974]
+    cal_10_mm = [-0.04465586, 0.39663358, -0.00584523, -1.15490750, -0.01450791, 1.57477994, 0.75516820]
+    cal_12_mm = [-0.04481524, 0.40074865, -0.00589660, -1.14791929, -0.01460787, 1.56819993, 0.75505090]
+    cal_14_mm = [-0.04481524, 0.40295305, -0.00589637, -1.13912490, -0.01460929, 1.56178082, 0.75500080]
+    cal_20_mm = [-0.04469420, 0.41042913, -0.00585969, -1.11176795, -0.01456532, 1.54207928, 0.75484156]
+    cal_30_mm = [-0.04473575, 0.42504616, -0.00586498, -1.06289308, -0.01454851, 1.50777675, 0.75434994]
+    cal_40_mm = [-0.04478521, 0.44279476, -0.00585969, -1.00850484, -0.01452637, 1.47115869, 0.75380754]
+    cal_50_mm = [-0.04487317, 0.46457349, -0.00585969, -0.94686224, -0.01449903, 1.43148042, 0.75321650]
+
+  elif request.move_to_int == 1:
+    # top left
+    cal_0_mm = [0.18512671, 0.37866549, 0.22363262, -1.21253592, -0.10893460, 1.60726003, 1.16956841]
+    cal_10_mm = [0.18825695, 0.39035484, 0.22320580, -1.17424037, -0.11070185, 1.57652944, 1.16896099]
+    cal_12_mm = [0.18910666, 0.39256941, 0.22320218, -1.16573255, -0.11115629, 1.57014674, 1.16883816]
+    cal_14_mm = [0.18991396, 0.39483676, 0.22320218, -1.15689542, -0.11163938, 1.56374366, 1.16872168]
+    cal_20_mm = [0.19228800, 0.40230689, 0.22320537, -1.13007192, -0.11322130, 1.54428125, 1.16835338]
+    cal_30_mm = [0.19706933, 0.41643328, 0.22320842, -1.08209132, -0.11636666, 1.51035154, 1.16775696]
+    cal_50_mm = [0.20903397, 0.45415981, 0.22322272, -0.96963235, -0.12516179, 1.43562458, 1.16632797]
+
+  elif request.move_to_int == 2:
+    # bottom left
+    cal_0_mm = [0.23366993, -0.54271042, 0.37589574, -2.22000585, 0.17991284, 1.72729146, 1.34587936]
+    cal_10_mm = [0.22811418, -0.54008458, 0.37610427, -2.19521192, 0.17898083, 1.70260116, 1.34520853]
+    cal_12_mm = [0.22696416, -0.53974523, 0.37610188, -2.18974024, 0.17877689, 1.69760376, 1.34510382]
+    cal_14_mm = [0.22584622, -0.53928485, 0.37610613, -2.18418006, 0.17853135, 1.69253790, 1.34499814]
+    cal_20_mm = [0.22245999, -0.53770155, 0.37609984, -2.16731857, 0.17781672, 1.67756387, 1.34474422]
+    cal_30_mm = [0.21712278, -0.53429485, 0.37609260, -2.13874013, 0.17637932, 1.65273764, 1.34451461]
+    cal_50_mm = [0.20691718, -0.52499188, 0.37609244, -2.07961898, 0.17314562, 1.60336858, 1.34455698]
+
+  elif request.move_to_int == 3:
+    # bottom right
+    cal_0_mm = [-0.00379845, -0.67043388, -0.54573473, -2.26318334, -0.32498345, 1.68728117, 0.48431597]
+    cal_10_mm = [0.00731250, -0.66909944, -0.54599125, -2.23834650, -0.32438277, 1.66194544, 0.48656344]
+    cal_12_mm = [0.00943737, -0.66909160, -0.54599602, -2.23279262, -0.32437264, 1.65686652, 0.48698529]
+    cal_14_mm = [0.01170321, -0.66905026, -0.54599527, -2.22733633, -0.32434460, 1.65182822, 0.48742099]
+    cal_20_mm = [0.01838100, -0.66819989, -0.54600097, -2.21056844, -0.32370427, 1.63669100, 0.48876885]
+    cal_30_mm = [0.02929688, -0.66600868, -0.54592673, -2.18210780, -0.32251678, 1.61167038, 0.49064796]
+    cal_50_mm = [0.05036132, -0.65874663, -0.54591255, -2.12315125, -0.31969950, 1.56254420, 0.49317398]
+
+  elif request.move_to_int == 4:
+    # top right
+    cal_0_mm = [-0.05664975, 0.45664487, -0.51411564, -1.14189071, 0.22075273, 1.56880552, 0.34867809]
+    cal_10_mm = [-0.06621081, 0.47048441, -0.51375980, -1.09982426, 0.22575926, 1.53636279, 0.34886103]
+    cal_12_mm = [-0.06805916, 0.47280777, -0.51375451, -1.09054460, 0.22697677, 1.52964720, 0.34893845]
+    cal_14_mm = [-0.07027538, 0.47558366, -0.51375982, -1.08090203, 0.22826196, 1.52281037, 0.34902136]
+    cal_20_mm = [-0.07719636, 0.48447591, -0.51375645, -1.05102176, 0.23272260, 1.50179962, 0.34929511]
+    cal_30_mm = [-0.09016613, 0.50185913, -0.51375853, -0.99682879, 0.24138361, 1.46464811, 0.34987587]
+    cal_50_mm = [-0.12511534, 0.55004260, -0.51376929, -0.86303225, 0.26670520, 1.37924513, 0.35234891]
+
+  else:
+    rospy.logerr(f"move_panda_to() received unknown integer = {request.move_to_int}")
+    return False
+  
+  if abs(request.height_mm - 10) < 1e-3:
+    target_state = cal_12_mm # choose this height for good behaviour 10/12/14
+  elif abs(request.height_mm - 20) < 1e-3:
+    target_state = cal_50_mm
+  elif abs(request.height_mm - 30) < 1e-3:
+    target_state = cal_50_mm
+  elif abs(request.height_mm - 50) < 1e-3:
+    target_state = cal_50_mm
+  else:
+    rospy.logerr(f"move_panda_to() received unknown height_mm = {request.height_mm}")
+    return False
+  
+  # move the joints slowly to the reset position - this could be dangerous!
+  speed_factor = 0.05 # 0.1 is slow movements, 0.05 very slow, 0.01 extremely slow
+
+  if use_panda_threads:
+    process = Process(target=franka_instance.move_joints, args=(target_state, speed_factor))
+    process.start()
+    process.join()
+  else:
+    franka_instance.move_joints(target_state, speed_factor) # now approach reset height
+
+  return True
+
+def demo_movement(goto, pregrasp=False, grasp=False, place=False):
+  """
+  Move from current point to the next point
+  """
+
+  global continue_demo, continue_grasping, move_panda, demo_panda_is_at
+
+  move_msg = PandaMoveToInt()
+  continue_demo = True
+
+  if goto not in [0, 1, 2, 3, 4]:
+    rospy.logerr(f"demo_movement() given invalid goto = {goto}")
+    return False
+
+  # go to the specified point
+  move_msg.move_to_int = goto
+  move_msg.height_mm = 50
+  moved = move_panda_to(move_msg)
+
+  if not moved:
+    rospy.logerr("Panda motion error in demo_movement(), aborting all")
+    return False
+  elif not continue_demo:
+    rospy.loginfo("Demo cancelled, demo_movement() is returning")
+    return True
+  elif rospy.is_shutdown(): return False
+
+  # record that the panda is now at the new location
+  demo_panda_is_at = goto
+
+  if pregrasp or grasp:
+
+    # lower to grasping height and reset everything ready
+    move_msg.move_to_int = goto
+    move_msg.height_mm = 10
+    moved = move_panda_to(move_msg)
+
+    if not moved:
+      rospy.logerr("Panda motion error in demo_movement(), aborting all")
+      return False
+    elif not continue_demo:
+      rospy.loginfo("Demo cancelled, demo_movement() is returning")
+      return True
+    elif rospy.is_shutdown(): return False
+
+    # reset
+    reset_all(skip_panda=True)
+    global panda_z_height
+    panda_z_height = 0
+
+    if grasp:
+    
+      # do a grasp
+      execute_grasping_callback(reset=False)
+
+      # wait for the grasp to execute or be stopped
+      rospy.sleep(1)
+      while continue_grasping:
+        rospy.sleep(0.1)
+        if not continue_demo or not continue_grasping:
+          rospy.loginfo("Demo cancelled, demo_movement() is returning")
+          return True
+        elif rospy.is_shutdown(): return False
+
+      # when grasp is done, lift to 50mm
+      move_msg.move_to_int = goto
+      move_msg.height_mm = 50
+      moved = move_panda_to(move_msg)
+
+      if not moved:
+        rospy.logerr("Panda motion error in demo_movement(), aborting all")
+        return False
+      elif not continue_demo:
+        rospy.loginfo("Demo cancelled, demo_movement() is returning")
+        return True
+      elif rospy.is_shutdown(): return False
+
+  elif place:
+
+    # lower before placing
+    move_msg.move_to_int = goto
+    move_msg.height_mm = 20
+    moved = move_panda_to(move_msg)
+
+    gentle_place()
+
+    # # when place is done, lift to 50mm
+    # move_msg.move_to_int = goto
+    # move_msg.height_mm = 50
+    # moved = move_panda_to(move_msg)
+
+    if not moved:
+      rospy.logerr("Panda motion error in demo_movement(), aborting all")
+      return False
+    elif not continue_demo:
+      rospy.loginfo("Demo cancelled, demo_movement() is returning")
+      return True
+    elif rospy.is_shutdown(): return False
+
+  return True
+
+def loop_demo(request=None):
+  """
+  Run the demo in a continous loop
+  """
+
+  global demo_loop_int, continue_demo
+  continue_demo = True
+
+  # apply any step skips (forward or backwards)
+  if request is not None:
+    demo_loop_int += request.skip
+
+  # loop_to_do = [
+  #   ["grasp", 1],
+  #   ["place", 2],
+  #   ["grasp", 4],
+  #   ["place", 1],
+  #   ["grasp", 3],
+  #   ["place", 4],
+  #   ["grasp", 2],
+  #   ["place", 3],
+  # ]
+
+  loop_to_do = [
+    ["grasp", 0],
+    ["place", 0]
+  ]
+
+  actually_grasp = True
+
+  while not rospy.is_shutdown() and continue_demo:
+
+    (command, location) = loop_to_do[demo_loop_int]
+
+    if command == "grasp":
+      if actually_grasp:
+        success = demo_movement(goto=location, grasp=True)
+      else:
+        success = demo_movement(goto=location, pregrasp=True)
+
+    elif command == "place":
+      success = demo_movement(goto=location, place=True)
+
+    if not success:
+      rospy.logerr("Failed movement in loop_demo(), aborting all")
+      return False
+    
+    demo_loop_int += 1
+
+    if demo_loop_int >= len(loop_to_do):
+      demo_loop_int = 0
+    
+  return True
+
+def start_demo(request=None):
+  """
+  Run the demo, use stop_demo to cancel
+  """
+
+  global continue_demo, continue_grasping, move_panda, demo_panda_is_at
+
+  # reset to location 1, height 50mm
+  good_reset = reset_demo()
+  if not good_reset:
+    rospy.logerr("Failed reset in start_demo(), aborting all")
+    return False
+
+  global demo_loop_int
+  demo_loop_int = 0
+
+  loop_demo()
+
+  return []
+
+def stop_demo(request=None):
+  """
+  Stop the demo
+  """
+
+  global continue_demo, continue_grasping
+  continue_demo = False
+  
+  if continue_grasping:
+    cancel_grasping_callback()
+
+  return []
+
+def reset_demo(request=None):
+  """
+  Reset the demo
+  """
+
+  global continue_demo, continue_grasping, demo_panda_is_at, move_panda
+
+  # must be 0 (centre), 1 (top left), 2 (bottom left), 3 (bottom right), 4 (top right)
+  reset_position = 0
+
+  # end grasping and open the gripper
+  if continue_demo or continue_grasping:
+    stop_demo()
+
+  # full reset of the gripper, but excluding the panda
+  reset_all(skip_panda=True)
+  global panda_reset_height_mm
+  panda_reset_height_mm = 0
+
+  move_msg = PandaMoveToInt()
+
+  if demo_panda_is_at in [0, 1, 2, 3, 4]:
+
+    # lift the panda first
+    move_msg.move_to_int = demo_panda_is_at
+    move_msg.height_mm = 50
+    moved = move_panda_to(move_msg)
+
+    if not moved:
+      rospy.logerr("Panda motion error in reset_demo(), aborting all")
+      return False
+
+  # now reset to the start position
+  if reset_position not in [0, 1, 2, 3, 4]: reset_position = 0
+  move_msg.move_to_int = reset_position
+  move_msg.height_mm = 50
+  moved = move_panda_to(move_msg)
+
+  if not moved:
+    rospy.logerr("Panda motion error in reset_demo(), aborting all")
+    return False
+  
+  return True
 
 # ----- scripting to initialise and run node ----- #
 
@@ -1188,8 +1653,14 @@ if __name__ == "__main__":
   # get input parameters - are we allowing robot movement?
   move_gripper = True # rospy.get_param(f"/{node_ns}/move_gripper")
   move_panda = True # rospy.get_param(f"/{node_ns}/dqn/move_panda")
-  rospy.loginfo(f"move gripper is {move_gripper}")
-  rospy.loginfo(f"move panda is {move_panda}")
+  rospy.loginfo(f"  > move gripper is {move_gripper}")
+  rospy.loginfo(f"  > move panda is {move_panda}")
+  rospy.loginfo(f"  > using camera is {depth_camera_connected}")
+  rospy.loginfo(f"  > using devel model is {use_devel}")
+  rospy.loginfo(f"  > photoshoot calibration is {photoshoot_calibration}")
+  rospy.loginfo(f"  > use panda threads is {use_panda_threads}")
+  rospy.loginfo(f"  > reject wrist noise is {reject_wrist_noise}")
+  rospy.loginfo(f"  > prevent table hit is {prevent_table_hit}")
 
   # do we need to import the franka control library
   if move_panda: connect_panda()
@@ -1204,7 +1675,19 @@ if __name__ == "__main__":
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
 
   # user set - what do we load by default
-  if True:
+  if use_devel:
+
+    rospy.logwarn("Loading DEVEL policy")
+
+    # load a devel training
+    load = LoadModel()
+    load.folderpath = "/home/luke/mujoco-devel/rl/models/dqn/"
+    load.group_name = "26-05-23"
+    load.run_name = "luke-PC_16:51_A25"
+    load.run_id = None
+    load_model(load)
+  
+  elif False:
 
     # load a model with a given path
     load = LoadModel()
@@ -1224,9 +1707,10 @@ if __name__ == "__main__":
     load.sensors = 3
     load_baseline_4_model(load)
 
-  # # uncomment for more debug information
-  # model.env.log_level = 2
-  # model.env.mj.set.debug = True
+  if log_level >= 3:
+    # turn on all debug information
+    model.env.log_level = 2
+    model.env.mj.set.debug = True
 
   # begin services for this node
   rospy.loginfo(f"dqn node services now available under namespace /{node_ns}/")
@@ -1250,6 +1734,13 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
   rospy.Service(f"/{node_ns}/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
   rospy.Service(f"/{node_ns}/make_test_heuristic", Empty, make_test_heurisitc)
+  rospy.Service(f"/{node_ns}/place", Empty, gentle_place)
+  rospy.Service(f"/{node_ns}/panda_move_to_int", PandaMoveToInt, move_panda_to)
+  rospy.Service(f"/{node_ns}/start_demo", Empty, start_demo)
+  rospy.Service(f"/{node_ns}/stop_demo", Empty, stop_demo)
+  rospy.Service(f"/{node_ns}/reset_demo", Empty, reset_demo)
+  rospy.Service(f"/{node_ns}/continue_demo", Demo, loop_demo)
+  rospy.Service(f"/{node_ns}/set_reject_wrist_noise", SetBool, set_reject_wrist_noise_callback)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
