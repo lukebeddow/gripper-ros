@@ -46,7 +46,7 @@ from grasp_test_data import GraspTestData
 # ----- essential settings and global variable declarations ----- #
 
 # important user settings
-camera = False                  # do we want to take camera images, is the camera connected
+camera = True                  # do we want to take camera images, is the camera connected
 use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = False       # do we run panda in a seperate thread
@@ -75,7 +75,7 @@ prevent_x_open = False           # swap action 1 (X open) for action 2 (Y close)
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
 quit_on_palm = None               # quit grasping with a palm value above this (during test only), set None for off
 reject_wrist_noise = False       # try to ignore large spikes in the wrist sensor
-prevent_table_hit = True         # prevent the gripper from going below a certain height
+prevent_table_hit = False         # prevent the gripper from going below a certain height
 
 # global flags
 move_gripper = False            # is the gripper allowed to move
