@@ -47,7 +47,7 @@ from grasp_test_data import GraspTestData
 
 # important user settings
 camera = True                  # do we want to take camera images, is the camera connected
-use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
+use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = False       # do we run panda in a seperate thread
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
@@ -115,7 +115,9 @@ try:
   depth_camera_connected = True
   from capture_depth_image import get_depth_image
 except NotImplementedError: rospy.loginfo("use camera is False, no images will be taken")
-except: rospy.logerr("DEPTH CAMERA NOT CONNECTED but camera is True, beware")
+except Exception as e: 
+  rospy.logerr("DEPTH CAMERA NOT CONNECTED but camera is True, beware")
+  rospy.logerr(f"Depth camera error message: {e}")
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -532,24 +534,24 @@ def reset_panda(request=None):
 
   else:
 
-    # new calibrations 22/3/23, 0=firm neoprene press, -6=fails
-    cal_0_mm = [-0.04460928, 0.38211982, -0.00579623, -1.20211819, -0.01439458, 1.61249259, 0.75540974]
-    cal_2_mm = [-0.04462827, 0.38808571, -0.00581715, -1.18840848, -0.01443909, 1.59992939, 0.75540858]
-    cal_4_mm = [-0.04465780, 0.39017143, -0.00584690, -1.18030717, -0.01449511, 1.59377803, 0.75539456]
-    cal_6_mm = [-0.04465780, 0.39229479, -0.00584523, -1.17205779, -0.01450923, 1.58758239, 0.75534843]
-    cal_8_mm = [-0.04465585, 0.39438331, -0.00584356, -1.16354128, -0.01450720, 1.58123078, 0.75526212]
-    cal_10_mm = [-0.04465586, 0.39663358, -0.00584523, -1.15490750, -0.01450791, 1.57477994, 0.75516820]
-    cal_12_mm = [-0.04481524, 0.40074865, -0.00589660, -1.14791929, -0.01460787, 1.56819993, 0.75505090]
-    cal_14_mm = [-0.04481524, 0.40295305, -0.00589637, -1.13912490, -0.01460929, 1.56178082, 0.75500080]
-    cal_16_mm = [-0.04481162, 0.40537550, -0.00589997, -1.13007187, -0.01460378, 1.55529318, 0.75492834]
-    cal_18_mm = [-0.04481337, 0.40787476, -0.00589885, -1.12109334, -0.01459970, 1.54875262, 0.75484305]
-    cal_20_mm = [-0.04469420, 0.41042913, -0.00585969, -1.11176795, -0.01456532, 1.54207928, 0.75484156]
-    cal_30_mm = [-0.04473575, 0.42504616, -0.00586498, -1.06289308, -0.01454851, 1.50777675, 0.75434994]
-    cal_40_mm = [-0.04478521, 0.44279476, -0.00585969, -1.00850484, -0.01452637, 1.47115869, 0.75380754]
-    cal_50_mm = [-0.04487317, 0.46457349, -0.00585969, -0.94686224, -0.01449903, 1.43148042, 0.75321650]
+    # new calibrations 23/8/23 after robby, 4=initial touch, 0=v. firm, -2=fails
+    cal_0_mm = [-0.10035520, 0.13415142, 0.05034569, -1.54992771, -0.02469004, 1.72361859, 0.82542563]
+    cal_2_mm = [-0.10056089, 0.13577175, 0.05015793, -1.54504811, -0.02486288, 1.71835949, 0.82536323]
+    cal_4_mm = [-0.10035362, 0.13717769, 0.05021119, -1.53977199, -0.02482598, 1.71273661, 0.82528626]
+    cal_6_mm = [-0.10033584, 0.13799006, 0.05020785, -1.53366338, -0.02482757, 1.70740294, 0.82521534]
+    cal_8_mm = [-0.10030479, 0.13879796, 0.05020785, -1.52739544, -0.02483351, 1.70205378, 0.82514384]
+    cal_10_mm = [-0.10026742, 0.13964332, 0.05020785, -1.52111299, -0.02483833, 1.69663203, 0.82509060]
+    cal_12_mm = [-0.10010887, 0.14053731, 0.05020618, -1.51491904, -0.02485414, 1.69118643, 0.82503248]
+    cal_14_mm = [-0.10008372, 0.14145294, 0.05020689, -1.50854897, -0.02487740, 1.68574724, 0.82497343]
+    cal_20_mm = [-0.09984404, 0.14450927, 0.05021104, -1.48895958, -0.02498154, 1.66937602, 0.82479887]
+    cal_22_mm = [-0.09978971, 0.14561315, 0.05021104, -1.48238086, -0.02502815, 1.66385170, 0.82474018]
+    cal_24_mm = [-0.09973385, 0.14679426, 0.05021104, -1.47564609, -0.02507226, 1.65830631, 0.82469641]
+    cal_30_mm = [-0.09939829, 0.15055267, 0.05021104, -1.45520355, -0.02522195, 1.64158327, 0.82452868]
+    cal_40_mm = [-0.09887780, 0.15779365, 0.05021104, -1.41944408, -0.02554731, 1.61325706, 0.82427793]
+    cal_50_mm = [-0.09827859, 0.16623325, 0.05020937, -1.38209379, -0.02595346, 1.58428060, 0.82405011]
 
-  calibrated_0mm = cal_2_mm       # what joints for the floor, old=cal_2_mm
-  calibrated_start = cal_12_mm    # what start position before grasping, can adjust, old=cal_12_mm
+  calibrated_0mm = cal_4_mm       # what joints for the floor, old=cal_2_mm
+  calibrated_start = cal_14_mm    # what start position before grasping, can adjust, old=cal_12_mm
 
   # find which hardcoded joint state to reset to
   reset_to = int(reset_to + 0.5)
@@ -775,9 +777,11 @@ def start_test(request):
 
   if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
 
-  if not depth_camera_connected:
+  if not depth_camera_connected and camera:
     rospy.logwarn("Depth camera is not connected, test aborted")
     return False
+  elif not depth_camera_connected and not camera:
+    rospy.logwarn("Depth camera set to FALSE, test proceeds")
 
   global testsaver, current_test_data, model, currently_testing, image_rate
   testsaver.enter_folder(request.name, forcecreate=True)
@@ -787,7 +791,7 @@ def start_test(request):
 
   # save the model in use if this file does not exist already
   savepath = testsaver.get_current_path()
-  if not os.path.exists(savepath + "dqn_model" + testsaver.file_ext):
+  if not os.path.exists(savepath + "dqn_model" + testsaver.file_ext()):
     testsaver.save("dqn_model", pyobj=model, suffix_numbering=False)
   else:
     if log_level > 1:
@@ -1682,10 +1686,20 @@ if __name__ == "__main__":
     # load a devel training
     load = LoadModel()
     load.folderpath = "/home/luke/mujoco-devel/rl/models/dqn/"
-    load.group_name = "26-05-23"
-    load.run_name = "luke-PC_16:51_A25"
+    load.group_name = "24-07-23"
+    load.run_name = "operator-PC_15:10_A2"
     load.run_id = None
     load_model(load)
+
+    # now override action sizes: TESTING
+    print(f"Action size gripper X: {model.env.mj.set.gripper_prismatic_X.value:.3f}")
+    print(f"Action size gripper Y: {model.env.mj.set.gripper_revolute_Y.value:.3f}")
+    print(f"Action size gripper Z: {model.env.mj.set.gripper_Z.value:.3f}")
+    print(f"Action size base Z: {model.env.mj.set.base_Z.value:.3f}")
+    model.env.mj.set.gripper_prismatic_X.value = 1.0e-3
+    model.env.mj.set.gripper_revolute_Y.value = 0.01
+    model.env.mj.set.gripper_Z.value = 2.0e-3
+    model.env.mj.set.base_Z.value = 2.0e-3
   
   elif False:
 
