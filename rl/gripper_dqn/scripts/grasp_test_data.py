@@ -93,25 +93,25 @@ class GraspTestData:
     """
     raise NotImplementedError
 
-  def start_test(self, test_name, dqn_obj, depth_image_fcn, image_rate=1, heuristic=False):
+  def start_test(self, test_name, rl_obj, depth_image_fcn, image_rate=1, heuristic=False):
     """
     Data for an entire test
     """
 
-    best_sr, best_ep = dqn_obj.track.calc_best_performance()
+    best_sr, best_ep = rl_obj.trainer.calc_best_performance()
 
     # create test data structure
     self.data = GraspTestData.TestData(
       [],                                       # trials
       test_name,                                # test_name
-      dqn_obj.env.params.finger_width,          # finger width
-      dqn_obj.env.params.finger_thickness,      # finger thickness
+      rl_obj.trainer.env.params.finger_width,          # finger width
+      rl_obj.trainer.env.params.finger_thickness,      # finger thickness
       heuristic,                                # is heuristic test
-      dqn_obj.env.mj.set.bending_gauge.in_use,  # bending sensor
-      dqn_obj.env.mj.set.palm_sensor.in_use,    # palm sensor
-      dqn_obj.env.mj.set.wrist_sensor_Z.in_use, # wrist sensor
-      dqn_obj.group_name,                       # run group name
-      dqn_obj.run_name,                         # run name
+      rl_obj.trainer.env.mj.set.bending_gauge.in_use,  # bending sensor
+      rl_obj.trainer.env.mj.set.palm_sensor.in_use,    # palm sensor
+      rl_obj.trainer.env.mj.set.wrist_sensor_Z.in_use, # wrist sensor
+      rl_obj.group_name,                       # run group name
+      rl_obj.run_name,                         # run name
       best_sr,                                  # best test success rate in sim
       best_ep,                                  # episode at best_sr
     )
@@ -119,14 +119,14 @@ class GraspTestData:
     self.image_data = GraspTestData.TestData(
       [],                                       # trials
       test_name,                                # test_name
-      dqn_obj.env.params.finger_width,          # finger width
-      dqn_obj.env.params.finger_thickness,      # finger thickness
+      rl_obj.trainer.env.params.finger_width,          # finger width
+      rl_obj.trainer.env.params.finger_thickness,      # finger thickness
       heuristic,                                # is heuristic test
-      dqn_obj.env.mj.set.bending_gauge.in_use,  # bending sensor
-      dqn_obj.env.mj.set.palm_sensor.in_use,    # palm sensor
-      dqn_obj.env.mj.set.wrist_sensor_Z.in_use, # wrist sensor
-      dqn_obj.group_name,                       # run group name
-      dqn_obj.run_name,                         # run name
+      rl_obj.trainer.env.mj.set.bending_gauge.in_use,  # bending sensor
+      rl_obj.trainer.env.mj.set.palm_sensor.in_use,    # palm sensor
+      rl_obj.trainer.env.mj.set.wrist_sensor_Z.in_use, # wrist sensor
+      rl_obj.group_name,                       # run group name
+      rl_obj.run_name,                         # run name
       best_sr,                                  # best test success rate in sim
       best_ep,                                  # episode at best_sr
     )

@@ -1,0 +1,17 @@
+<launch>
+
+	<node name="rl_grasping_node"
+				type="rl_grasping_node.py"
+				pkg="gripper_dqn"
+				output="screen"
+	/>
+
+  <node name="camera_node"
+				type="camera_node.py"
+				pkg="gripper_dqn"
+				output="screen"
+	/>
+	
+	<include file="$(find gripper_real_node)/launch/monitor.launch"/>
+	
+</launch>

@@ -7,29 +7,8 @@ import numpy as np
 from datetime import datetime
 import multiprocessing as mp
 
-# from: https://stackoverflow.com/questions/19924104/python-multiprocessing-handling-child-errors-in-parent
-class Process(mp.Process):
-  def __init__(self, *args, **kwargs):
-    mp.Process.__init__(self, *args, **kwargs)
-    self._pconn, self._cconn = mp.Pipe()
-    self._exception = None
-
-  def run(self):
-    try:
-      mp.Process.run(self)
-      self._cconn.send(None)
-    except Exception as e:
-      # tb = traceback.format_exc()
-      # self._cconn.send((e, tb))
-      raise e  # You can still rise this exception if you need to
-
-  @property
-  def exception(self):
-    if self._pconn.poll():
-      self._exception = self._pconn.recv()
-    return self._exception
-
 from std_srvs.srv import Empty, SetBool
+from sensor_msgs.msg import Image
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
@@ -47,8 +26,8 @@ from grasp_test_data import GraspTestData
 # ----- essential settings and global variable declarations ----- #
 
 # important user settings
-camera = False                  # do we want to take camera images, is the camera connected
-use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
+camera = True                  # do we want to take camera images, is the camera connected
+use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = False       # do we run panda in a seperate thread
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
@@ -105,33 +84,35 @@ rgb_image = None                # most recent rgb image
 depth_image = None              # most recent depth image
 
 # dummy define camera function for cases where no camera is loaded
-depth_camera_connected = False
+depth_camera_connected = camera
 def get_depth_image():
   """
   Empty function (returning rgb, depth) since no camera connected
   """
-  rospy.logwarn("Warning: no camera connected, no images collected")
-  return None, None
+  if rgb_image is None or depth_image is None:
+    rospy.logwarn("Warning: camera images are None")
 
-# try to start the camera connection and override the camera function
-try:
-  if camera is False: raise NotImplementedError
-  depth_camera_connected = True
-  from capture_depth_image import get_depth_image
-except NotImplementedError: rospy.loginfo("use camera is False, no images will be taken")
-except Exception as e: 
-  rospy.logerr("DEPTH CAMERA NOT CONNECTED but camera is True, beware")
-  rospy.logerr(f"Depth camera error message: {e}")
+  return rgb_image, depth_image
+
+# # try to start the camera connection and override the camera function
+# try:
+#   if camera is False: raise NotImplementedError
+#   depth_camera_connected = True
+#   from capture_depth_image import get_depth_image
+# except NotImplementedError: rospy.loginfo("use camera is False, no images will be taken")
+# except Exception as e: 
+  # rospy.logerr("DEPTH CAMERA NOT CONNECTED but camera is True, beware")
+  # rospy.logerr(f"Depth camera error message: {e}")
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
-from TrainDQN import TrainDQN
+from TrainingManager import TrainingManager
 from ModelSaver import ModelSaver
 
 # create model instance
-device = "cuda" #none
+device = "cpu" #none
 dqn_log_level = 1 if log_level > 1 else 0
-model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
+model = TrainingManager(log_level=dqn_log_level, device=device)
 
 # create openCV bridge
 bridge = CvBridge()
@@ -147,7 +128,16 @@ def rgb_callback(msg):
   """
   global rgb_image
   cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+  rgb_image = np.array(cv_image, dtype=np.uint8)
 
+def depth_callback(msg):
+  """
+  Save the most recent depth image
+  """
+
+  global depth_image
+  cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+  depth_image = np.array(cv_image, dtype=np.float32)
 
 def data_callback(state):
   """
@@ -177,7 +167,7 @@ def data_callback(state):
 
   # if use a simulated ftsensor, override with simulated data
   if use_sim_ftsensor:
-    state.ftdata.force.z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
+    state.ftdata.force.z = model.trainer.env.mj.sim_sensors.read_wrist_Z_sensor()
 
   # if we rezero ftsensor every time values repeat (ie connection lost)
   global last_ft_value
@@ -185,7 +175,7 @@ def data_callback(state):
     # rospy.loginfo(f"last value = {last_ft_value}, new value = {state.ftdata.force.z}")
     # if new value and old are exactly floating-point equal
     if state.ftdata.force.z == last_ft_value:
-      model.env.mj.real_sensors.wrist_Z.offset = last_ft_value
+      model.trainer.env.mj.real_sensors.wrist_Z.offset = last_ft_value
       # if log_level > 1:
       #   rospy.loginfo("RECALIBRATED FTSENSOR TO ZERO")
     last_ft_value = state.ftdata.force.z
@@ -210,7 +200,7 @@ def data_callback(state):
   ]
 
   # input the data
-  model.env.mj.input_real_data(state_vec, sensor_vec)
+  model.trainer.env.mj.input_real_data(state_vec, sensor_vec)
 
   # publish the dqn network normalised input values
   global norm_state_pub, norm_sensor_pub
@@ -218,20 +208,20 @@ def data_callback(state):
   norm_sensor = NormalisedSensor()
 
   # can visualise 'raw' data, 'SI' calibrated data, or 'normalised' network input data
-  norm_state.gripper_x = model.env.mj.real_sensors.normalised.read_x_motor_position()
-  norm_state.gripper_y = model.env.mj.real_sensors.normalised.read_y_motor_position()
-  norm_state.gripper_z = model.env.mj.real_sensors.normalised.read_z_motor_position()
-  norm_state.base_z = model.env.mj.real_sensors.normalised.read_z_base_position()
+  norm_state.gripper_x = model.trainer.env.mj.real_sensors.normalised.read_x_motor_position()
+  norm_state.gripper_y = model.trainer.env.mj.real_sensors.normalised.read_y_motor_position()
+  norm_state.gripper_z = model.trainer.env.mj.real_sensors.normalised.read_z_motor_position()
+  norm_state.base_z = model.trainer.env.mj.real_sensors.normalised.read_z_base_position()
 
-  norm_sensor.gauge1 = model.env.mj.real_sensors.normalised.read_finger1_gauge()
-  norm_sensor.gauge2 = model.env.mj.real_sensors.normalised.read_finger2_gauge()
-  norm_sensor.gauge3 = model.env.mj.real_sensors.normalised.read_finger3_gauge ()
-  norm_sensor.palm = model.env.mj.real_sensors.normalised.read_palm_sensor()
-  norm_sensor.wrist_z = model.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
+  norm_sensor.gauge1 = model.trainer.env.mj.real_sensors.normalised.read_finger1_gauge()
+  norm_sensor.gauge2 = model.trainer.env.mj.real_sensors.normalised.read_finger2_gauge()
+  norm_sensor.gauge3 = model.trainer.env.mj.real_sensors.normalised.read_finger3_gauge ()
+  norm_sensor.palm = model.trainer.env.mj.real_sensors.normalised.read_palm_sensor()
+  norm_sensor.wrist_z = model.trainer.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
 
   # if using a simulated ft sensor, replace with this data instead
   if use_sim_ftsensor:
-    norm_sensor.wrist_z = model.env.mj.sim_sensors.read_wrist_Z_sensor()
+    norm_sensor.wrist_z = model.trainer.env.mj.sim_sensors.read_wrist_Z_sensor()
 
   # if we are trying to prevent hitting the table
   if prevent_table_hit:
@@ -260,16 +250,19 @@ def generate_action():
   global currently_testing
   global current_test_data
 
-  obs = model.env.mj.get_real_observation()
-  torch_obs = model.to_torch(obs)
+  obs = model.trainer.env.mj.get_real_observation()
+  torch_obs = model.trainer.to_torch(obs)
   
   if currently_testing and current_test_data.data.heuristic:
     # if we are doing heuristic grasping
-    action = model.env.get_heuristic_action()
+    action = model.trainer.env.get_heuristic_action()
   else:
     # use the state to predict the best action (test=True means pick best possible, decay_num has no effect)
-    action = model.select_action(torch_obs, decay_num=1, test=True)
-    action = action.item()
+    action = model.trainer.agent.select_action(torch_obs, decay_num=1, test=True)
+    if len(action) == 1:
+      action = (action.cpu()).item()
+    else:
+      action = (action.cpu()).numpy()
 
   if log_level > 1: rospy.loginfo(f"Generated action, action code is: {action}")
 
@@ -289,27 +282,27 @@ def generate_action():
     rospy.loginfo("Risk of table hit")
 
   # apply the action and get the new target state (vector)
-  new_target_state = model.env.mj.set_action(action)
+  new_target_state = model.trainer.env._set_action(action)
 
   # if using a simulated ft sensor, resolve the action in simulation
   if use_sim_ftsensor or render_sim_view:
     if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, taking simulated action")
-    model.env.mj.action_step()
-    if render_sim_view: model.env.mj.render()
+    model.trainer.env.mj.action_step()
+    if render_sim_view: model.trainer.env.mj.render()
 
   # if at test time, save simple, unnormalised state data for this step
   if currently_testing:
-    SI_state_vector = model.env.mj.get_simple_state_vector(model.env.mj.real_sensors.SI)
+    SI_state_vector = model.trainer.env.mj.get_simple_state_vector(model.trainer.env.mj.real_sensors.SI)
     current_test_data.add_step(obs, action, SI_vector=SI_state_vector)
     if quit_on_palm is not None:
-      palm_force = model.env.mj.real_sensors.SI.read_palm_sensor()
+      palm_force = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
       if palm_force > quit_on_palm:
         print(f"PALM FORCE OF {palm_force:.1f} UNSAFE, CANCELLING GRASPING")
         cancel_grasping_callback()
 
   # determine if this action is for the gripper or panda
-  if model.env.mj.last_action_gripper(): for_franka = False
-  elif model.env.mj.last_action_panda(): for_franka = True
+  if model.trainer.env.mj.last_action_gripper(): for_franka = False
+  elif model.trainer.env.mj.last_action_panda(): for_franka = True
   else: raise RuntimeError("last action not on gripper or on panda")
 
   return new_target_state, for_franka
@@ -369,7 +362,7 @@ def execute_grasping_callback(request=None, reset=True):
   Service callback to complete a dqn grasping task
   """
 
-  if log_level > 0: rospy.loginfo("dqn node is now starting a grasping task")
+  if log_level > 0: rospy.loginfo("rl_grasping_node is now starting a grasping task")
 
   global ready_for_new_action
   global action_delay
@@ -399,8 +392,8 @@ def execute_grasping_callback(request=None, reset=True):
         cancel_grasping_callback()
 
       # if we have reached our step limit, terminate grasping
-      if step_num > model.env.params.max_episode_steps:
-        if log_level > 0: rospy.loginfo(f"Max episode steps of {model.env.params.max_episode_steps} exceeded, stopping grasping")
+      if step_num > model.trainer.env.params.max_episode_steps:
+        if log_level > 0: rospy.loginfo(f"Max episode steps of {model.trainer.env.params.max_episode_steps} exceeded, stopping grasping")
         cancel_grasping_callback()
 
       # evaluate the network and get a new action
@@ -421,7 +414,7 @@ def execute_grasping_callback(request=None, reset=True):
         break
 
       # if the action is for the gripper
-      if not for_franka:
+      if True or not for_franka:
 
         if move_gripper is False:
           if log_level > 1: rospy.loginfo(f"Gripper action ignored as move_gripper=False")
@@ -432,14 +425,14 @@ def execute_grasping_callback(request=None, reset=True):
         new_demand.state.pose.y = new_target_state[1]
         new_demand.state.pose.z = new_target_state[2]
 
-        if log_level > 0: rospy.loginfo("dqn node is publishing a new gripper demand")
+        if log_level > 0: rospy.loginfo("rl_grasping_node is publishing a new gripper demand")
         demand_pub.publish(new_demand)
 
         # data callback will let us know when the gripper demand is fulfilled
         ready_for_new_action = False
 
       # if the action is for the panda
-      elif for_franka:
+      if True or for_franka:
 
         if move_panda is False:
           if log_level > 1: rospy.loginfo(f"Panda action ignored as move_panda=False")
@@ -450,7 +443,7 @@ def execute_grasping_callback(request=None, reset=True):
         move_panda_z_abs(franka_instance, panda_target)
 
         # move panda is blocking, so we know we can now have a new action
-        ready_for_new_action = True
+        # ready_for_new_action = True
 
     rate.sleep()
 
@@ -481,13 +474,13 @@ def reset_all(request=None, skip_panda=False):
 
   # reset the gripper position (not blocking, publishes request)
   if move_gripper:
-    if log_level > 1: rospy.loginfo("dqn node is about to try and reset gripper position")
+    if log_level > 1: rospy.loginfo("rl_grasping_node is about to try and reset gripper position")
     reset_gripper()
   elif log_level > 1: rospy.loginfo("dqn not reseting gripper position as move_gripper is False")
 
   # reset the panda position (blocking)
   if move_panda and not skip_panda:
-    if log_level > 1: rospy.loginfo(f"dqn node is about to try and reset panda position to {panda_reset_height_mm}")
+    if log_level > 1: rospy.loginfo(f"rl_grasping_node is about to try and reset panda position to {panda_reset_height_mm}")
     panda_reset_req = ResetPanda()
     panda_reset_req.reset_height_mm = panda_reset_height_mm # dqn episode begins at 10mm height
     reset_panda(panda_reset_req)
@@ -495,19 +488,19 @@ def reset_all(request=None, skip_panda=False):
 
   # reset and prepare environment
   rospy.sleep(2.0)  # sleep to allow sensors to settle before recalibration
-  model.env.mj.calibrate_real_sensors()
-  model.env.reset() # recalibrates sensors
-  model.env.mj.reset_object() # remove any object from the scene in simulation
+  model.trainer.env.mj.calibrate_real_sensors()
+  model.trainer.env.reset() # recalibrates sensors
+  model.trainer.env.mj.reset_object() # remove any object from the scene in simulation
 
   if currently_testing and current_test_data.data.heuristic:
-    model.env.start_heuristic_grasping(realworld=True)
+    model.trainer.env.start_heuristic_grasping(realworld=True)
 
   # check for settings clashes
   if use_sim_ftsensor and dynamic_recal_ftsensor:
       if log_level > 0: 
         rospy.logwarn("use_sim_ftsensor and dynamic_recal_ft_sensor both True at the same time")
 
-  if log_level > 1: rospy.loginfo("dqn node reset_all() is finished, sensors recalibrated")
+  if log_level > 1: rospy.loginfo("rl_grasping_node reset_all() is finished, sensors recalibrated")
 
   return []
 
@@ -612,7 +605,7 @@ def reset_gripper(request=None):
   homing_demand = GripperDemand()
   homing_demand.home = True
 
-  if log_level > 0: rospy.loginfo("dqn node requests homing gripper position")
+  if log_level > 0: rospy.loginfo("rl_grasping_node requests homing gripper position")
   demand_pub.publish(homing_demand)
 
   return []
@@ -678,7 +671,7 @@ def debug_gripper(request=None):
 
   global debug_pub
 
-  if log_level > 1: rospy.loginfo("dqn node requesting gripper debug information")
+  if log_level > 1: rospy.loginfo("rl_grasping_node requesting gripper debug information")
 
   req = GripperInput()
   req.print_debug = True
@@ -696,40 +689,36 @@ def load_model(request):
   global model_loaded
   global model, dqn_log_level
 
-  model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
+  model = TrainingManager(log_level=dqn_log_level, device=device)
 
   # apply defaults
   if request.folderpath == "":
-    request.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
+    request.folderpath = "/home/luke/mymujoco/rl/models/"
   if request.run_id == 0:
     request.run_id = None
 
   # construct paths
   pathtofolder = request.folderpath + "/" + request.group_name + "/"
-  foldername = request.run_name
+  run_name = request.run_name
 
   try:
 
-    if log_level > 0: rospy.loginfo(f"Preparing to load model now in dqn node: {pathtofolder}/{foldername}")
-    model.load(id=request.run_id, folderpath=pathtofolder, foldername=foldername)
+    if log_level > 0: rospy.loginfo(f"Preparing to load model now in rl_grasping_node: {pathtofolder}/{run_name}")
+    model.load(run_name=run_name, path_to_run_folder=pathtofolder, id=request.run_id, use_abs_path=True)
     model_loaded = True
     if log_level > 0: rospy.loginfo("Model loaded successfully")
 
-    # overwrite model 'run' and 'group' names with original
-    model.run_name = request.run_name
-    model.group_name = request.group_name
-
     # noise settings for real data
-    # model.env.mj.set.state_noise_std = 0.0            # no state noise
-    # model.env.mj.set.sensor_noise_std = 0.0           # no sensor noise
-    # model.env.mj.set.state_noise_mu = 0.0             # no mean noise
-    # model.env.mj.set.sensor_noise_mu = 0.0            # no mean noise
+    # model.trainer.env.mj.set.state_noise_std = 0.0            # no state noise
+    # model.trainer.env.mj.set.sensor_noise_std = 0.0           # no sensor noise
+    # model.trainer.env.mj.set.state_noise_mu = 0.0             # no mean noise
+    # model.trainer.env.mj.set.sensor_noise_mu = 0.0            # no mean noise
 
-    model.env.mj.set.set_use_noise(False) # disable all noise
-    model.env.reset()
+    model.trainer.env.mj.set.set_use_noise(False) # disable all noise
+    model.trainer.env.reset()
 
     # IMPORTANT: have to run calibration function to setup real sensors
-    model.env.mj.calibrate_real_sensors()
+    model.trainer.env.mj.calibrate_real_sensors()
 
     # # if we are using a simulated ftsensor
     # global use_sim_ftsensor, ftenv
@@ -738,7 +727,7 @@ def load_model(request):
     #   if log_level > 0: rospy.loginfo("USE_SIM_FTSENSOR=TRUE, creating ftenv now")
     #   tempmodel = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
     #   tempmodel.load(id=request.run_id, folderpath=pathtofolder, foldername=foldername)
-    #   ftenv = tempmodel.env #deepcopy(model.env)
+    #   ftenv = tempmodel.trainer.env #deepcopy(model.trainer.env)
     #   ftenv.mj.reset()
     #   if log_level > 0: rospy.loginfo("ftenv created")
     #   use_sim_ftsensor = True
@@ -748,7 +737,7 @@ def load_model(request):
   except Exception as e:
 
     rospy.logerr(e)
-    rospy.logerr("Failed to load model in dqn node")
+    rospy.logerr("Failed to load model in rl_grasping_node")
 
     return False
 
@@ -1315,7 +1304,7 @@ def gentle_place(request=None):
   cancel_grasping_callback()
 
   # what is the current gripper position
-  [gx, gy, gz, h] = model.env.mj.get_state_metres(True) # realworld=True for real data
+  [gx, gy, gz, h] = model.trainer.env.mj.get_state_metres(True) # realworld=True for real data
 
   # # move the panda to a lower height
   # panda_reset_req = ResetPanda()
@@ -1332,7 +1321,7 @@ def gentle_place(request=None):
   new_demand.state.pose.y = gy
   new_demand.state.pose.z = 5e-3
 
-  if log_level > 0: rospy.loginfo("dqn node is publishing gripper demand for gentle place")
+  if log_level > 0: rospy.loginfo("rl_grasping_node is publishing gripper demand for gentle place")
   demand_pub.publish(new_demand)
 
 def move_panda_to(request=None):
@@ -1663,11 +1652,11 @@ def reset_demo(request=None):
 if __name__ == "__main__":
 
   # initilise ros
-  rospy.init_node("dqn_node")
-  rospy.loginfo("dqn node main has now started")
+  rospy.init_node("rl_grasping_node")
+  rospy.loginfo("rl_grasping_node has now started")
   
   # what namespace will we use in this node for publishers/services
-  node_ns = "dqn" # gripper/dqn
+  node_ns = "rl" # gripper/rl
 
   # get input parameters - are we allowing robot movement?
   move_gripper = True # rospy.get_param(f"/{node_ns}/move_gripper")
@@ -1688,6 +1677,10 @@ if __name__ == "__main__":
   rospy.Subscriber("/gripper/real/state", GripperState, data_callback)
   demand_pub = rospy.Publisher("/gripper/demand", GripperDemand, queue_size=10)
 
+  # subscribers for image topics
+  rospy.Subscriber("/camera/rgb", Image, rgb_callback)
+  rospy.Subscriber("/camera/depth", Image, depth_callback)
+
   # publishers for displaying normalised nn input values
   norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
   norm_sensor_pub = rospy.Publisher(f"/{node_ns}/sensor", NormalisedSensor, queue_size=10)
@@ -1700,21 +1693,21 @@ if __name__ == "__main__":
 
     # load a devel training
     load = LoadModel()
-    load.folderpath = "/home/luke/mujoco-devel/rl/models/dqn/"
-    load.group_name = "24-07-23"
-    load.run_name = "operator-PC_15:10_A2"
+    load.folderpath = "/home/luke/mujoco-devel/rl/models"
+    load.group_name = "04-10-23"
+    load.run_name = "run_17-35_A32"
     load.run_id = None
     load_model(load)
 
-    # now override action sizes: TESTING
-    print(f"Action size gripper X: {model.env.mj.set.gripper_prismatic_X.value:.3f}")
-    print(f"Action size gripper Y: {model.env.mj.set.gripper_revolute_Y.value:.3f}")
-    print(f"Action size gripper Z: {model.env.mj.set.gripper_Z.value:.3f}")
-    print(f"Action size base Z: {model.env.mj.set.base_Z.value:.3f}")
-    model.env.mj.set.gripper_prismatic_X.value = 1.0e-3
-    model.env.mj.set.gripper_revolute_Y.value = 0.01
-    model.env.mj.set.gripper_Z.value = 2.0e-3
-    model.env.mj.set.base_Z.value = 2.0e-3
+    # # now override action sizes: TESTING
+    # print(f"Action size gripper X: {model.trainer.env.mj.set.gripper_prismatic_X.value:.3f}")
+    # print(f"Action size gripper Y: {model.trainer.env.mj.set.gripper_revolute_Y.value:.3f}")
+    # print(f"Action size gripper Z: {model.trainer.env.mj.set.gripper_Z.value:.3f}")
+    # print(f"Action size base Z: {model.trainer.env.mj.set.base_Z.value:.3f}")
+    # model.trainer.env.mj.set.gripper_prismatic_X.value = 1.0e-3
+    # model.trainer.env.mj.set.gripper_revolute_Y.value = 0.01
+    # model.trainer.env.mj.set.gripper_Z.value = 2.0e-3
+    # model.trainer.env.mj.set.base_Z.value = 2.0e-3
   
   elif False:
 
@@ -1738,11 +1731,11 @@ if __name__ == "__main__":
 
   if log_level >= 3:
     # turn on all debug information
-    model.env.log_level = 2
-    model.env.mj.set.debug = True
+    model.trainer.env.log_level = 2
+    model.trainer.env.mj.set.debug = True
 
   # begin services for this node
-  rospy.loginfo(f"dqn node services now available under namespace /{node_ns}/")
+  rospy.loginfo(f"rl_grasping_node services now available under namespace /{node_ns}/")
   rospy.Service(f"/{node_ns}/start", Empty, execute_grasping_callback)
   rospy.Service(f"/{node_ns}/stop", Empty, cancel_grasping_callback)
   rospy.Service(f"/{node_ns}/reset", Empty, reset_all)
