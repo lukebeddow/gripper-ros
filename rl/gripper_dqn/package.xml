@@ -63,6 +63,7 @@
   <exec_depend>std_msgs</exec_depend>
 
   <build_depend>message_generation</build_depend>
+  <depend>sensor_msgs</depend>
   
   <!-- The export tag contains other, unspecified, tags -->
   <export>

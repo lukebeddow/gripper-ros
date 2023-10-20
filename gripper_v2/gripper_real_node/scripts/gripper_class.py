@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/home/luke/pyenv/py38_ros/bin/python
 
 import serial
 import struct
@@ -274,8 +274,8 @@ class Gripper:
         if self.serial.in_waiting == 0:
             return "empty buffer"
         
-        t0 = time.clock()
-        t1 = time.clock()
+        t0 = time.time()
+        t1 = time.time()
         
         message_started = False
         data_received = 0
@@ -289,7 +289,7 @@ class Gripper:
 
         while timeout > t1 - t0:
 
-            t1 = time.clock()
+            t1 = time.time()
 
             if self.serial.in_waiting > 0:
                 x = self.serial.read()

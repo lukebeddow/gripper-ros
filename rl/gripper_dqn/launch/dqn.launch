@@ -22,6 +22,12 @@
 				output="screen"
 	/>
 
+  <node name="camera_node"
+				type="camera_node.py"
+				pkg="gripper_dqn"
+				output="screen"
+	/>
+
   <!-- this node is currently called in monitor.launch (below)-->
   <!-- <node name="ft_sensor_node"
         type="ft_sensor_node"

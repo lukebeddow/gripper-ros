@@ -39,6 +39,7 @@ from gripper_dqn.srv import PandaMoveToInt, Demo
 from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
+from cv_bridge import CvBridge
 
 # import the test data structure class
 from grasp_test_data import GraspTestData
@@ -100,6 +101,8 @@ norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
 last_ft_value = None            # last ftsensor value, used to detect lost connection
+rgb_image = None                # most recent rgb image
+depth_image = None              # most recent depth image
 
 # dummy define camera function for cases where no camera is loaded
 depth_camera_connected = False
@@ -130,10 +133,21 @@ device = "cuda" #none
 dqn_log_level = 1 if log_level > 1 else 0
 model = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
 
+# create openCV bridge
+bridge = CvBridge()
+
 # create modelsaver instance for saving test data
 testsaver = ModelSaver("test_data", root=test_save_path)
 
 # ----- callbacks and functions to run grasping ----- #
+
+def rgb_callback(msg):
+  """
+  Save the most recent rgb image
+  """
+  global rgb_image
+  cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+
 
 def data_callback(state):
   """

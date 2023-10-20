@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/home/luke/pyenv/py38_ros/bin/python
 
 import rospy
 from gripper_class import Gripper

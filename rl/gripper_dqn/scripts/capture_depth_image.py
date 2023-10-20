@@ -17,7 +17,7 @@ import time
 # NOTE: it appears that imu, rgb and depth cannot all be running simultaneously.
 #       Any two of those 3 are fine, but not all three: causes timeout on wait_for_frames()
 #
-device_id = "128422272085"  # "923322071108" # serial number of device to use or None to use default
+device_id = None #"128422272085"  # "923322071108" # serial number of device to use or None to use default
 enable_imu = False
 enable_rgb = True
 enable_depth = True
