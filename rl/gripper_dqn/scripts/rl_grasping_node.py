@@ -6,6 +6,7 @@ import os
 import numpy as np
 from datetime import datetime
 import multiprocessing as mp
+import traceback
 
 from std_srvs.srv import Empty, SetBool
 from sensor_msgs.msg import Image
@@ -23,13 +24,13 @@ from cv_bridge import CvBridge
 # import the test data structure class
 from grasp_test_data import GraspTestData
 
-# ----- essential settings and global variable declarations ----- #
+# ----- essential user settings ----- #
 
 # important user settings
-camera = True                  # do we want to take camera images, is the camera connected
+camera = True                  # do we want to take camera images
 use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
-use_panda_threads = False       # do we run panda in a seperate thread
+use_panda_threads = True       # do we run panda in a seperate thread
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
 action_delay = 0.1              # safety delay between action generation and publishing
 panda_z_move_duration = 0.5     # how long to move the panda z height vertically up
@@ -44,7 +45,6 @@ image_batch_size = 1            # 1=save pictures every trial, 2=every two trial
 test_save_path = "/home/luke/gripper-ros/"
 if use_devel: mymujoco_rl_path = "/home/luke/mujoco-devel/rl"
 else: mymujoco_rl_path = "/home/luke/mymujoco/rl"
-# pyfranka_path = "/home/luke/franka/franka_interface/build"
 pyfranka_path = "/home/luke/libs/franka/franka_interface/build"
 
 # experimental feature settings
@@ -57,6 +57,8 @@ render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP
 quit_on_palm = None               # quit grasping with a palm value above this (during test only), set None for off
 reject_wrist_noise = False       # try to ignore large spikes in the wrist sensor
 prevent_table_hit = False         # prevent the gripper from going below a certain height
+
+# ----- global variable declarations ----- #
 
 # global flags
 move_gripper = False            # is the gripper allowed to move
@@ -80,29 +82,9 @@ norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
 last_ft_value = None            # last ftsensor value, used to detect lost connection
+depth_camera_connected = False  # have we received images from the depth camera
 rgb_image = None                # most recent rgb image
 depth_image = None              # most recent depth image
-
-# dummy define camera function for cases where no camera is loaded
-depth_camera_connected = camera
-def get_depth_image():
-  """
-  Empty function (returning rgb, depth) since no camera connected
-  """
-  if rgb_image is None or depth_image is None:
-    rospy.logwarn("Warning: camera images are None")
-
-  return rgb_image, depth_image
-
-# # try to start the camera connection and override the camera function
-# try:
-#   if camera is False: raise NotImplementedError
-#   depth_camera_connected = True
-#   from capture_depth_image import get_depth_image
-# except NotImplementedError: rospy.loginfo("use camera is False, no images will be taken")
-# except Exception as e: 
-  # rospy.logerr("DEPTH CAMERA NOT CONNECTED but camera is True, beware")
-  # rospy.logerr(f"Depth camera error message: {e}")
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -121,6 +103,43 @@ bridge = CvBridge()
 testsaver = ModelSaver("test_data", root=test_save_path)
 
 # ----- callbacks and functions to run grasping ----- #
+
+# from: https://stackoverflow.com/questions/19924104/python-multiprocessing-handling-child-errors-in-parent
+class Process(mp.Process):
+  def __init__(self, *args, **kwargs):
+    mp.Process.__init__(self, *args, **kwargs)
+    self._pconn, self._cconn = mp.Pipe()
+    self._exception = None
+
+  def run(self):
+    try:
+      mp.Process.run(self)
+      self._cconn.send(None)
+    except Exception as e:
+      tb = traceback.format_exc()
+      self._cconn.send((e, tb))
+      # raise e  # You can still rise this exception if you need to
+
+  @property
+  def exception(self):
+    if self._pconn.poll():
+      self._exception = self._pconn.recv()
+    return self._exception
+
+def get_depth_image():
+  """
+  Function returning the most recent rgb, depth image
+  """
+  global depth_camera_connected, camera
+
+  if not camera: return None, None
+
+  if rgb_image is None or depth_image is None:
+    rospy.logwarn("Warning: camera images are None")
+  else:
+    depth_camera_connected = True
+
+  return rgb_image, depth_image
 
 def rgb_callback(msg):
   """
@@ -349,6 +368,9 @@ def move_panda_z_abs(franka, target_z):
     process = Process(target=franka.move, args=("relative", T, panda_z_move_duration))
     process.start()
     process.join()
+    if process.exception:
+      rospy.logwarn(f"Panda movement exception, likely too high force on the table. Cancelling grasping. Error message: {process.exception}")
+      cancel_grasping_callback()
   else:
     franka.move("relative", T, panda_z_move_duration)
 
@@ -580,6 +602,9 @@ def reset_panda(request=None):
     process = Process(target=franka_instance.move_joints, args=(target_state, speed_factor))
     process.start()
     process.join()
+    if process.exception:
+      rospy.logwarn(f"Panda movement exception, likely too high force on the table. Cancelling grasping. Error message: {process.exception}")
+      cancel_grasping_callback()
   else:
     franka_instance.move_joints(target_state, speed_factor) # now approach reset height
 
@@ -1410,6 +1435,9 @@ def move_panda_to(request=None):
     process = Process(target=franka_instance.move_joints, args=(target_state, speed_factor))
     process.start()
     process.join()
+    if process.exception:
+      rospy.logwarn(f"Panda movement exception, likely too high force on the table. Cancelling grasping. Error message: {process.exception}")
+      cancel_grasping_callback()
   else:
     franka_instance.move_joints(target_state, speed_factor) # now approach reset height
 
@@ -1663,7 +1691,7 @@ if __name__ == "__main__":
   move_panda = True # rospy.get_param(f"/{node_ns}/dqn/move_panda")
   rospy.loginfo(f"  > move gripper is {move_gripper}")
   rospy.loginfo(f"  > move panda is {move_panda}")
-  rospy.loginfo(f"  > using camera is {depth_camera_connected}")
+  rospy.loginfo(f"  > using camera is {camera}")
   rospy.loginfo(f"  > using devel model is {use_devel}")
   rospy.loginfo(f"  > photoshoot calibration is {photoshoot_calibration}")
   rospy.loginfo(f"  > use panda threads is {use_panda_threads}")
@@ -1694,20 +1722,22 @@ if __name__ == "__main__":
     # load a devel training
     load = LoadModel()
     load.folderpath = "/home/luke/mujoco-devel/rl/models"
-    load.group_name = "04-10-23"
-    load.run_name = "run_17-35_A32"
+
+    # # early ppo training on set8, 92% success rate
+    # load.group_name = "04-10-23"
+    # load.run_name = "run_17-35_A32"
+
+    # # trainings on set9_easier, 4.0N frc limit, 1.5 saturation
+    load.group_name = "20-10-23"
+    # # 0.5x actions, 86% success rate @ 120k episodes
+    load.run_name = "run_17-45_A77" # 65
+    # # 1.0x actions, 82% success rate @ 52k episodes
+    # load.run_name = "run_17-45_A85"
+    # # 1.5x actions, 85% success rate @ 48k episodes
+    # load.run_name = "run_17-45_A74"
+
     load.run_id = None
     load_model(load)
-
-    # # now override action sizes: TESTING
-    # print(f"Action size gripper X: {model.trainer.env.mj.set.gripper_prismatic_X.value:.3f}")
-    # print(f"Action size gripper Y: {model.trainer.env.mj.set.gripper_revolute_Y.value:.3f}")
-    # print(f"Action size gripper Z: {model.trainer.env.mj.set.gripper_Z.value:.3f}")
-    # print(f"Action size base Z: {model.trainer.env.mj.set.base_Z.value:.3f}")
-    # model.trainer.env.mj.set.gripper_prismatic_X.value = 1.0e-3
-    # model.trainer.env.mj.set.gripper_revolute_Y.value = 0.01
-    # model.trainer.env.mj.set.gripper_Z.value = 2.0e-3
-    # model.trainer.env.mj.set.base_Z.value = 2.0e-3
   
   elif False:
 
