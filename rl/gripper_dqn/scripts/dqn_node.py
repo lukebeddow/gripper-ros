@@ -1632,8 +1632,8 @@ def reset_demo(request=None):
 
   # full reset of the gripper, but excluding the panda
   reset_all(skip_panda=True)
-  global panda_reset_height_mm
-  panda_reset_height_mm = 0
+  # global panda_reset_height_mm
+  # panda_reset_height_mm = 0
 
   move_msg = PandaMoveToInt()
 

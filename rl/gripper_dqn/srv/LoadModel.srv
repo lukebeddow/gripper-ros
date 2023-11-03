@@ -1,6 +1,8 @@
 string folderpath
 string group_name
 string run_name
+string timestamp
+int32 job_number
 int32 run_id
 ---
 bool success

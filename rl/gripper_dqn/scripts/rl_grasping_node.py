@@ -48,6 +48,7 @@ else: mymujoco_rl_path = "/home/luke/mymujoco/rl"
 pyfranka_path = "/home/luke/libs/franka/franka_interface/build"
 
 # experimental feature settings
+debug_observation = False        # print debug information about the observation
 use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
 dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connection is lost
 # sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
@@ -270,6 +271,12 @@ def generate_action():
   global current_test_data
 
   obs = model.trainer.env.mj.get_real_observation()
+
+  if debug_observation:
+    rospy.loginfo("Debugging observation:")
+    model.trainer.env.mj.debug_observation(obs)
+    rospy.loginfo(f"SI values for sensors: {model.trainer.env.mj.get_simple_state_vector(model.trainer.env.mj.real_sensors.SI)}")
+
   torch_obs = model.trainer.to_torch(obs)
   
   if currently_testing and current_test_data.data.heuristic:
@@ -283,7 +290,7 @@ def generate_action():
     else:
       action = (action.cpu()).numpy()
 
-  if log_level > 1: rospy.loginfo(f"Generated action, action code is: {action}")
+  if log_level >= 2: rospy.loginfo(f"Generated action, action code is: {action}")
 
   # # if we are preventing palm backwards actions
   # if prevent_back_palm and action == 5:
@@ -436,7 +443,7 @@ def execute_grasping_callback(request=None, reset=True):
         break
 
       # if the action is for the gripper
-      if True or not for_franka:
+      if model.trainer.env.using_continous_actions() or not for_franka:
 
         if move_gripper is False:
           if log_level > 1: rospy.loginfo(f"Gripper action ignored as move_gripper=False")
@@ -454,7 +461,7 @@ def execute_grasping_callback(request=None, reset=True):
         ready_for_new_action = False
 
       # if the action is for the panda
-      if True or for_franka:
+      if model.trainer.env.using_continous_actions() or for_franka:
 
         if move_panda is False:
           if log_level > 1: rospy.loginfo(f"Panda action ignored as move_panda=False")
@@ -573,6 +580,8 @@ def reset_panda(request=None):
     cal_10_mm = [-0.10026742, 0.13964332, 0.05020785, -1.52111299, -0.02483833, 1.69663203, 0.82509060]
     cal_12_mm = [-0.10010887, 0.14053731, 0.05020618, -1.51491904, -0.02485414, 1.69118643, 0.82503248]
     cal_14_mm = [-0.10008372, 0.14145294, 0.05020689, -1.50854897, -0.02487740, 1.68574724, 0.82497343]
+    cal_16_mm = [-0.10009843, 0.14394794, 0.05034595, -1.50397910, -0.02514773, 1.68020317, 0.82500312]
+    cal_18_mm = [-0.10008061, 0.14495725, 0.05034800, -1.49751773, -0.02514845, 1.67480074, 0.82498541]
     cal_20_mm = [-0.09984404, 0.14450927, 0.05021104, -1.48895958, -0.02498154, 1.66937602, 0.82479887]
     cal_22_mm = [-0.09978971, 0.14561315, 0.05021104, -1.48238086, -0.02502815, 1.66385170, 0.82474018]
     cal_24_mm = [-0.09973385, 0.14679426, 0.05021104, -1.47564609, -0.02507226, 1.65830631, 0.82469641]
@@ -716,28 +725,37 @@ def load_model(request):
 
   model = TrainingManager(log_level=dqn_log_level, device=device)
 
+  if request.timestamp != "" and request.job_number != 0:
+    use_timestamp_job_number = True
+  else:
+    use_timestamp_job_number = False
+
   # apply defaults
   if request.folderpath == "":
-    request.folderpath = "/home/luke/mymujoco/rl/models/"
+    request.folderpath = mymujoco_rl_path + "/models/" #"/home/luke/mymujoco/rl/models/"
   if request.run_id == 0:
     request.run_id = None
-
-  # construct paths
-  pathtofolder = request.folderpath + "/" + request.group_name + "/"
-  run_name = request.run_name
+    best_id = False
+  elif request.run_id == "best":
+    request.run_id = None
+    best_id = True
+  else:
+    best_id = False
 
   try:
 
+    if use_timestamp_job_number:
+      model.set_group_run_name(job_num=request.job_number, timestamp=request.timestamp)
+      run_name = model.run_name
+      pathtofolder = request.folderpath + "/" + model.group_name + "/"
+    else:
+      run_name = request.run_name
+      pathtofolder = request.folderpath + "/" + request.group_name + "/"
+      
     if log_level > 0: rospy.loginfo(f"Preparing to load model now in rl_grasping_node: {pathtofolder}/{run_name}")
-    model.load(run_name=run_name, path_to_run_folder=pathtofolder, id=request.run_id, use_abs_path=True)
+    model.load(run_name=run_name, path_to_run_folder=pathtofolder, id=request.run_id, use_abs_path=True, best_id=best_id)
     model_loaded = True
     if log_level > 0: rospy.loginfo("Model loaded successfully")
-
-    # noise settings for real data
-    # model.trainer.env.mj.set.state_noise_std = 0.0            # no state noise
-    # model.trainer.env.mj.set.sensor_noise_std = 0.0           # no sensor noise
-    # model.trainer.env.mj.set.state_noise_mu = 0.0             # no mean noise
-    # model.trainer.env.mj.set.sensor_noise_mu = 0.0            # no mean noise
 
     model.trainer.env.mj.set.set_use_noise(False) # disable all noise
     model.trainer.env.reset()
@@ -1722,21 +1740,44 @@ if __name__ == "__main__":
     # load a devel training
     load = LoadModel()
     load.folderpath = "/home/luke/mujoco-devel/rl/models"
+    load.run_id = "best"
 
     # # early ppo training on set8, 92% success rate
     # load.group_name = "04-10-23"
     # load.run_name = "run_17-35_A32"
 
     # # trainings on set9_easier, 4.0N frc limit, 1.5 saturation
-    load.group_name = "20-10-23"
-    # # 0.5x actions, 86% success rate @ 120k episodes
-    load.run_name = "run_17-45_A77" # 65
-    # # 1.0x actions, 82% success rate @ 52k episodes
+    # load.group_name = "20-10-23"
+    # # # 0.5x actions, 86% success rate @ 120k episodes
+    # # load.run_name = "run_17-45_A77" # 65
+    # # # 1.0x actions, 82% success rate @ 52k episodes
     # load.run_name = "run_17-45_A85"
+    # # id = 14 # original training
+    # load.run_id = 24 # tuned after no table hit
     # # 1.5x actions, 85% success rate @ 48k episodes
     # load.run_name = "run_17-45_A74"
+    # 60 deg finger policy, 85% success rate
+    # load.run_name = "run_17-46_A54"
 
-    load.run_id = None
+    # # training with terminations for dangerous forces
+    # load.group_name = "24-10-23"
+    # load.run_name = "run_16-55_A7"
+
+    # # Program: try_improve_transfer
+    # load.timestamp = "30-10-23_11-59" ## 55 and 59 two PCs
+    # load.job_number = 50
+    # load.run_id = "best"
+
+    # # Program: sensitive wrist
+    # load.timestamp = "01-11-23_16-46" ## 55 and 59 two PCs
+    # load.job_number = 29
+    # load.run_id = "best"
+
+    # Program: try_action_noise
+    load.timestamp = "02-11-23_11-09"
+    load.job_number = 33
+    load.run_id = "best"
+
     load_model(load)
   
   elif False:
