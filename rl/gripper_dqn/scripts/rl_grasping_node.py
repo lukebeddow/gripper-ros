@@ -1,6 +1,6 @@
 #!/home/luke/pyenv/py38_ros/bin/python
 
-import rospy
+# general imports
 import sys
 import os
 import numpy as np
@@ -8,17 +8,16 @@ from datetime import datetime
 import multiprocessing as mp
 import traceback
 
+# ros specific imports
+import rospy
 from std_srvs.srv import Empty, SetBool
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Wrench
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
 from gripper_dqn.srv import PandaMoveToInt, Demo
-
-from collections import namedtuple
-from copy import deepcopy
-from dataclasses import dataclass
 from cv_bridge import CvBridge
 
 # import the test data structure class
@@ -31,13 +30,14 @@ camera = True                  # do we want to take camera images
 use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = True       # do we run panda in a seperate thread
+use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
 action_delay = 0.1              # safety delay between action generation and publishing
 panda_z_move_duration = 0.5     # how long to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
-scale_palm_data = 1.0           # scale real palm data by this
+scale_palm_data = 0.5           # scale real palm data by this
 image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 
@@ -82,6 +82,8 @@ ftenv = None                    # simulated environment for fake force/torque se
 norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
+panda_local_wrench_pub = None   # ROS publisher for panda external wrench estimates in local frame
+panda_global_wrench_pub = None  # ROS publisher for panda external wrench estimates in global frame
 last_ft_value = None            # last ftsensor value, used to detect lost connection
 depth_camera_connected = False  # have we received images from the depth camera
 rgb_image = None                # most recent rgb image
@@ -177,6 +179,18 @@ def data_callback(state):
     panda_z_height
   ]
 
+  # get panda estimated external wrenches
+  local_wrench = franka_instance.get_end_effector_wrench_local()
+  global_wrench = franka_instance.get_end_effector_wrench_global()
+
+  if use_panda_ft_sensing:
+    state.ftdata.force.x = local_wrench[0]
+    state.ftdata.force.y = local_wrench[1]
+    state.ftdata.force.z = local_wrench[2] * -1 # we want positive force to be upwards
+    state.ftdata.torque.x = local_wrench[3]
+    state.ftdata.torque.y = local_wrench[4]
+    state.ftdata.torque.z = local_wrench[5]
+
   # optional: scale data
   global scale_gauge_data, scale_palm_data, scale_wrist_data
   state.sensor.gauge1 *= scale_gauge_data
@@ -226,6 +240,8 @@ def data_callback(state):
   global norm_state_pub, norm_sensor_pub
   norm_state = NormalisedState()
   norm_sensor = NormalisedSensor()
+  local_wrench_msg = Wrench()
+  global_wrench_msg = Wrench()
 
   # can visualise 'raw' data, 'SI' calibrated data, or 'normalised' network input data
   norm_state.gripper_x = model.trainer.env.mj.real_sensors.normalised.read_x_motor_position()
@@ -239,6 +255,23 @@ def data_callback(state):
   norm_sensor.palm = model.trainer.env.mj.real_sensors.normalised.read_palm_sensor()
   norm_sensor.wrist_z = model.trainer.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
 
+  local_wrench_msg.force.x = local_wrench[0]
+  local_wrench_msg.force.y = local_wrench[1]
+  local_wrench_msg.force.z = local_wrench[2]
+  local_wrench_msg.torque.x = local_wrench[3]
+  local_wrench_msg.torque.y = local_wrench[4]
+  local_wrench_msg.torque.z = local_wrench[5]
+
+  global_wrench_msg.force.x = global_wrench[0]
+  global_wrench_msg.force.y = global_wrench[1]
+  global_wrench_msg.force.z = global_wrench[2]
+  global_wrench_msg.torque.x = global_wrench[3]
+  global_wrench_msg.torque.y = global_wrench[4]
+  global_wrench_msg.torque.z = global_wrench[5]
+
+  panda_local_wrench_pub.publish(local_wrench_msg)
+  panda_global_wrench_pub.publish(global_wrench_msg)
+  
   # if using a simulated ft sensor, replace with this data instead
   if use_sim_ftsensor:
     norm_sensor.wrist_z = model.trainer.env.mj.sim_sensors.read_wrist_Z_sensor()
@@ -1731,6 +1764,8 @@ if __name__ == "__main__":
   norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
   norm_sensor_pub = rospy.Publisher(f"/{node_ns}/sensor", NormalisedSensor, queue_size=10)
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
+  panda_local_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/local_wrench", Wrench, queue_size=10)
+  panda_global_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/global_wrench", Wrench, queue_size=10)
 
   # user set - what do we load by default
   if use_devel:
@@ -1773,8 +1808,23 @@ if __name__ == "__main__":
     # load.job_number = 29
     # load.run_id = "best"
 
-    # Program: try_action_noise
-    load.timestamp = "02-11-23_11-09"
+    # # Program: try_action_noise
+    # load.timestamp = "02-11-23_11-09"
+    # load.job_number = 40
+    # load.run_id = "best"
+
+    # # Program: evaluate_action_noise
+    # load.timestamp = "03-11-23_15-02"
+    # load.job_number = 12
+    # load.run_id = "best"
+
+    # # Program: try_z_noise
+    # load.timestamp = "06-11-23_14-48"
+    # load.job_number = 14
+    # load.run_id = "best"
+
+    # Program: improve_on_z_noise
+    load.timestamp = "08-11-23_16-21"
     load.job_number = 33
     load.run_id = "best"
 
