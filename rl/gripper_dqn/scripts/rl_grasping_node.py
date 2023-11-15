@@ -33,11 +33,13 @@ use_panda_threads = True       # do we run panda in a seperate thread
 use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
 action_delay = 0.1              # safety delay between action generation and publishing
-panda_z_move_duration = 0.5     # how long to move the panda z height vertically up
+panda_z_move_duration = 0.75     # how long to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
+panda_target_height_mm = 20     # how high before a grasp is considered complete
+scale_actions_on_load = 1.0     # scale action sizes upon loading a model
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
-scale_palm_data = 0.5           # scale real palm data by this
+scale_palm_data = 1.0           # scale real palm data by this
 image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 
@@ -49,6 +51,7 @@ pyfranka_path = "/home/luke/libs/franka/franka_interface/build"
 
 # experimental feature settings
 debug_observation = False        # print debug information about the observation
+number_gripper_demands = 2      # how many gripper position commands to send to try ensure motions are achieved
 use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
 dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connection is lost
 # sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
@@ -449,7 +452,7 @@ def execute_grasping_callback(request=None, reset=True):
       ready_for_new_action = False
 
       # if we have reached our target position, terminate grasping
-      if panda_z_height > 30e-3 - 1e-6:
+      if panda_z_height > panda_target_height_mm - 1e-6:
         if log_level > 0: rospy.loginfo("Panda height has reached 30mm, stopping grasping")
         cancel_grasping_callback()
 
@@ -488,7 +491,8 @@ def execute_grasping_callback(request=None, reset=True):
         new_demand.state.pose.z = new_target_state[2]
 
         if log_level > 0: rospy.loginfo("rl_grasping_node is publishing a new gripper demand")
-        demand_pub.publish(new_demand)
+        for i in range(number_gripper_demands):
+          demand_pub.publish(new_demand)
 
         # data callback will let us know when the gripper demand is fulfilled
         ready_for_new_action = False
@@ -857,6 +861,9 @@ def start_test(request):
 
   if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
 
+  # see if the camera is working (this function records if images are succesfully received)
+  get_depth_image()
+
   if not depth_camera_connected and camera:
     rospy.logwarn("Depth camera is not connected, test aborted")
     return False
@@ -871,11 +878,12 @@ def start_test(request):
 
   # save the model in use if this file does not exist already
   savepath = testsaver.get_current_path()
-  if not os.path.exists(savepath + "dqn_model" + testsaver.file_ext()):
-    testsaver.save("dqn_model", pyobj=model, suffix_numbering=False)
+  if not os.path.exists(savepath + "Tracking_info" + testsaver.file_ext()):
+    model.trainer.modelsaver = testsaver
+    model.trainer.save()
   else:
     if log_level > 1:
-      rospy.loginfo("start_test() is not saving the dqn model as it already exists")
+      rospy.loginfo("start_test() is not saving model as it already exists")
 
   # load any existing test data
   recent_data = testsaver.get_recent_file(name="test_data")
@@ -1823,13 +1831,47 @@ if __name__ == "__main__":
     # load.job_number = 14
     # load.run_id = "best"
 
-    # Program: improve_on_z_noise
-    load.timestamp = "08-11-23_16-21"
-    load.job_number = 33
+    # # Program: improve_on_z_noise
+    # load.timestamp =  "08-11-23_17-30" #"08-11-23_16-21"
+    # load.job_number = 60
+    # load.run_id = "best"
+
+    # Program: finetune_test_1
+    load.timestamp =  "13-11-23_18-14"
+    load.job_number = 15
     load.run_id = "best"
 
+    # # Program: finetune_test_2
+    # load.timestamp =  "14-11-23_17-16"
+    # load.job_number = 8
+    # load.run_id = "best"
+
     load_model(load)
-  
+
+    if abs(scale_actions_on_load - 1.0) > 1e-5:
+      rospy.logwarn(f"Model actions are being scaled by {scale_actions_on_load}")
+      model.trainer.env.mj.set.gripper_prismatic_X.value *= scale_actions_on_load
+      model.trainer.env.mj.set.gripper_revolute_Y.value *= scale_actions_on_load
+      model.trainer.env.mj.set.gripper_Z.value *= scale_actions_on_load
+      model.trainer.env.mj.set.base_X.value *= scale_actions_on_load
+      model.trainer.env.mj.set.base_Y.value *= scale_actions_on_load
+      model.trainer.env.mj.set.base_Z.value *= scale_actions_on_load
+      to_print = "New action values are:\n"
+      to_print += f"gripper_prismatic_X = {model.trainer.env.mj.set.gripper_prismatic_X.value}\n"
+      to_print += f"gripper_revolute_Y = {model.trainer.env.mj.set.gripper_revolute_Y.value}\n"
+      to_print += f"gripper_Z = {model.trainer.env.mj.set.gripper_Z.value}\n"
+      to_print += f"base_X = {model.trainer.env.mj.set.base_X.value}\n"
+      to_print += f"base_Y = {model.trainer.env.mj.set.base_Y.value}\n"
+      to_print += f"base_Z = {model.trainer.env.mj.set.base_Z.value}\n"
+      rospy.logwarn(to_print)
+
+    if abs(scale_gauge_data - 1.0) > 1e-5:
+      rospy.logwarn(f"Gauge data is being scaled by: {scale_gauge_data}")
+    if abs(scale_wrist_data - 1.0) > 1e-5:
+      rospy.logwarn(f"Wrist data is being scaled by: {scale_wrist_data}")
+    if abs(scale_palm_data - 1.0) > 1e-5:
+      rospy.logwarn(f"Palm data is being scaled by: {scale_palm_data}")
+
   elif False:
 
     # load a model with a given path
