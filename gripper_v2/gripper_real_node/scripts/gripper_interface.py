@@ -4,34 +4,27 @@ import rospy
 from gripper_class import Gripper
 from gripper_msgs.msg import GripperInput
 from gripper_msgs.msg import GripperOutput
+from gripper_msgs.msg import GripperRequest
 from std_msgs.msg import Float64
 from std_msgs.msg import Bool
 
 # # for testing rolling averages
 # import numpy as np
 
+def command_line_callback(data):
+  """
+  Gripper demand message from the user on the command line
+  """
+
+  mygripper.command.x = data.x
+  mygripper.command.y = data.y
+  mygripper.command.z = data.z
+  mygripper.send_message(type=data.message_type)
+
 def demand_callback(data):
   """
   Receive a gripper ROS input demand and send it to the real gripper
   """
-
-  # # MORE TESTING - override
-  # if data.override != "":
-  #   log_str = "Overriding demand with %s and (x, y, z): (%.2f, %.2f, %.2f)" % (
-  #     data.override, data.x_m, data.y_m, data.z_m
-  #   )
-  #   rospy.loginfo(log_str)
-  #   mygripper.command.x = data.x_m
-  #   mygripper.command.y = data.y_m
-  #   mygripper.command.z = data.z_m
-  #   mygripper.send_message(type=data.override)
-
-  #   return
-
-  # log_str = ("gripper input: home = %d, stop = %d, resume = %d, power_saving_on = %d, power_saving_off = %d, ignore_xyz_command = %d" % 
-  #   (data.home, data.stop, data.resume, data.power_saving_on, data.power_saving_off, data.ignore_xyz_command))
-
-  # rospy.loginfo(log_str)
 
   # check for commands that override and cause ignoring of others
   if data.stop: 
@@ -39,14 +32,6 @@ def demand_callback(data):
     return
   if data.home: 
     mygripper.send_message(type="home")
-
-    # TESTING: delete later
-    # set a lower speed
-    mygripper.command.x = 199
-    mygripper.command.y = 199
-    mygripper.command.z = 199
-    mygripper.send_message(type="set_speed")
-
     return
     
   if data.print_debug:
@@ -72,7 +57,7 @@ def demand_callback(data):
 
     rospy.loginfo(log_str)
 
-    mygripper.send_message(type="command", units=use_units)
+    mygripper.send_message(type="timed_command", units=use_units)
 
 def state_to_msg(state):
   """
@@ -121,6 +106,7 @@ if __name__ == "__main__":
 
     # create data transfer input/output
     rospy.Subscriber("/gripper/real/input", GripperInput, demand_callback)
+    rospy.Subscriber("/gripper/request", GripperRequest, command_line_callback)
     state_pub = rospy.Publisher("/gripper/real/output", GripperOutput, queue_size=10)
 
     # # for testing: publish rolling averages
@@ -135,7 +121,9 @@ if __name__ == "__main__":
     # gauge3avg = np.zeros(num_for_avg)
     # gauge4avg = np.zeros(num_for_avg)
 
-    rate = rospy.Rate(10) # 10Hz
+    gripper_message_rate = 20
+
+    rate = rospy.Rate(gripper_message_rate) # 10Hz
  
     while not rospy.is_shutdown():
 
@@ -143,12 +131,29 @@ if __name__ == "__main__":
 
         mygripper.send_message(type="resume")
         mygripper.send_message(type="home")
+        mygripper.send_message(type="debug_on")
 
-        # set a lower speed
-        mygripper.command.x = 150
-        mygripper.command.y = 150
-        mygripper.command.z = 150
-        mygripper.send_message(type="set_speed")
+        mygripper.command.x = 0.3
+        mygripper.send_message(type="change_timed_action")
+        mygripper.command.x = 0.2
+        mygripper.send_message(type="change_timed_action_early_pub")
+
+        mygripper.command.x = 100
+        mygripper.send_message(type="set_gauge_hz")
+        mygripper.command.x = gripper_message_rate
+        mygripper.send_message(type="set_publish_hz")
+        mygripper.command.x = 20
+        mygripper.send_message(type="set_serial_hz")
+        mygripper.command.x = 100000
+        mygripper.send_message(type="set_motor_hz")
+
+        mygripper.send_message(type="debug_off")
+
+        # # set a lower speed
+        # mygripper.command.x = 150
+        # mygripper.command.y = 150
+        # mygripper.command.z = 150
+        # mygripper.send_message(type="set_speed")
 
         gripper_initialised = True
 
@@ -162,30 +167,32 @@ if __name__ == "__main__":
 
       if mygripper.connected:
 
-        # fill in the gripper output message
-        output_msg = state_to_msg(state)
+        if mygripper.first_message_received:
 
-        # publish data
-        state_pub.publish(output_msg)
+          # fill in the gripper output message
+          output_msg = state_to_msg(state)
 
-        # for visualisation ONLY
-        gauge1_pub.publish(state.gauge1_data)
-        gauge2_pub.publish(state.gauge2_data)
-        gauge3_pub.publish(state.gauge3_data)
-        gauge4_pub.publish(state.gauge4_data)
+          # publish data
+          state_pub.publish(output_msg)
 
-        # # get averages
-        # gauge1avg[i] = state.gauge1_data
-        # gauge2avg[i] = state.gauge2_data
-        # gauge3avg[i] = state.gauge3_data
-        # gauge4avg[i] = state.gauge4_data
-        # i += 1
-        # if i == num_for_avg:
-        #   gauge1avg_pub.publish(np.mean(gauge1avg))
-        #   gauge2avg_pub.publish(np.mean(gauge2avg))
-        #   gauge3avg_pub.publish(np.mean(gauge3avg))
-        #   gauge4avg_pub.publish(np.mean(gauge4avg))
-        #   i = 0
+          # for visualisation ONLY
+          gauge1_pub.publish(state.gauge1_data)
+          gauge2_pub.publish(state.gauge2_data)
+          gauge3_pub.publish(state.gauge3_data)
+          gauge4_pub.publish(state.gauge4_data)
+
+          # # get averages
+          # gauge1avg[i] = state.gauge1_data
+          # gauge2avg[i] = state.gauge2_data
+          # gauge3avg[i] = state.gauge3_data
+          # gauge4avg[i] = state.gauge4_data
+          # i += 1
+          # if i == num_for_avg:
+          #   gauge1avg_pub.publish(np.mean(gauge1avg))
+          #   gauge2avg_pub.publish(np.mean(gauge2avg))
+          #   gauge3avg_pub.publish(np.mean(gauge3avg))
+          #   gauge4avg_pub.publish(np.mean(gauge4avg))
+          #   i = 0
 
       # otherwise try to reconnect
       else: 
@@ -200,13 +207,3 @@ if __name__ == "__main__":
   if mygripper.connected: mygripper.send_message("stop")
 
   rospy.logerr("gripper connection node has shut down")
-  # except:
-  #   # keep broadcasting that the gripper is disconnected for 10 seconds
-  #   rospy.logerr("gripper has been disconnected, connection lost")
-  #   exception_rate = rospy.Rate(10)
-  #   for i in range(100):
-  #     real_pub.publish(False)
-  #     exception_rate.sleep()
-
-  # except Gripper.GripperException:
-    # rospy.logerr("Failed to connect to gripper via bluetooth, node shutting down")

@@ -65,6 +65,7 @@ add_message_files(
   GripperDemand.msg
   GripperOutput.msg
   GripperInput.msg
+  GripperRequest.msg
 
   SensorRaw.msg
 

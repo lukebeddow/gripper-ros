@@ -3,6 +3,8 @@ from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
 
+palm_force_threshold = 5
+
 class GraspTestData:
 
   # data structures for saving testing data
@@ -36,6 +38,8 @@ class GraspTestData:
     dropped: bool
     out_of_bounds: bool
     exceed_palm: bool
+    palm_frc_tol: float
+    palm_tol_grasp: bool
     info: str
 
   @dataclass
@@ -79,6 +83,10 @@ class GraspTestData:
     avg_dropped: float = 0
     avg_out_of_bounds: float = 0
     avg_exceed_palm: float = 0
+    avg_palm_frc_tol: float = 0
+    avg_palm_frc_under: float = 0
+    avg_palm_frc_saturated: float = 0
+    num_palm_frc_tol: int = 0
 
   def __init__(self):
     """
@@ -160,6 +168,8 @@ class GraspTestData:
       0,              # dropped
       0,              # out_of_bounds
       0,              # exceed_palm
+      0,              # palm frc tol
+      0,              # palm_tol_grasp
       "",             # info string
     )
     self.current_trial_with_images = GraspTestData.TrialData(
@@ -178,6 +188,8 @@ class GraspTestData:
       0,              # dropped
       0,              # out_of_bounds
       0,              # exceed_palm
+      0,              # palm frc tol
+      0,              # palm_tol_grasp
       "",             # info string
     )
 
@@ -224,6 +236,8 @@ class GraspTestData:
     if request.t_h: request.lft = 1
     if request.drp: request.lft = 1
 
+    # if not request.s_h: request.pFTol = 0.0
+
     self.current_trial.stable_height = request.s_h
     self.current_trial.target_height = request.t_h
     self.current_trial.lifted = request.lft
@@ -234,6 +248,7 @@ class GraspTestData:
     self.current_trial.loop = request.loop
     self.current_trial.dropped = request.drp
     self.current_trial.out_of_bounds = request.oob
+    self.current_trial.palm_frc_tol = request.pFTol
     self.current_trial.info = request.info
     self.data.trials.append(deepcopy(self.current_trial))
     self.current_trial = None
@@ -248,6 +263,7 @@ class GraspTestData:
     self.current_trial_with_images.loop = request.loop
     self.current_trial_with_images.dropped = request.drp
     self.current_trial_with_images.out_of_bounds = request.oob
+    self.current_trial_with_images.palm_frc_tol = request.pFTol
     self.current_trial_with_images.info = request.info
     self.image_data.trials.append(deepcopy(self.current_trial_with_images))
     self.current_trial_with_images = None
@@ -263,6 +279,11 @@ class GraspTestData:
     object_nums = []
     num_trials = 0
 
+    num_palm_frc_grasps = 0
+    num_palm_frc_under_threshold = 0
+    cum_palm_frc_under_threshold = 0
+    cum_palm_frc_saturated = 0
+
     if len(data.trials) == 0:
       print("WARNING: get_test_results() found 0 trials")
       return None
@@ -275,6 +296,15 @@ class GraspTestData:
 
       num_trials += 1
 
+      if trial.palm_frc_tol > 0.01 and trial.palm_frc_tol < palm_force_threshold:
+        num_palm_frc_under_threshold += 1
+        cum_palm_frc_under_threshold += trial.palm_frc_tol
+      if trial.palm_frc_tol > 0.01:
+        if trial.palm_frc_tol > palm_force_threshold:
+          cum_palm_frc_saturated += palm_force_threshold
+        else:
+          cum_palm_frc_saturated += trial.palm_frc_tol
+
       found = False
       for j in range(len(object_nums)):
         if object_nums[j] == trial.object_num:
@@ -286,6 +316,8 @@ class GraspTestData:
         # create a new entry for this object
         new_entry = deepcopy(trial)
         new_entry.trial_num = 1
+        new_entry.palm_frc_tol += trial.palm_frc_tol * trial.stable_height
+        new_entry.palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold) * trial.stable_height
         entries.append(new_entry)
         object_nums.append(trial.object_num)
 
@@ -305,6 +337,8 @@ class GraspTestData:
         entries[j].dropped += trial.dropped
         entries[j].out_of_bounds += trial.out_of_bounds
         entries[j].exceed_palm += trial.exceed_palm
+        entries[j].palm_frc_tol += trial.palm_frc_tol * trial.stable_height
+        entries[j].palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold) * trial.stable_height
         entries[j].info += trial.info
 
     # create TestResults to return
@@ -330,6 +364,8 @@ class GraspTestData:
       result.avg_dropped += entries[i].dropped
       result.avg_out_of_bounds += entries[i].out_of_bounds
       result.avg_exceed_palm += entries[i].exceed_palm
+      result.avg_palm_frc_tol += entries[i].palm_frc_tol
+      result.num_palm_frc_tol += entries[i].palm_tol_grasp
 
       if (entries[i].object_num >= self.sphere_min and
           entries[i].object_num <= self.sphere_max):
@@ -366,6 +402,10 @@ class GraspTestData:
     result.avg_dropped /= result.num_trials
     result.avg_out_of_bounds /= result.num_trials
     result.avg_exceed_palm /= result.num_trials
+    result.avg_palm_frc_tol /= result.num_trials
+    result.avg_palm_frc_under = cum_palm_frc_under_threshold / num_palm_frc_under_threshold
+    result.avg_palm_frc_saturated = cum_palm_frc_saturated / result.num_trials
+    result.num_palm_frc_tol /= result.num_trials
 
     if result.num_sphere > 0:
       result.sphere_SR /= result.num_sphere
@@ -438,6 +478,10 @@ class GraspTestData:
       info_str += f"avg_dropped = {results.avg_dropped:.4f}\n"
       info_str += f"avg_out_of_bounds = {results.avg_out_of_bounds:.4f}\n"
       info_str += f"avg_exceed_palm = {results.avg_exceed_palm:.4f}\n"
+      info_str += f"avg_palm_frc_tol = {results.avg_palm_frc_tol:.4f}\n"
+      info_str += f"avg_palm_frc_under = {results.avg_palm_frc_under:.4f}\n"
+      info_str += f"avg_palm_frc_saturated = {results.avg_palm_frc_saturated:.4f}\n"
+      info_str += f"num_palm_frc_tol = {results.num_palm_frc_tol:.4f}\n"
       info_str += "\n"
     info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
     info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
@@ -468,10 +512,7 @@ class GraspTestData:
         top_str += "{" + str(x + 1) + col_format + "} "
         SI_str += "{" + str(x + 1) + col_format + float_format + "} "
 
-
       print(*("step", *[j for i in [("a", "b") for i in range(sensor_state[0])] for j in i]))
-
-
 
       print(top_str.format(
         "step", 
