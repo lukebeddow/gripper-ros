@@ -67,6 +67,7 @@ add_service_files(
   SaveTrial.srv
   LoadBaselineModel.srv
   PandaMoveToInt.srv
+  PandaMoveZ.srv
   Demo.srv
 )
 

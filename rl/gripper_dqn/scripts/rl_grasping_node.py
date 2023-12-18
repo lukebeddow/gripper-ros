@@ -19,7 +19,7 @@ from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
-from gripper_dqn.srv import PandaMoveToInt, Demo
+from gripper_dqn.srv import PandaMoveToInt, Demo, PandaMoveZ
 from cv_bridge import CvBridge
 
 # import the test data structure class
@@ -34,8 +34,8 @@ photoshoot_calibration = False  # do we grasp in ideal position for taking side-
 use_panda_threads = True       # do we run panda in a seperate thread
 use_panda_ft_sensing = False     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
-action_delay = 0.12             # safety delay between action generation and publishing
-panda_z_move_duration = 0.2     # how long in seconds to move the panda z height vertically up
+action_delay = 0.08             # safety delay between action generation and publishing
+panda_z_move_duration = 0.3     # how long in seconds to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
@@ -479,6 +479,15 @@ def generate_action():
 
   return new_target_state, for_franka
 
+def move_panda_service(request):
+  """
+  Move the panda using a service
+  """
+  global franka_instance
+  move_panda_z_abs(franka_instance, request.z_move_mm * 1e-3)
+
+  return True
+
 def move_panda_z_abs(franka, target_z):
   """
   Move the panda to a new z position with cartesian motion using Valerio's library,
@@ -870,7 +879,7 @@ def reset_panda(request=None, allow_noise=False):
     cal_70_mm = [-0.21452425, 0.17962777, 0.19318727, -1.37163661, -0.05285736, 1.54933323, 0.94457650]
     cal_80_mm = [-0.21210073, 0.18971941, 0.19318226, -1.33181922, -0.05481463, 1.51933398, 0.94491698]
 
-  calibrated_0mm = 6 # height in mm where table touch occurs with above calibration
+  calibrated_0mm = 4 # height in mm where table touch occurs with above calibration
 
   # beyond this we do not have additional 2mm increments
   if request.reset_height_mm >= 28: calibrated_0mm = 0
@@ -1058,17 +1067,29 @@ def load_model(request):
     # IMPORTANT: have to run calibration function to setup real sensors
     model.trainer.env.mj.calibrate_real_sensors()
 
-    # # if we are using a simulated ftsensor
-    # global use_sim_ftsensor, ftenv
-    # if use_sim_ftsensor:
-    #   use_sim_ftsensor = False
-    #   if log_level > 0: rospy.loginfo("USE_SIM_FTSENSOR=TRUE, creating ftenv now")
-    #   tempmodel = TrainDQN(use_wandb=False, no_plot=True, log_level=dqn_log_level, device=device)
-    #   tempmodel.load(id=request.run_id, folderpath=pathtofolder, foldername=foldername)
-    #   ftenv = tempmodel.trainer.env #deepcopy(model.trainer.env)
-    #   ftenv.mj.reset()
-    #   if log_level > 0: rospy.loginfo("ftenv created")
-    #   use_sim_ftsensor = True
+    if abs(scale_actions_on_load - 1.0) > 1e-5:
+      rospy.logwarn(f"Model actions are being scaled by {scale_actions_on_load}")
+      model.trainer.env.mj.set.gripper_prismatic_X.value *= scale_actions_on_load
+      model.trainer.env.mj.set.gripper_revolute_Y.value *= scale_actions_on_load
+      model.trainer.env.mj.set.gripper_Z.value *= scale_actions_on_load
+      model.trainer.env.mj.set.base_X.value *= scale_actions_on_load
+      model.trainer.env.mj.set.base_Y.value *= scale_actions_on_load
+      model.trainer.env.mj.set.base_Z.value *= scale_actions_on_load
+      to_print = "New action values are:\n"
+      to_print += f"gripper_prismatic_X = {model.trainer.env.mj.set.gripper_prismatic_X.value}\n"
+      to_print += f"gripper_revolute_Y = {model.trainer.env.mj.set.gripper_revolute_Y.value}\n"
+      to_print += f"gripper_Z = {model.trainer.env.mj.set.gripper_Z.value}\n"
+      to_print += f"base_X = {model.trainer.env.mj.set.base_X.value}\n"
+      to_print += f"base_Y = {model.trainer.env.mj.set.base_Y.value}\n"
+      to_print += f"base_Z = {model.trainer.env.mj.set.base_Z.value}\n"
+      rospy.logwarn(to_print)
+
+    if abs(scale_gauge_data - 1.0) > 1e-5:
+      rospy.logwarn(f"Gauge data is being scaled by: {scale_gauge_data}")
+    if abs(scale_wrist_data - 1.0) > 1e-5:
+      rospy.logwarn(f"Wrist data is being scaled by: {scale_wrist_data}")
+    if abs(scale_palm_data - 1.0) > 1e-5:
+      rospy.logwarn(f"Palm data is being scaled by: {scale_palm_data}")
 
     return True
 
@@ -1117,7 +1138,14 @@ def start_test(request):
   Begin a full grasping test
   """
 
+  global testsaver, current_test_data, model, currently_testing, image_rate
+
   if log_level > 0: rospy.loginfo(f"Starting a new test with name: {request.name}")
+
+  if current_test_data is not None:
+    if request.name == current_test_data.data.test_name:
+      rospy.logwarn("Test already running with this name, aborted. Run end_test() first")
+      return []
 
   # see if the camera is working (this function records if images are succesfully received)
   get_depth_image()
@@ -1128,7 +1156,6 @@ def start_test(request):
   elif not depth_camera_connected and not camera:
     rospy.logwarn("Depth camera set to FALSE, test proceeds")
 
-  global testsaver, current_test_data, model, currently_testing, image_rate
   testsaver.enter_folder(request.name, forcecreate=True)
   current_test_data = GraspTestData() # wipe data clean
   current_test_data.start_test(request.name, model, get_depth_image, image_rate=image_rate)
@@ -1164,6 +1191,23 @@ def heuristic_test(request):
 
   return []
 
+def save_test(request=None):
+  """
+  Save test data from a test
+  """
+
+  global current_test_data
+
+  if log_level > 0: 
+    rospy.loginfo(f"Saving test with name: {current_test_data.data.test_name}")
+  if log_level > 1: rospy.loginfo(f"Saving test data now...")
+  
+  testsaver.save("test_data", pyobj=current_test_data.data)
+
+  if log_level > 1: rospy.loginfo("...finished saving test data")
+
+  return []
+
 def end_test(request):
   """
   Finish a grasping test
@@ -1173,13 +1217,11 @@ def end_test(request):
 
   if log_level > 0: 
     rospy.loginfo(f"Ending test with name: {current_test_data.data.test_name}")
-  if log_level > 1: rospy.loginfo(f"Saving test data now...")
-  
-  testsaver.save("test_data", pyobj=current_test_data.data)
 
-  if log_level > 1: rospy.loginfo("...finished saving test data")
+  save_test()
 
   currently_testing = False
+  current_test_data = None
 
   return []
 
@@ -1292,9 +1334,9 @@ def load_baseline_1_model(request=None):
   Load a new dqn model
   """
 
-  # defaults
-  folderpath = "/home/luke/mymujoco/rl/models/dqn/paper_baseline_1"
-  id = None
+  load = LoadModel()
+  load.folderpath = "/home/luke/mujoco-devel/rl/models"
+  load.run_id = "best"
 
   tol = 1e-5
 
@@ -1315,106 +1357,20 @@ def load_baseline_1_model(request=None):
     rospy.loginfo("Loading model for finger 0.9mm thick and 28mm width")
 
     if request.sensors == 0:
-      group = "16-01-23"
-      name = "luke-PC_14_21_A10"
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 1:
-      group = "16-01-23"
-      name = "luke-PC_14_21_A39"
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 2:
-      group = "16-01-23"
-      name = "luke-PC_14_21_A72"
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 3:
-      group = "23-01-23"
-      name = "luke-PC_11_18_A102"
-
-    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
-
-  elif finger == 1:
-
-    rospy.loginfo("Loading model for finger 1.0mm thick and 24mm width")
-    rospy.logwarn("1.0mm thick 24mm width finger not implemented yet")
-    return
-
-  elif finger == 2:
-
-    rospy.loginfo("Loading model for finger 1.0mm thick and 28mm width")
-
-    if request.sensors == 0:
-      group = "16-01-23"
-      name = "luke-PC_14_21_A25"
-
-    elif request.sensors == 1:
-      group = "16-01-23"
-      name = "luke-PC_14_21_A59"
-
-    elif request.sensors == 2:
-      group = "23-01-23"
-      name = "luke-PC_11_18_A84"
-
-    elif request.sensors == 3:
-      group = "23-01-23"
-      name = "luke-PC_11_18_A116"
-
-    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
-
-  rospy.loginfo(f"Number of sensors is {request.sensors}")
-  rospy.loginfo(f"Group name: {group}, run name: {name}")
-
-  load = LoadModel()
-  load.folderpath = folderpath
-  load.group_name = group
-  load.run_name = name
-  load.run_id = id
-  load_model(load)
-
-  return True
-
-def load_baseline_3_model(request=None):
-  """
-  Load a new dqn model
-  """
-
-  # defaults
-  folderpath = "/home/luke/mymujoco/rl/models/dqn/paper_baseline_3"
-  id = None
-
-  tol = 1e-5
-
-  if (abs(request.thickness - 9e-4) < tol and
-      abs(request.width - 28e-3) < tol):
-     finger = 0
-  elif (abs(request.thickness - 10e-4) < tol and
-      abs(request.width - 24e-3) < tol):
-     finger = 1
-  elif (abs(request.thickness - 10e-4) < tol and
-      abs(request.width - 28e-3) < tol):
-     finger = 2
-  else:
-    rospy.logwarn(f"Width={request.width} and thickness={request.thickness} not valid in load_baseline_model()")
-
-  if finger == 0:
-
-    rospy.loginfo("Loading model for finger 0.9mm thick and 28mm width")
-
-    if request.sensors == 0:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
-
-    elif request.sensors == 1:
-      group = "03-03-23"
-      name = "luke-PC_13_10_A70"
-
-    elif request.sensors == 2:
-      group = "03-03-23"
-      name = "luke-PC_13_10_A140"
-
-    elif request.sensors == 3:
-      group = "24-02-23"
-      name = "luke-PC_18_17_A37"
+      load.timestamp =  "08-12-23_19-19"
+      load.job_number = 53
 
     else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
 
@@ -1423,165 +1379,52 @@ def load_baseline_3_model(request=None):
     rospy.loginfo("Loading model for finger 1.0mm thick and 24mm width")
 
     if request.sensors == 0:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 1:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 2:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 3:
-      group = "02-03-23"
-      name = "luke-PC_16_12_A105"
+      load.timestamp = "11-12-23_19-57"
+      load.job_number = 120
 
-    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
+    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
 
   elif finger == 2:
 
     rospy.loginfo("Loading model for finger 1.0mm thick and 28mm width")
 
     if request.sensors == 0:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 1:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 2:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
+      load.timestamp = None
+      load.job_number = None
 
     elif request.sensors == 3:
-      group = "27-02-23"
-      name = "luke-PC_17_51_A118"
+      load.timestamp = "11-12-23_19-57"
+      load.job_number = 177
 
     else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
 
   rospy.loginfo(f"Number of sensors is {request.sensors}")
-  rospy.loginfo(f"Group name: {group}, run name: {name}")
+  rospy.loginfo(f"Timestamp: {load.timestamp}, job number: {load.job_number}")
 
-  load = LoadModel()
-  load.folderpath = folderpath
-  load.group_name = group
-  load.run_name = name
-  load.run_id = id
-  load_model(load)
+  if load.timestamp is None or load.job_number is None:
+    rospy.logerr("Requested baseline model not yet implemented")
+    return False
 
-  return True
-
-def load_baseline_4_model(request=None):
-  """
-  Load a new dqn model
-  """
-
-  # defaults
-  folderpath = "/home/luke/mymujoco/rl/models/paper_baseline_4"
-  id = None
-
-  tol = 1e-5
-
-  if (abs(request.thickness - 9e-4) < tol and
-      abs(request.width - 28e-3) < tol):
-     finger = 0
-  elif (abs(request.thickness - 10e-4) < tol and
-      abs(request.width - 24e-3) < tol):
-     finger = 1
-  elif (abs(request.thickness - 10e-4) < tol and
-      abs(request.width - 28e-3) < tol):
-     finger = 2
-  else:
-    rospy.logwarn(f"Width={request.width} and thickness={request.thickness} not valid in load_baseline_model()")
-
-  if finger == 0:
-
-    rospy.loginfo("Loading model for finger 0.9mm thick and 28mm width")
-
-    if request.sensors == 0:
-      group = "17-03-23"
-      name = "luke-PC_13_15_A17"
-
-    elif request.sensors == 1:
-      group = "13-03-23"
-      name = "luke-PC_17_23_A74"
-
-    elif request.sensors == 2:
-      group = "13-03-23"
-      name = "luke-PC_17_23_A122"
-
-    elif request.sensors == 3:
-      group = "07-03-23"
-      name = "luke-PC_13_37_A10"
-
-    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
-
-  elif finger == 1:
-
-    rospy.loginfo("Loading model for finger 1.0mm thick and 24mm width")
-
-    if request.sensors == 0:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
-
-    elif request.sensors == 1:
-      group = "31-03-23"
-      name = "luke-PC_16_46_A90"
-
-    elif request.sensors == 2:
-      group = "27-03-23"
-      name = "luke-PC_17_29_A142"
-
-    elif request.sensors == 3:
-      # group = "12-03-23"
-      # name = "luke-PC_17:37_A220"
-      # alternative training
-      group = "06-04-23"
-      name = "luke-PC_16_54_A217"
-
-    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_baseline_model()")
-
-  elif finger == 2:
-
-    rospy.loginfo("Loading model for finger 1.0mm thick and 28mm width")
-
-    if request.sensors == 0:
-      # group = "16-01-23"
-      # name = "luke-PC_14_21_A10"
-      rospy.logwarn(f"Sensors={request.sensors} not yet added to baseline 3")
-
-    elif request.sensors == 1:
-      group = "31-03-23"
-      name = "luke-PC_16_46_A104"
-
-    elif request.sensors == 2:
-      group = "27-03-23"
-      name = "luke-PC_17_29_A170"
-      
-    elif request.sensors == 3:
-      group = "10-03-23"
-      name = "luke-PC_17_27_A239"
-
-    else: rospy.logwarn(f"Sensors={request.sensors} not valid in load_new_model()")
-
-  rospy.loginfo(f"Number of sensors is {request.sensors}")
-  rospy.loginfo(f"Group name: {group}, run name: {name}")
-
-  load = LoadModel()
-  load.folderpath = folderpath
-  load.group_name = group
-  load.run_name = name
-  load.run_id = id
   load_model(load)
 
   return True
@@ -1633,6 +1476,8 @@ def make_test_heurisitc(request=None):
   global current_test_data
   if log_level > 1: rospy.loginfo(f"test heuristic was set to {current_test_data.data.heuristic}")
   current_test_data.data.heuristic = True
+  global model
+  model.trainer.env.mj.set.continous_actions = False
   if log_level > 0: rospy.loginfo(f"test heurisitc now set to TRUE")
 
   return []
@@ -2037,7 +1882,7 @@ if __name__ == "__main__":
     panda_global_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/global_wrench", Wrench, queue_size=10)
 
   # user set - what do we load by default
-  if use_devel:
+  if use_devel and False:
 
     rospy.logwarn("Loading DEVEL policy")
 
@@ -2139,7 +1984,7 @@ if __name__ == "__main__":
 
     # Program: paper_baseline_1
     load.timestamp =  "08-12-23_19-16"
-    load.job_number = 42
+    load.job_number = 53
     load.run_id = "best"
 
     # # Program: paper_baseline_1_extended
@@ -2149,49 +1994,18 @@ if __name__ == "__main__":
 
     load_model(load)
 
-    if abs(scale_actions_on_load - 1.0) > 1e-5:
-      rospy.logwarn(f"Model actions are being scaled by {scale_actions_on_load}")
-      model.trainer.env.mj.set.gripper_prismatic_X.value *= scale_actions_on_load
-      model.trainer.env.mj.set.gripper_revolute_Y.value *= scale_actions_on_load
-      model.trainer.env.mj.set.gripper_Z.value *= scale_actions_on_load
-      model.trainer.env.mj.set.base_X.value *= scale_actions_on_load
-      model.trainer.env.mj.set.base_Y.value *= scale_actions_on_load
-      model.trainer.env.mj.set.base_Z.value *= scale_actions_on_load
-      to_print = "New action values are:\n"
-      to_print += f"gripper_prismatic_X = {model.trainer.env.mj.set.gripper_prismatic_X.value}\n"
-      to_print += f"gripper_revolute_Y = {model.trainer.env.mj.set.gripper_revolute_Y.value}\n"
-      to_print += f"gripper_Z = {model.trainer.env.mj.set.gripper_Z.value}\n"
-      to_print += f"base_X = {model.trainer.env.mj.set.base_X.value}\n"
-      to_print += f"base_Y = {model.trainer.env.mj.set.base_Y.value}\n"
-      to_print += f"base_Z = {model.trainer.env.mj.set.base_Z.value}\n"
-      rospy.logwarn(to_print)
-
-    if abs(scale_gauge_data - 1.0) > 1e-5:
-      rospy.logwarn(f"Gauge data is being scaled by: {scale_gauge_data}")
-    if abs(scale_wrist_data - 1.0) > 1e-5:
-      rospy.logwarn(f"Wrist data is being scaled by: {scale_wrist_data}")
-    if abs(scale_palm_data - 1.0) > 1e-5:
-      rospy.logwarn(f"Palm data is being scaled by: {scale_palm_data}")
-
-  elif False:
-
-    # load a model with a given path
-    load = LoadModel()
-    load.folderpath = "/home/luke/mymujoco/rl/models/dqn/"
-    # load.folderpath += "paper_baseline_3_extra/"
-    load.group_name = "26-04-23"
-    load.run_name = "luke-PC_15:26_A64"
-    load.run_id = None
-    load_model(load)
-
-  else:
+  elif use_devel:
 
     # load a specific model baseline
     load = LoadBaselineModel()
-    load.thickness = 0.9e-3
-    load.width = 28e-3
+    load.thickness = 1.0e-3
+    load.width = 24e-3
     load.sensors = 3
-    load_baseline_4_model(load)
+    load_baseline_1_model(load)
+
+  else:
+
+    raise RuntimeError("script only allows use_devel = True currently")
 
   if log_level >= 3:
     # turn on all debug information
@@ -2208,6 +2022,7 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/reset", Empty, reset_all)
   rospy.Service(f"/{node_ns}/reset_panda", ResetPanda, reset_panda)
   rospy.Service(f"/{node_ns}/reset_gripper", Empty, reset_gripper)
+  rospy.Service(f"/{node_ns}/move_panda", PandaMoveZ, move_panda_service)
   rospy.Service(f"/{node_ns}/connect_panda", Empty, connect_panda)
   rospy.Service(f"/{node_ns}/load_model", LoadModel, load_model)
   rospy.Service(f"/{node_ns}/apply_settings", ApplySettings, apply_settings)
@@ -2215,11 +2030,12 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/test", StartTest, start_test)
   rospy.Service(f"/{node_ns}/heuristic_test", StartTest, heuristic_test)
   rospy.Service(f"/{node_ns}/trial", StartTrial, start_trial)
+  rospy.Service(f"/{node_ns}/save_test", Empty, save_test)
   rospy.Service(f"/{node_ns}/end_test", Empty, end_test)
   rospy.Service(f"/{node_ns}/save_trial", SaveTrial, save_trial)
   rospy.Service(f"/{node_ns}/delete_trial", Empty, delete_last_trial)
   rospy.Service(f"/{node_ns}/print_test", Empty, print_test_results)
-  rospy.Service(f"/{node_ns}/load_baseline_model", LoadBaselineModel, load_baseline_4_model)
+  rospy.Service(f"/{node_ns}/load_baseline_model", LoadBaselineModel, load_baseline_1_model)
   rospy.Service(f"/{node_ns}/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
   rospy.Service(f"/{node_ns}/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
   rospy.Service(f"/{node_ns}/make_test_heuristic", Empty, make_test_heurisitc)

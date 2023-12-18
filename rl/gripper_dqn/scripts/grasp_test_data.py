@@ -3,7 +3,12 @@ from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
 
+global palm_force_threshold
 palm_force_threshold = 5
+
+def set_palm_frc_threshold(value):
+  global palm_force_threshold
+  palm_force_threshold = value
 
 class GraspTestData:
 
@@ -296,11 +301,11 @@ class GraspTestData:
 
       num_trials += 1
 
-      if trial.palm_frc_tol > 0.01 and trial.palm_frc_tol < palm_force_threshold:
+      if trial.palm_frc_tol > 0.01 and trial.palm_frc_tol < palm_force_threshold - 1e-5:
         num_palm_frc_under_threshold += 1
         cum_palm_frc_under_threshold += trial.palm_frc_tol
       if trial.palm_frc_tol > 0.01:
-        if trial.palm_frc_tol > palm_force_threshold:
+        if trial.palm_frc_tol > palm_force_threshold - 1e-5:
           cum_palm_frc_saturated += palm_force_threshold
         else:
           cum_palm_frc_saturated += trial.palm_frc_tol
@@ -317,7 +322,7 @@ class GraspTestData:
         new_entry = deepcopy(trial)
         new_entry.trial_num = 1
         new_entry.palm_frc_tol += trial.palm_frc_tol * trial.stable_height
-        new_entry.palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold) * trial.stable_height
+        new_entry.palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold - 1e-5) * trial.stable_height
         entries.append(new_entry)
         object_nums.append(trial.object_num)
 
@@ -338,7 +343,7 @@ class GraspTestData:
         entries[j].out_of_bounds += trial.out_of_bounds
         entries[j].exceed_palm += trial.exceed_palm
         entries[j].palm_frc_tol += trial.palm_frc_tol * trial.stable_height
-        entries[j].palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold) * trial.stable_height
+        entries[j].palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold - 1e-5) * trial.stable_height
         entries[j].info += trial.info
 
     # create TestResults to return
@@ -403,7 +408,10 @@ class GraspTestData:
     result.avg_out_of_bounds /= result.num_trials
     result.avg_exceed_palm /= result.num_trials
     result.avg_palm_frc_tol /= result.num_trials
-    result.avg_palm_frc_under = cum_palm_frc_under_threshold / num_palm_frc_under_threshold
+    if num_palm_frc_under_threshold == 0:
+      result.avg_palm_frc_under = 0.0
+    else:
+      result.avg_palm_frc_under = cum_palm_frc_under_threshold / num_palm_frc_under_threshold
     result.avg_palm_frc_saturated = cum_palm_frc_saturated / result.num_trials
     result.num_palm_frc_tol /= result.num_trials
 
@@ -478,10 +486,10 @@ class GraspTestData:
       info_str += f"avg_dropped = {results.avg_dropped:.4f}\n"
       info_str += f"avg_out_of_bounds = {results.avg_out_of_bounds:.4f}\n"
       info_str += f"avg_exceed_palm = {results.avg_exceed_palm:.4f}\n"
-      info_str += f"avg_palm_frc_tol = {results.avg_palm_frc_tol:.4f}\n"
-      info_str += f"avg_palm_frc_under = {results.avg_palm_frc_under:.4f}\n"
-      info_str += f"avg_palm_frc_saturated = {results.avg_palm_frc_saturated:.4f}\n"
-      info_str += f"num_palm_frc_tol = {results.num_palm_frc_tol:.4f}\n"
+      info_str += f"avg_palm_frc_tol ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_tol:.4f}\n"
+      info_str += f"avg_palm_frc_under ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_under:.4f}\n"
+      info_str += f"avg_palm_frc_saturated ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_saturated:.4f}\n"
+      info_str += f"num_palm_frc_tol ({palm_force_threshold:.1f}N) = {results.num_palm_frc_tol:.4f}\n"
       info_str += "\n"
     info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
     info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
