@@ -32,10 +32,10 @@ camera = True                  # do we want to take camera images
 use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = True       # do we run panda in a seperate thread
-use_panda_ft_sensing = False     # do we use panda wrench estimation for forces, else our f/t sensor
+use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
-action_delay = 0.08             # safety delay between action generation and publishing
-panda_z_move_duration = 0.3     # how long in seconds to move the panda z height vertically up
+action_delay = 0.05             # safety delay between action generation and publishing
+panda_z_move_duration = 0.2    # how long in seconds to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
@@ -64,7 +64,7 @@ dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connecti
 # prevent_back_palm = False       # swap any backward palm actions for forwards
 prevent_x_open = False           # swap action 1 (X open) for action 2 (Y close)
 render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
-quit_on_palm = None               # quit grasping with a palm value above this (during test only), set None for off
+quit_on_palm = 20               # quit grasping with a palm value above this (during test only), set None for off
 reject_wrist_noise = False       # try to ignore large spikes in the wrist sensor
 prevent_table_hit = False         # prevent the gripper from going below a certain height
 
@@ -100,6 +100,7 @@ depth_image = None              # most recent depth image
 panda_in_motion = False         # is the panda currently moving
 gripper_target_reached = False  # has the gripper reached its target
 grasp_frc_stable = False        # is the gripper the appropriate height with forces stable
+stable_grasp_frc = None         # measured forces in stable grasp
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -306,7 +307,7 @@ def data_callback(state):
   norm_state_pub.publish(norm_state)
   norm_sensor_pub.publish(norm_sensor)
 
-  global grasp_frc_stable
+  global grasp_frc_stable, stable_grasp_frc
 
   # determine if the grasp is stable
   gauge1 = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
@@ -322,7 +323,9 @@ def data_callback(state):
       palm < model.trainer.env.mj.set.stable_palm_force_lim and
       panda_z_height > model.trainer.env.mj.set.gripper_target_height):
     force_str = f"Avg gauge = {avg_gauge:.1f} ({gauge1:.1f}, {gauge2:.1f}, {gauge3:.1f}), palm = {palm:.1f}"
-    if log_level > 0: rospy.loginfo(f"Stable grasp detected. {force_str}")
+    if log_level > 0 and stable_grasp_frc is None:
+      rospy.loginfo(f"Stable grasp detected. {force_str}")
+    stable_grasp_frc = [gauge1, gauge2, gauge3, palm]
     grasp_frc_stable = True
 
   # # latch the True message, reset to False in execute_grasping_callback
@@ -469,7 +472,7 @@ def generate_action():
     if quit_on_palm is not None:
       palm_force = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
       if palm_force > quit_on_palm:
-        print(f"PALM FORCE OF {palm_force:.1f} UNSAFE, CANCELLING GRASPING")
+        rospy.logwarn(f"PALM FORCE OF {palm_force:.1f} UNSAFE, CANCELLING GRASPING")
         cancel_grasping_callback()
 
   # determine if this action is for the gripper or panda
@@ -555,7 +558,11 @@ def test_palm_force(current_gripper_state):
   Test grasp stability by applying extra palm force and seeing if the object remains in grasp
   """
 
-  global gripper_target_reached
+  if continue_demo:
+    rospy.loginfo("No palm force test run, demo is active, returning")
+    return
+
+  global gripper_target_reached, use_palm_force_test
 
   rospy.loginfo("Running palm force test now")
 
@@ -564,6 +571,8 @@ def test_palm_force(current_gripper_state):
   req = ResetPanda()
   req.reset_height_mm = 80
   reset_panda(req)
+
+  if not use_palm_force_test: return
 
   start = time.time()
   max_time = 10
@@ -638,6 +647,7 @@ def execute_grasping_callback(request=None, reset=True):
   global panda_in_motion
   global gripper_target_reached
   global grasp_frc_stable
+  global stable_grasp_frc
 
   if reset:
     reset_all(allow_panda_noise=True) # note this calls 'cancel_grasping_callback' if continue_grasping == True
@@ -666,11 +676,12 @@ def execute_grasping_callback(request=None, reset=True):
 
         if grasp_frc_stable:
           cancel_grasping_callback()
-          if use_palm_force_test:
-            test_palm_force(new_target_state)
+          test_palm_force(new_target_state)
+          rospy.loginfo(f"Stable grasp forces were: {stable_grasp_frc}")
         else:
           # true message latches whilst we execute the action, now reset
           grasp_frc_stable = False
+          stable_grasp_frc = None
 
       else:
 
@@ -856,30 +867,54 @@ def reset_panda(request=None, allow_noise=False):
     # cal_40_mm = [-0.10758827, 0.15118460, 0.05087011, -1.44392922, -0.02617517, 1.63934895, 0.85555093]
     # cal_50_mm = [-0.10704419, 0.15879855, 0.05086899, -1.40791856, -0.02656406, 1.61070871, 0.85527770]
 
-    # new calibrations 75DEGREE FINGERS and bare table (with wrist) 6mm=just ground, 4mm=full touch
-    cal_0_mm = [-0.22404728, 0.13964483, 0.19326293, -1.59632575, -0.04677542, 1.74173468, 0.94479131]
-    cal_2_mm = [-0.22400640, 0.14061183, 0.19326888, -1.59172601, -0.04688521, 1.73664071, 0.94476763]
-    cal_4_mm = [-0.22379355, 0.14178988, 0.19327067, -1.58689679, -0.04687025, 1.73133279, 0.94471706]
-    cal_6_mm = [-0.22373200, 0.14227193, 0.19326218, -1.58134623, -0.04688259, 1.72605045, 0.94464816]
-    cal_8_mm = [-0.22351149, 0.14278805, 0.19326339, -1.57552217, -0.04691154, 1.72080118, 0.94455851]
-    cal_10_mm = [-0.22338047, 0.14321961, 0.19326377, -1.56981998, -0.04695056, 1.71554049, 0.94449444]
-    cal_12_mm = [-0.22315984, 0.14381249, 0.19326313, -1.56409162, -0.04698193, 1.71030302, 0.94444504]
-    cal_14_mm = [-0.22292906, 0.14431743, 0.19326377, -1.55827568, -0.04702110, 1.70502988, 0.94440883]
-    cal_16_mm = [-0.22276281, 0.14494761, 0.19325951, -1.55227551, -0.04706476, 1.69968350, 0.94437151]
-    cal_18_mm = [-0.22252589, 0.14561535, 0.19325899, -1.54629105, -0.04715328, 1.69432361, 0.94433168]
-    cal_20_mm = [-0.22231108, 0.14632759, 0.19325899, -1.54034111, -0.04744622, 1.68898482, 0.94428580]
-    cal_22_mm = [-0.22207719, 0.14706373, 0.19325731, -1.53430670, -0.04748396, 1.68364684, 0.94425756]
-    cal_24_mm = [-0.22183249, 0.14783977, 0.19325970, -1.52809313, -0.04753047, 1.67828278, 0.94422883]
-    cal_26_mm = [-0.22158723, 0.14868816, 0.19325800, -1.52179314, -0.04764007, 1.67290760, 0.94420086]
-    cal_28_mm = [-0.22133253, 0.14948755, 0.19326136, -1.51568426, -0.04791198, 1.66752722, 0.94418284]
-    cal_30_mm = [-0.22108151, 0.15049103, 0.19326123, -1.50937568, -0.04796742, 1.66207521, 0.94416797]
-    cal_40_mm = [-0.21973381, 0.15568114, 0.19325782, -1.47684101, -0.04883687, 1.63470783, 0.94413594]
-    cal_50_mm = [-0.21816549, 0.16187687, 0.19325522, -1.44269509, -0.04997707, 1.60679131, 0.94414039]
-    cal_60_mm = [-0.21654716, 0.17092935, 0.19319171, -1.40934662, -0.05118662, 1.57841229, 0.94429795]
-    cal_70_mm = [-0.21452425, 0.17962777, 0.19318727, -1.37163661, -0.05285736, 1.54933323, 0.94457650]
-    cal_80_mm = [-0.21210073, 0.18971941, 0.19318226, -1.33181922, -0.05481463, 1.51933398, 0.94491698]
+    # # new calibrations 75DEGREE FINGERS and bare table (with wrist) 6mm=just ground, 4mm=full touch
+    # cal_0_mm = [-0.22404728, 0.13964483, 0.19326293, -1.59632575, -0.04677542, 1.74173468, 0.94479131]
+    # cal_2_mm = [-0.22400640, 0.14061183, 0.19326888, -1.59172601, -0.04688521, 1.73664071, 0.94476763]
+    # cal_4_mm = [-0.22379355, 0.14178988, 0.19327067, -1.58689679, -0.04687025, 1.73133279, 0.94471706]
+    # cal_6_mm = [-0.22373200, 0.14227193, 0.19326218, -1.58134623, -0.04688259, 1.72605045, 0.94464816]
+    # cal_8_mm = [-0.22351149, 0.14278805, 0.19326339, -1.57552217, -0.04691154, 1.72080118, 0.94455851]
+    # cal_10_mm = [-0.22338047, 0.14321961, 0.19326377, -1.56981998, -0.04695056, 1.71554049, 0.94449444]
+    # cal_12_mm = [-0.22315984, 0.14381249, 0.19326313, -1.56409162, -0.04698193, 1.71030302, 0.94444504]
+    # cal_14_mm = [-0.22292906, 0.14431743, 0.19326377, -1.55827568, -0.04702110, 1.70502988, 0.94440883]
+    # cal_16_mm = [-0.22276281, 0.14494761, 0.19325951, -1.55227551, -0.04706476, 1.69968350, 0.94437151]
+    # cal_18_mm = [-0.22252589, 0.14561535, 0.19325899, -1.54629105, -0.04715328, 1.69432361, 0.94433168]
+    # cal_20_mm = [-0.22231108, 0.14632759, 0.19325899, -1.54034111, -0.04744622, 1.68898482, 0.94428580]
+    # cal_22_mm = [-0.22207719, 0.14706373, 0.19325731, -1.53430670, -0.04748396, 1.68364684, 0.94425756]
+    # cal_24_mm = [-0.22183249, 0.14783977, 0.19325970, -1.52809313, -0.04753047, 1.67828278, 0.94422883]
+    # cal_26_mm = [-0.22158723, 0.14868816, 0.19325800, -1.52179314, -0.04764007, 1.67290760, 0.94420086]
+    # cal_28_mm = [-0.22133253, 0.14948755, 0.19326136, -1.51568426, -0.04791198, 1.66752722, 0.94418284]
+    # cal_30_mm = [-0.22108151, 0.15049103, 0.19326123, -1.50937568, -0.04796742, 1.66207521, 0.94416797]
+    # cal_40_mm = [-0.21973381, 0.15568114, 0.19325782, -1.47684101, -0.04883687, 1.63470783, 0.94413594]
+    # cal_50_mm = [-0.21816549, 0.16187687, 0.19325522, -1.44269509, -0.04997707, 1.60679131, 0.94414039]
+    # cal_60_mm = [-0.21654716, 0.17092935, 0.19319171, -1.40934662, -0.05118662, 1.57841229, 0.94429795]
+    # cal_70_mm = [-0.21452425, 0.17962777, 0.19318727, -1.37163661, -0.05285736, 1.54933323, 0.94457650]
+    # cal_80_mm = [-0.21210073, 0.18971941, 0.19318226, -1.33181922, -0.05481463, 1.51933398, 0.94491698]
 
-  calibrated_0mm = 4 # height in mm where table touch occurs with above calibration
+    # new calibrations 75DEGREE FINGERS BARE TABLE (NO WRIST) 4mm=light touch, 2mm=press
+    cal_0_mm = [-0.27387776, -0.02585006, 0.30729622, -1.89643083, 0.00676038, 1.87621824, 0.84037356]
+    cal_2_mm = [-0.27392039, -0.02572424, 0.30729622, -1.89337982, 0.00672408, 1.87142800, 0.84036733]
+    cal_4_mm = [-0.27400394, -0.02574353, 0.30729093, -1.88897988, 0.00673235, 1.86650059, 0.84031136]
+    cal_6_mm = [-0.27421166, -0.02623554, 0.30729463, -1.88446972, 0.00674949, 1.86159163, 0.84021751]
+    cal_8_mm = [-0.27424804, -0.02660902, 0.30729630, -1.88004050, 0.00677693, 1.85652403, 0.84012095]
+    cal_10_mm = [-0.27428154, -0.02698982, 0.30729559, -1.87545015, 0.00681192, 1.85143192, 0.84002916]
+    cal_12_mm = [-0.27454526, -0.02738393, 0.30730011, -1.87072350, 0.00689858, 1.84639242, 0.83994788]
+    cal_14_mm = [-0.27458083, -0.02776590, 0.30729819, -1.86601039, 0.00700295, 1.84137630, 0.83987414]
+    cal_16_mm = [-0.27461111, -0.02810298, 0.30729511, -1.86128947, 0.00710709, 1.83632393, 0.83981037]
+    cal_18_mm = [-0.27463627, -0.02841951, 0.30729817, -1.85654005, 0.00718308, 1.83133528, 0.83975061]
+    cal_20_mm = [-0.27467913, -0.02870156, 0.30729826, -1.85180733, 0.00724723, 1.82633607, 0.83968904]
+    cal_22_mm = [-0.27492752, -0.02881564, 0.30730066, -1.84703765, 0.00730904, 1.82137303, 0.83964258]
+    cal_24_mm = [-0.27495433, -0.02910731, 0.30729987, -1.84214418, 0.00736595, 1.81627148, 0.83959877]
+    cal_26_mm = [-0.27498185, -0.02917162, 0.30729728, -1.83711943, 0.00740111, 1.81114207, 0.83956440]
+    cal_28_mm = [-0.27500193, -0.02946890, 0.30729693, -1.83219466, 0.00744732, 1.80599850, 0.83953597]
+    cal_30_mm = [-0.27501834, -0.02951123, 0.30730128, -1.82733378, 0.00747141, 1.80099033, 0.83951795]
+    cal_40_mm = [-0.27535423, -0.02973620, 0.30729625, -1.80185362, 0.00748783, 1.77566828, 0.83950376]
+    cal_50_mm = [-0.27537779, -0.02964236, 0.30729646, -1.77550289, 0.00747043, 1.75009969, 0.83951632]
+    cal_60_mm = [-0.27538812, -0.02767563, 0.30729625, -1.74815756, 0.00737045, 1.72428787, 0.83968787]
+    cal_70_mm = [-0.27534187, -0.02516956, 0.30729125, -1.71972291, 0.00653091, 1.69838691, 0.84020591]
+    cal_80_mm = [-0.27489364, -0.02177300, 0.30729093, -1.69023271, 0.00559191, 1.67217843, 0.84087814]
+
+  # umh = 4 # uncertainty matrix height
+  calibrated_0mm = 4# + umh # height in mm where table touch occurs with above calibration
 
   # beyond this we do not have additional 2mm increments
   if request.reset_height_mm >= 28: calibrated_0mm = 0
@@ -1357,16 +1392,16 @@ def load_baseline_1_model(request=None):
     rospy.loginfo("Loading model for finger 0.9mm thick and 28mm width")
 
     if request.sensors == 0:
-      load.timestamp = None
-      load.job_number = None
+      load.timestamp = "13-12-23_17-23"
+      load.job_number = 2
 
     elif request.sensors == 1:
-      load.timestamp = None
-      load.job_number = None
+      load.timestamp = "13-12-23_17-23"
+      load.job_number = 17
 
     elif request.sensors == 2:
-      load.timestamp = None
-      load.job_number = None
+      load.timestamp = "13-12-23_17-27"
+      load.job_number = 42
 
     elif request.sensors == 3:
       load.timestamp =  "08-12-23_19-19"
@@ -1511,6 +1546,18 @@ def gentle_place(request=None):
   if log_level > 0: rospy.loginfo("rl_grasping_node is publishing gripper demand for gentle place")
   demand_pub.publish(new_demand)
 
+  time.sleep(1)
+
+  while not rospy.is_shutdown():
+
+    if not gripper_target_reached:
+      time.sleep(0.05)
+    else: break
+
+  time.sleep(1)
+
+  reset_gripper()
+
 def move_panda_to(request=None):
   """
   Move the panda to a known joint position. These joint positions should
@@ -1518,65 +1565,229 @@ def move_panda_to(request=None):
   joint positions
   """
 
-  global move_panda
+  def height_to_cal(height):
+    """
+    Converts an integer height to the nearest calibration 2mm calibration height
+    """
+    multiple_of_2 = 2 * round(height/2)
+    if multiple_of_2 < 0: raise RuntimeError(f"height_to_call got multiple_of_2 below zero, input height = {height}")
+    return f"cal_{multiple_of_2:.0f}_mm"
+
+  global move_panda, panda_z_height
+
   if not move_panda:
     rospy.logwarn("move_panda_to() aborted as move_panda = False")
     return False
 
   if request.move_to_int == 0:
-    # regular calibrated spot
-    cal_0_mm = [-0.04460928, 0.38211982, -0.00579623, -1.20211819, -0.01439458, 1.61249259, 0.75540974]
-    cal_10_mm = [-0.04465586, 0.39663358, -0.00584523, -1.15490750, -0.01450791, 1.57477994, 0.75516820]
-    cal_12_mm = [-0.04481524, 0.40074865, -0.00589660, -1.14791929, -0.01460787, 1.56819993, 0.75505090]
-    cal_14_mm = [-0.04481524, 0.40295305, -0.00589637, -1.13912490, -0.01460929, 1.56178082, 0.75500080]
-    cal_20_mm = [-0.04469420, 0.41042913, -0.00585969, -1.11176795, -0.01456532, 1.54207928, 0.75484156]
-    cal_30_mm = [-0.04473575, 0.42504616, -0.00586498, -1.06289308, -0.01454851, 1.50777675, 0.75434994]
-    cal_40_mm = [-0.04478521, 0.44279476, -0.00585969, -1.00850484, -0.01452637, 1.47115869, 0.75380754]
-    cal_50_mm = [-0.04487317, 0.46457349, -0.00585969, -0.94686224, -0.01449903, 1.43148042, 0.75321650]
+    # regular calibrated spot (right side of diamond)
+    cal_0_mm = [-0.27387776, -0.02585006, 0.30729622, -1.89643083, 0.00676038, 1.87621824, 0.84037356]
+    cal_2_mm = [-0.27392039, -0.02572424, 0.30729622, -1.89337982, 0.00672408, 1.87142800, 0.84036733]
+    cal_4_mm = [-0.27400394, -0.02574353, 0.30729093, -1.88897988, 0.00673235, 1.86650059, 0.84031136]
+    cal_6_mm = [-0.27421166, -0.02623554, 0.30729463, -1.88446972, 0.00674949, 1.86159163, 0.84021751]
+    cal_8_mm = [-0.27424804, -0.02660902, 0.30729630, -1.88004050, 0.00677693, 1.85652403, 0.84012095]
+    cal_10_mm = [-0.27428154, -0.02698982, 0.30729559, -1.87545015, 0.00681192, 1.85143192, 0.84002916]
+    cal_12_mm = [-0.27454526, -0.02738393, 0.30730011, -1.87072350, 0.00689858, 1.84639242, 0.83994788]
+    cal_14_mm = [-0.27458083, -0.02776590, 0.30729819, -1.86601039, 0.00700295, 1.84137630, 0.83987414]
+    cal_16_mm = [-0.27461111, -0.02810298, 0.30729511, -1.86128947, 0.00710709, 1.83632393, 0.83981037]
+    cal_18_mm = [-0.27463627, -0.02841951, 0.30729817, -1.85654005, 0.00718308, 1.83133528, 0.83975061]
+    cal_20_mm = [-0.27467913, -0.02870156, 0.30729826, -1.85180733, 0.00724723, 1.82633607, 0.83968904]
+    cal_22_mm = [-0.27492752, -0.02881564, 0.30730066, -1.84703765, 0.00730904, 1.82137303, 0.83964258]
+    cal_24_mm = [-0.27495433, -0.02910731, 0.30729987, -1.84214418, 0.00736595, 1.81627148, 0.83959877]
+    cal_26_mm = [-0.27498185, -0.02917162, 0.30729728, -1.83711943, 0.00740111, 1.81114207, 0.83956440]
+    cal_28_mm = [-0.27500193, -0.02946890, 0.30729693, -1.83219466, 0.00744732, 1.80599850, 0.83953597]
+    cal_30_mm = [-0.27501834, -0.02951123, 0.30730128, -1.82733378, 0.00747141, 1.80099033, 0.83951795]
+    cal_40_mm = [-0.27535423, -0.02973620, 0.30729625, -1.80185362, 0.00748783, 1.77566828, 0.83950376]
+    cal_50_mm = [-0.27537779, -0.02964236, 0.30729646, -1.77550289, 0.00747043, 1.75009969, 0.83951632]
+    cal_60_mm = [-0.27538812, -0.02767563, 0.30729625, -1.74815756, 0.00737045, 1.72428787, 0.83968787]
+    cal_70_mm = [-0.27534187, -0.02516956, 0.30729125, -1.71972291, 0.00653091, 1.69838691, 0.84020591]
+    cal_80_mm = [-0.27489364, -0.02177300, 0.30729093, -1.69023271, 0.00559191, 1.67217843, 0.84087814]
 
   elif request.move_to_int == 1:
-    # top left
-    cal_0_mm = [0.18512671, 0.37866549, 0.22363262, -1.21253592, -0.10893460, 1.60726003, 1.16956841]
-    cal_10_mm = [0.18825695, 0.39035484, 0.22320580, -1.17424037, -0.11070185, 1.57652944, 1.16896099]
-    cal_12_mm = [0.18910666, 0.39256941, 0.22320218, -1.16573255, -0.11115629, 1.57014674, 1.16883816]
-    cal_14_mm = [0.18991396, 0.39483676, 0.22320218, -1.15689542, -0.11163938, 1.56374366, 1.16872168]
-    cal_20_mm = [0.19228800, 0.40230689, 0.22320537, -1.13007192, -0.11322130, 1.54428125, 1.16835338]
-    cal_30_mm = [0.19706933, 0.41643328, 0.22320842, -1.08209132, -0.11636666, 1.51035154, 1.16775696]
-    cal_50_mm = [0.20903397, 0.45415981, 0.22322272, -0.96963235, -0.12516179, 1.43562458, 1.16632797]
-
+    # back most point (top of diamond)
+    cal_0_mm = [-0.28065882, -0.69304390, -0.03156822, -2.51254180, -0.02046181, 1.81425078, 0.34286978]
+    cal_2_mm = [-0.28065837, -0.69289453, -0.03154801, -2.50850871, -0.02045031, 1.80923233, 0.34287310]
+    cal_4_mm = [-0.28061365, -0.69290636, -0.03154535, -2.50364990, -0.02044683, 1.80406595, 0.34289447]
+    cal_6_mm = [-0.28037703, -0.69293501, -0.03154002, -2.49871469, -0.02043928, 1.79894195, 0.34292478]
+    cal_8_mm = [-0.28033246, -0.69316666, -0.03154002, -2.49369913, -0.02042766, 1.79382667, 0.34295695]
+    cal_10_mm = [-0.28027092, -0.69321108, -0.03153835, -2.48873954, -0.02041460, 1.78875798, 0.34300284]
+    cal_12_mm = [-0.28004255, -0.69324148, -0.03153683, -2.48366155, -0.02039890, 1.78369811, 0.34303909]
+    cal_14_mm = [-0.28000178, -0.69325397, -0.03153683, -2.47854166, -0.02039010, 1.77857438, 0.34307510]
+    cal_16_mm = [-0.27970461, -0.69325456, -0.03153029, -2.47348600, -0.02037217, 1.77345216, 0.34311173]
+    cal_18_mm = [-0.27965020, -0.69325785, -0.03153363, -2.46830834, -0.02035854, 1.76836322, 0.34314925]
+    cal_20_mm = [-0.27940375, -0.69325846, -0.03153196, -2.46322564, -0.02033933, 1.76330469, 0.34319068]
+    cal_22_mm = [-0.27935815, -0.69324355, -0.03153029, -2.45808868, -0.02032076, 1.75823900, 0.34322271]
+    cal_24_mm = [-0.27925438, -0.69322097, -0.03152834, -2.45284836, -0.02030230, 1.75322801, 0.34325413]
+    cal_26_mm = [-0.27905731, -0.69318747, -0.03153363, -2.44767785, -0.02028588, 1.74821929, 0.34329462]
+    cal_28_mm = [-0.27899975, -0.69285682, -0.03152912, -2.44243555, -0.02026945, 1.74325363, 0.34332533]
+    cal_30_mm = [-0.27875733, -0.69262860, -0.03153052, -2.43722129, -0.02024957, 1.73820789, 0.34335799]
+    cal_40_mm = [-0.27802718, -0.69101920, -0.03152877, -2.41057300, -0.01999921, 1.71330324, 0.34352739]
+    cal_50_mm = [-0.27726699, -0.68847617, -0.03153187, -2.38345928, -0.01994613, 1.68861054, 0.34367666]
+    cal_60_mm = [-0.27658418, -0.68519827, -0.03153210, -2.35569011, -0.01986667, 1.66429998, 0.34380664]
+    cal_70_mm = [-0.27595735, -0.68126972, -0.03153016, -2.32748400, -0.01970777, 1.63999279, 0.34392638]
+    cal_80_mm = [-0.27528157, -0.67652077, -0.03153253, -2.29861205, -0.01958793, 1.61586960, 0.34402378]
+  
   elif request.move_to_int == 2:
-    # bottom left
-    cal_0_mm = [0.23366993, -0.54271042, 0.37589574, -2.22000585, 0.17991284, 1.72729146, 1.34587936]
-    cal_10_mm = [0.22811418, -0.54008458, 0.37610427, -2.19521192, 0.17898083, 1.70260116, 1.34520853]
-    cal_12_mm = [0.22696416, -0.53974523, 0.37610188, -2.18974024, 0.17877689, 1.69760376, 1.34510382]
-    cal_14_mm = [0.22584622, -0.53928485, 0.37610613, -2.18418006, 0.17853135, 1.69253790, 1.34499814]
-    cal_20_mm = [0.22245999, -0.53770155, 0.37609984, -2.16731857, 0.17781672, 1.67756387, 1.34474422]
-    cal_30_mm = [0.21712278, -0.53429485, 0.37609260, -2.13874013, 0.17637932, 1.65273764, 1.34451461]
-    cal_50_mm = [0.20691718, -0.52499188, 0.37609244, -2.07961898, 0.17314562, 1.60336858, 1.34455698]
-
+    # left of diamond
+    cal_0_mm = [-0.27616540, 0.15578415, -0.22721627, -1.66631745, 0.03683417, 1.80104259, -0.15528937]
+    cal_2_mm = [-0.27617411, 0.15611865, -0.22720995, -1.66253307, 0.03682765, 1.79664971, -0.15528671]
+    cal_4_mm = [-0.27620290, 0.15621767, -0.22719797, -1.65822191, 0.03683259, 1.79146907, -0.15528129]
+    cal_6_mm = [-0.27623444, 0.15621656, -0.22720170, -1.65326519, 0.03682135, 1.78648827, -0.15526498]
+    cal_8_mm = [-0.27629765, 0.15620863, -0.22720381, -1.64836129, 0.03681412, 1.78152018, -0.15522919]
+    cal_10_mm = [-0.27657639, 0.15619738, -0.22719451, -1.64350112, 0.03680276, 1.77646662, -0.15517727]
+    cal_12_mm = [-0.27661698, 0.15619948, -0.22719995, -1.63854159, 0.03679163, 1.77129102, -0.15512472]
+    cal_14_mm = [-0.27670542, 0.15618691, -0.22719704, -1.63342960, 0.03677567, 1.76617633, -0.15507761]
+    cal_16_mm = [-0.27693113, 0.15619099, -0.22719776, -1.62817986, 0.03676094, 1.76112790, -0.15503044]
+    cal_18_mm = [-0.27698862, 0.15618737, -0.22719823, -1.62305264, 0.03674655, 1.75605491, -0.15499996]
+    cal_20_mm = [-0.27727472, 0.15619225, -0.22720042, -1.61800928, 0.03673192, 1.75099851, -0.15496154]
+    cal_22_mm = [-0.27732719, 0.15620059, -0.22719776, -1.61285246, 0.03672738, 1.74594592, -0.15493409]
+    cal_24_mm = [-0.27761830, 0.15621127, -0.22719776, -1.60745367, 0.03672123, 1.74080161, -0.15490913]
+    cal_26_mm = [-0.27768017, 0.15624490, -0.22719609, -1.60202224, 0.03671720, 1.73562052, -0.15489089]
+    cal_28_mm = [-0.27797176, 0.15666267, -0.22719609, -1.59660370, 0.03671637, 1.73042549, -0.15487260]
+    cal_30_mm = [-0.27804283, 0.15674455, -0.22719442, -1.59125208, 0.03671731, 1.72521208, -0.15486231]
+    cal_40_mm = [-0.27908596, 0.15864756, -0.22719971, -1.56324802, 0.03673708, 1.69924396, -0.15485682]
+    cal_50_mm = [-0.28017996, 0.16144523, -0.22719442, -1.53414093, 0.03683619, 1.67271702, -0.15486824]
+    cal_60_mm = [-0.28142754, 0.16529497, -0.22719080, -1.50345014, 0.03756306, 1.64583815, -0.15494321]
+    cal_70_mm = [-0.28313011, 0.17004516, -0.22719442, -1.47119519, 0.03850070, 1.61855458, -0.15532162]
+    cal_80_mm = [-0.28489265, 0.17598852, -0.22718913, -1.43758070, 0.03968620, 1.59070500, -0.15582283]
+  
   elif request.move_to_int == 3:
-    # bottom right
-    cal_0_mm = [-0.00379845, -0.67043388, -0.54573473, -2.26318334, -0.32498345, 1.68728117, 0.48431597]
-    cal_10_mm = [0.00731250, -0.66909944, -0.54599125, -2.23834650, -0.32438277, 1.66194544, 0.48656344]
-    cal_12_mm = [0.00943737, -0.66909160, -0.54599602, -2.23279262, -0.32437264, 1.65686652, 0.48698529]
-    cal_14_mm = [0.01170321, -0.66905026, -0.54599527, -2.22733633, -0.32434460, 1.65182822, 0.48742099]
-    cal_20_mm = [0.01838100, -0.66819989, -0.54600097, -2.21056844, -0.32370427, 1.63669100, 0.48876885]
-    cal_30_mm = [0.02929688, -0.66600868, -0.54592673, -2.18210780, -0.32251678, 1.61167038, 0.49064796]
-    cal_50_mm = [0.05036132, -0.65874663, -0.54591255, -2.12315125, -0.31969950, 1.56254420, 0.49317398]
-
+    # forward most point (bottom of diamond)
+    cal_0_mm = [-0.13584227, 0.42395093, -0.03415631, -1.28013700, 0.01354295, 1.71426353, 0.49537017]
+    cal_2_mm = [-0.13587427, 0.42504220, -0.03417534, -1.27507550, 0.01350617, 1.70928657, 0.49536377]
+    cal_4_mm = [-0.13594595, 0.42620300, -0.03417701, -1.26920446, 0.01350235, 1.70377379, 0.49536083]
+    cal_6_mm = [-0.13611779, 0.42699835, -0.03418294, -1.26282015, 0.01350236, 1.69822350, 0.49536271]
+    cal_8_mm = [-0.13614503, 0.42784053, -0.03418307, -1.25653695, 0.01350103, 1.69258609, 0.49536128]
+    cal_10_mm = [-0.13616814, 0.42864570, -0.03418149, -1.25016192, 0.01350103, 1.68694952, 0.49535986]
+    cal_12_mm = [-0.13618657, 0.42951024, -0.03418126, -1.24356106, 0.01349973, 1.68130257, 0.49536378]
+    cal_14_mm = [-0.13620682, 0.43059498, -0.03418507, -1.23679939, 0.01350283, 1.67571533, 0.49536488]
+    cal_16_mm = [-0.13624561, 0.43159368, -0.03418169, -1.23011873, 0.01350500, 1.67007934, 0.49536893]
+    cal_18_mm = [-0.13651895, 0.43270324, -0.03418827, -1.22336794, 0.01350451, 1.66445276, 0.49536608]
+    cal_20_mm = [-0.13653800, 0.43382500, -0.03418660, -1.21634057, 0.01350975, 1.65866646, 0.49536739]
+    cal_22_mm = [-0.13656851, 0.43517922, -0.03418827, -1.20920382, 0.01350991, 1.65283949, 0.49536719]
+    cal_24_mm = [-0.13659716, 0.43639886, -0.03418652, -1.20225151, 0.01351013, 1.64695829, 0.49537004]
+    cal_26_mm = [-0.13662993, 0.43776059, -0.03418827, -1.19500619, 0.01351435, 1.64108506, 0.49537425]
+    cal_28_mm = [-0.13689395, 0.43923129, -0.03418827, -1.18767057, 0.01351889, 1.63520519, 0.49537817]
+    cal_30_mm = [-0.13692146, 0.44081733, -0.03418827, -1.18011321, 0.01352093, 1.62935390, 0.49538045]
+    cal_40_mm = [-0.13737332, 0.44933545, -0.03418994, -1.14119920, 0.01358085, 1.59875841, 0.49539300]
+    cal_50_mm = [-0.13798051, 0.45985779, -0.03418994, -1.09851117, 0.01392985, 1.56700412, 0.49541258]
+    cal_60_mm = [-0.13872151, 0.47291139, -0.03419356, -1.05193096, 0.01426744, 1.53345538, 0.49541994]
+    cal_70_mm = [-0.13953435, 0.48875035, -0.03418994, -1.00029921, 0.01481899, 1.49778465, 0.49543799]
+    cal_80_mm = [-0.14047807, 0.50845062, -0.03419356, -0.94229110, 0.01545554, 1.45926596, 0.49545755]
+  
   elif request.move_to_int == 4:
-    # top right
-    cal_0_mm = [-0.05664975, 0.45664487, -0.51411564, -1.14189071, 0.22075273, 1.56880552, 0.34867809]
-    cal_10_mm = [-0.06621081, 0.47048441, -0.51375980, -1.09982426, 0.22575926, 1.53636279, 0.34886103]
-    cal_12_mm = [-0.06805916, 0.47280777, -0.51375451, -1.09054460, 0.22697677, 1.52964720, 0.34893845]
-    cal_14_mm = [-0.07027538, 0.47558366, -0.51375982, -1.08090203, 0.22826196, 1.52281037, 0.34902136]
-    cal_20_mm = [-0.07719636, 0.48447591, -0.51375645, -1.05102176, 0.23272260, 1.50179962, 0.34929511]
-    cal_30_mm = [-0.09016613, 0.50185913, -0.51375853, -0.99682879, 0.24138361, 1.46464811, 0.34987587]
-    cal_50_mm = [-0.12511534, 0.55004260, -0.51376929, -0.86303225, 0.26670520, 1.37924513, 0.35234891]
+    # pre-bin waypoint
+    cal_0_mm = [0.46666110, -0.62180026, -0.21519536, -2.45454004, -0.12995350, 1.83887581, 0.20210538]
+    cal_2_mm = [0.46717273, -0.62204574, -0.21523148, -2.45091803, -0.12998131, 1.83409420, 0.20216280]
+    cal_4_mm = [0.46806175, -0.62201463, -0.21524807, -2.44650184, -0.12995232, 1.82878929, 0.20240184]
+    cal_6_mm = [0.46895619, -0.62234723, -0.21524961, -2.44158944, -0.12993926, 1.82363134, 0.20258809]
+    cal_8_mm = [0.46975100, -0.62260874, -0.21525128, -2.43681422, -0.12990575, 1.81838208, 0.20277431]
+    cal_10_mm = [0.47054904, -0.62296580, -0.21524963, -2.43193338, -0.12986399, 1.81309612, 0.20301506]
+    cal_12_mm = [0.47140770, -0.62330342, -0.21525773, -2.42695680, -0.12980299, 1.80787713, 0.20321056]
+    cal_14_mm = [0.47232777, -0.62359527, -0.21525805, -2.42215027, -0.12961196, 1.80269351, 0.20341441]
+    cal_16_mm = [0.47325566, -0.62373863, -0.21525593, -2.41709049, -0.12953107, 1.79751615, 0.20364414]
+    cal_18_mm = [0.47408576, -0.62400285, -0.21526092, -2.41209331, -0.12946550, 1.79237815, 0.20380324]
+    cal_20_mm = [0.47485108, -0.62430516, -0.21525816, -2.40710337, -0.12937694, 1.78728708, 0.20402659]
+    cal_22_mm = [0.47567336, -0.62435891, -0.21525976, -2.40204178, -0.12928525, 1.78220195, 0.20419636]
+    cal_24_mm = [0.47666993, -0.62441036, -0.21525976, -2.39711360, -0.12918041, 1.77704412, 0.20439643]
+    cal_26_mm = [0.47754901, -0.62449473, -0.21526145, -2.39198623, -0.12896470, 1.77184067, 0.20458366]
+    cal_28_mm = [0.47834403, -0.62472560, -0.21526337, -2.38679634, -0.12890379, 1.76666817, 0.20476005]
+    cal_30_mm = [0.47911592, -0.62472554, -0.21526338, -2.38172724, -0.12883189, 1.76160095, 0.20493092]
+    cal_40_mm = [0.48334437, -0.62469302, -0.21526671, -2.35566507, -0.12811896, 1.73642197, 0.20575803]
+    cal_50_mm = [0.48757992, -0.62330063, -0.21526821, -2.32910876, -0.12743078, 1.71137637, 0.20651196]
+    cal_60_mm = [0.49176489, -0.62140499, -0.21526882, -2.30199482, -0.12666095, 1.68640656, 0.20716931]
+    cal_70_mm = [0.49580714, -0.61853090, -0.21527244, -2.27424975, -0.12585657, 1.66179994, 0.20769574]
+    cal_80_mm = [0.49985603, -0.61493227, -0.21527411, -2.24584691, -0.12499754, 1.63719854, 0.20809502]
+    cal_100_mm = [0.50743542, -0.60534878, -0.21527257, -2.18736492, -0.12296777, 1.58859007, 0.20848474]
+    cal_120_mm = [0.51457115, -0.59280205, -0.21527619, -2.12590178, -0.12071953, 1.54012589, 0.20846371]
+    cal_140_mm = [0.52113863, -0.57739214, -0.21527194, -2.06197085, -0.11826960, 1.49177427, 0.20772678]
+    cal_160_mm = [0.52686040, -0.55880475, -0.21527049, -1.99486152, -0.11549934, 1.44342456, 0.20609049]
+    cal_180_mm = [0.53161798, -0.53718960, -0.21526671, -1.92471706, -0.11236270, 1.39480298, 0.20364672]
+    cal_200_mm = [0.53525643, -0.51237958, -0.21526359, -1.85058538, -0.10876263, 1.34549029, 0.19996557]
+
+  elif request.move_to_int == 5:
+    # bin to drop items
+    cal_0_mm = [0.58306325, -0.10993592, 0.18835821, -1.99860943, 0.01293729, 1.89987296, 0.77871657]
+    cal_2_mm = [0.58289484, -0.11057727, 0.18805577, -1.99476894, 0.01293177, 1.89518433, 0.77869293]
+    cal_4_mm = [0.58287315, -0.11046038, 0.18806744, -1.99132001, 0.01297681, 1.89002654, 0.77864572]
+    cal_6_mm = [0.58283889, -0.11048578, 0.18806745, -1.98693085, 0.01299048, 1.88494571, 0.77858696]
+    cal_8_mm = [0.58251043, -0.11101906, 0.18808230, -1.98240106, 0.01301459, 1.87989716, 0.77838417]
+    cal_10_mm = [0.58247333, -0.11149760, 0.18808038, -1.97798252, 0.01306932, 1.87487092, 0.77834512]
+    cal_12_mm = [0.58241602, -0.11200933, 0.18807658, -1.97338430, 0.01318510, 1.86989095, 0.77829522]
+    cal_14_mm = [0.58215790, -0.11252858, 0.18808399, -1.96865351, 0.01341352, 1.86490773, 0.77821786]
+    cal_16_mm = [0.58211709, -0.11300836, 0.18808399, -1.96414034, 0.01343306, 1.85984343, 0.77814958]
+    cal_18_mm = [0.58206843, -0.11344786, 0.18808038, -1.95949380, 0.01345161, 1.85477816, 0.77807403]
+    cal_20_mm = [0.58177370, -0.11385522, 0.18808232, -1.95481381, 0.01346877, 1.84966578, 0.77800926]
+    cal_22_mm = [0.58173095, -0.11418538, 0.18808251, -1.95012062, 0.01348639, 1.84456347, 0.77794463]
+    cal_24_mm = [0.58168177, -0.11454292, 0.18808233, -1.94521600, 0.01349741, 1.83949708, 0.77787932]
+    cal_26_mm = [0.58138728, -0.11460863, 0.18808400, -1.94049367, 0.01351312, 1.83443650, 0.77779473]
+    cal_28_mm = [0.58135018, -0.11503483, 0.18808235, -1.93569329, 0.01352041, 1.82946235, 0.77773587]
+    cal_30_mm = [0.58130666, -0.11508727, 0.18808399, -1.93087032, 0.01353576, 1.82447260, 0.77768948]
+    cal_40_mm = [0.58066142, -0.11577482, 0.18808232, -1.90602796, 0.01357340, 1.79899213, 0.77743417]
+    cal_50_mm = [0.58025236, -0.11579819, 0.18808975, -1.88036124, 0.01357064, 1.77363020, 0.77739584]
+    cal_60_mm = [0.57986177, -0.11532467, 0.18808711, -1.85380943, 0.01353948, 1.74813091, 0.77738918]
+    cal_70_mm = [0.57959856, -0.11364394, 0.18808552, -1.82633181, 0.01343700, 1.72238786, 0.77739669]
+    cal_80_mm = [0.57934965, -0.11087069, 0.18808268, -1.79790338, 0.01293385, 1.69660742, 0.77745827]
+    cal_100_mm = [0.57932559, -0.10302034, 0.18807857, -1.73794573, 0.01152313, 1.64433749, 0.77832535]
+    cal_120_mm = [0.57962400, -0.09170179, 0.18807330, -1.67345904, 0.00934031, 1.59122620, 0.77961864]
+    cal_140_mm = [0.58078174, -0.07612561, 0.18807117, -1.60377829, 0.00651070, 1.53672905, 0.78142983]
+    cal_160_mm = [0.58309017, -0.05653660, 0.18805531, -1.52843322, 0.00274478, 1.48057941, 0.78395259]
+    cal_180_mm = [0.58659586, -0.03203691, 0.18804458, -1.44579159, -0.00192619, 1.42212148, 0.78709276]
+    cal_200_mm = [0.59167338, -0.00159176, 0.18803158, -1.35439760, -0.00779925, 1.36037718, 0.79090279]
 
   else:
     rospy.logerr(f"move_panda_to() received unknown integer = {request.move_to_int}")
     return False
+  
+  allow_noise = False
+  
+  calibrated_0mm = 4# + umh # height in mm where table touch occurs with above calibration
+
+  # beyond this we do not have additional 2mm increments
+  if request.height_mm >= 28: calibrated_0mm = 0
+
+  # calculate the desired reset height
+  if request is None:
+    reset_to = 10 # default, panda is limited to +-30mm in move_panda_z_abs
+  else:
+    reset_to = request.height_mm
+  reset_to += calibrated_0mm
+  if panda_reset_noise_mm is not None and allow_noise:
+    reset_to += (random.random() * 2 * panda_reset_noise_mm) - panda_reset_noise_mm
+
+  target_state_name = height_to_cal(reset_to)
+  rospy.loginfo(f"move_panda_to() will reset to a height given by '{target_state_name}'")
+
+  # assign this reset height to a state vector from above (eg 'cal_10_mm')
+  try:
+    target_state = eval(f"{target_state_name}")
+  except NameError as e:
+    rospy.logerr(f"move_panda_to() error: desired target height has no calibrated value")
+    raise RuntimeError(f"move_panda_to() error: {e}")
+
+  # move the joints slowly to the reset position - this could be dangerous!
+  speed_factor = 0.15 # 0.1 is slow movements
+
+  if use_panda_threads:
+    process = Process(target=franka_instance.move_joints, args=(target_state, speed_factor))
+    process.start()
+    process.join()
+    process.close()
+    if process.exception:
+      rospy.logwarn(f"Panda movement exception, likely too high force on the table. Cancelling grasping. Error message: {process.exception}")
+      cancel_grasping_callback()
+  else:
+    franka_instance.move_joints(target_state, speed_factor) # now approach reset height
+
+  panda_z_height = 0
+
+  if log_level > 0: 
+    rospy.loginfo(f"panda reset to position {request.move_to_int} and a calibrated height of {2 * round(reset_to / 2) - calibrated_0mm} (rounded from {reset_to:.1f} and calibrated zero of {calibrated_0mm})")
+
+  return True
+
+
+  #--------------------------------#
   
   if abs(request.height_mm - 10) < 1e-3:
     target_state = cal_12_mm # choose this height for good behaviour 10/12/14
@@ -1616,13 +1827,24 @@ def demo_movement(goto, pregrasp=False, grasp=False, place=False):
   move_msg = PandaMoveToInt()
   continue_demo = True
 
-  if goto not in [0, 1, 2, 3, 4]:
+  if goto not in [0, 1, 2, 3, 4, 5]:
     rospy.logerr(f"demo_movement() given invalid goto = {goto}")
     return False
+  
+  grasp_height = 80
+  bin_height = 200
+  
+  # grasping positions
+  if goto in [0, 1, 2, 3]:
+    height = grasp_height
+
+  # bin placement positions
+  elif goto in [4, 5]:
+    height = bin_height
 
   # go to the specified point
   move_msg.move_to_int = goto
-  move_msg.height_mm = 50
+  move_msg.height_mm = height
   moved = move_panda_to(move_msg)
 
   if not moved:
@@ -1639,6 +1861,7 @@ def demo_movement(goto, pregrasp=False, grasp=False, place=False):
   if pregrasp or grasp:
 
     # lower to grasping height and reset everything ready
+    rospy.sleep(0.3)
     move_msg.move_to_int = goto
     move_msg.height_mm = 10
     moved = move_panda_to(move_msg)
@@ -1656,13 +1879,20 @@ def demo_movement(goto, pregrasp=False, grasp=False, place=False):
     global panda_z_height
     panda_z_height = 0
 
+    # wait for gripper to finish
+    time.sleep(1)
+    while not rospy.is_shutdown():
+      if not gripper_target_reached:
+        time.sleep(0.05)
+      else: break
+
     if grasp:
     
       # do a grasp
       execute_grasping_callback(reset=False)
 
       # wait for the grasp to execute or be stopped
-      rospy.sleep(1)
+      rospy.sleep(0.3)
       while continue_grasping:
         rospy.sleep(0.1)
         if not continue_demo or not continue_grasping:
@@ -1672,7 +1902,7 @@ def demo_movement(goto, pregrasp=False, grasp=False, place=False):
 
       # when grasp is done, lift to 50mm
       move_msg.move_to_int = goto
-      move_msg.height_mm = 50
+      move_msg.height_mm = grasp_height
       moved = move_panda_to(move_msg)
 
       if not moved:
@@ -1685,10 +1915,10 @@ def demo_movement(goto, pregrasp=False, grasp=False, place=False):
 
   elif place:
 
-    # lower before placing
-    move_msg.move_to_int = goto
-    move_msg.height_mm = 20
-    moved = move_panda_to(move_msg)
+    # # lower before placing
+    # move_msg.move_to_int = goto
+    # move_msg.height_mm = 20
+    # moved = move_panda_to(move_msg)
 
     gentle_place()
 
@@ -1732,7 +1962,21 @@ def loop_demo(request=None):
 
   loop_to_do = [
     ["grasp", 0],
-    ["place", 0]
+    ["move", 4],
+    ["place", 5],
+    ["move", 4],
+    ["grasp", 1],
+    ["move", 4],
+    ["place", 5],
+    ["move", 4],
+    ["grasp", 2],
+    ["move", 4],
+    ["place", 5],
+    ["move", 4],
+    ["grasp", 3],
+    ["move", 4],
+    ["place", 5],
+    ["move", 4],
   ]
 
   actually_grasp = True
@@ -1750,6 +1994,9 @@ def loop_demo(request=None):
     elif command == "place":
       success = demo_movement(goto=location, place=True)
 
+    elif command == "move":
+      success = demo_movement(goto=location)
+
     if not success:
       rospy.logerr("Failed movement in loop_demo(), aborting all")
       return False
@@ -1758,6 +2005,8 @@ def loop_demo(request=None):
 
     if demo_loop_int >= len(loop_to_do):
       demo_loop_int = 0
+
+    time.sleep(0.1) # to prevent too many panda motions
     
   return True
 
@@ -1810,27 +2059,36 @@ def reset_demo(request=None):
 
   # full reset of the gripper, but excluding the panda
   reset_all(skip_panda=True)
-  global panda_reset_height_mm
-  panda_reset_height_mm = 0
 
   move_msg = PandaMoveToInt()
 
-  if demo_panda_is_at in [0, 1, 2, 3, 4]:
+  if demo_panda_is_at in [0, 1, 2, 3, 4, 5]:
 
-    # lift the panda first
-    move_msg.move_to_int = demo_panda_is_at
-    move_msg.height_mm = 50
-    moved = move_panda_to(move_msg)
+    if demo_panda_is_at in [0, 1, 2, 3]:
+
+      # lift the panda first
+      move_msg.move_to_int = demo_panda_is_at
+      move_msg.height_mm = 80
+      moved = move_panda_to(move_msg)
+
+    elif demo_panda_is_at in [4, 5]:
+
+      # go to the bin waypoint
+      move_msg.move_to_int = 4
+      move_msg.height_mm = 200
+      moved = move_panda_to(move_msg)
 
     if not moved:
       rospy.logerr("Panda motion error in reset_demo(), aborting all")
       return False
 
   # now reset to the start position
-  if reset_position not in [0, 1, 2, 3, 4]: reset_position = 0
-  move_msg.move_to_int = reset_position
-  move_msg.height_mm = 50
-  moved = move_panda_to(move_msg)
+  if reset_position not in [0, 1, 2, 3, 4, 5]: reset_position = 0
+
+  if demo_panda_is_at != reset_position:
+    move_msg.move_to_int = reset_position
+    move_msg.height_mm = 80
+    moved = move_panda_to(move_msg)
 
   if not moved:
     rospy.logerr("Panda motion error in reset_demo(), aborting all")
@@ -1998,9 +2256,9 @@ if __name__ == "__main__":
 
     # load a specific model baseline
     load = LoadBaselineModel()
-    load.thickness = 1.0e-3
-    load.width = 24e-3
-    load.sensors = 3
+    load.thickness = 0.9e-3
+    load.width = 28e-3
+    load.sensors = 0
     load_baseline_1_model(load)
 
   else:

@@ -133,9 +133,9 @@ if __name__ == "__main__":
         mygripper.send_message(type="home")
         mygripper.send_message(type="debug_on")
 
-        mygripper.command.x = 0.3
-        mygripper.send_message(type="change_timed_action")
         mygripper.command.x = 0.2
+        mygripper.send_message(type="change_timed_action")
+        mygripper.command.x = 0.0 # was 0.3 for tests
         mygripper.send_message(type="change_timed_action_early_pub")
 
         mygripper.command.x = 100
