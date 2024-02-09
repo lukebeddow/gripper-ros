@@ -466,6 +466,7 @@ class GraspTestData:
       return info_str
 
     info_str += f"\nResults information:\n\n"
+
     if detailed:
       info_str += f"num_sphere = {results.num_sphere}\n"
       info_str += f"num_cuboid = {results.num_cuboid}\n"
@@ -491,6 +492,7 @@ class GraspTestData:
       info_str += f"avg_palm_frc_saturated ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_saturated:.4f}\n"
       info_str += f"num_palm_frc_tol ({palm_force_threshold:.1f}N) = {results.num_palm_frc_tol:.4f}\n"
       info_str += "\n"
+      
     info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
     info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
     info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
@@ -499,6 +501,7 @@ class GraspTestData:
     info_str += f"Total number of trials: {results.num_trials}\n"
     info_str += f"Total number of objects: {results.num_objects}\n"
     info_str += f"Overall success rate: {results.avg_stable_height:.4f}\n"
+    info_str += f"Grasp {palm_force_threshold}N stable % (out of successful grasps): {results.num_palm_frc_tol / results.avg_stable_height:.4f}"
     
 
     return info_str
