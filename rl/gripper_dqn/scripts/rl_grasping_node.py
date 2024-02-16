@@ -13,13 +13,15 @@ import random
 # ros specific imports
 import rospy
 from std_srvs.srv import Empty, SetBool
+from std_msgs.msg import Float32
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Wrench
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
+from gripper_msgs.msg import GripperOutput, GripperRequest
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
-from gripper_dqn.srv import PandaMoveToInt, Demo, PandaMoveZ
+from gripper_dqn.srv import PandaMoveToInt, Demo, PandaMoveZ, ForceTest
 from cv_bridge import CvBridge
 
 # import the test data structure class
@@ -34,7 +36,7 @@ photoshoot_calibration = False  # do we grasp in ideal position for taking side-
 use_panda_threads = True       # do we run panda in a seperate thread
 use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
-action_delay = 0.05             # safety delay between action generation and publishing
+action_delay = 0.1              # safety delay between action generation and publishing
 panda_z_move_duration = 0.2    # how long in seconds to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
@@ -46,7 +48,10 @@ scale_palm_data = 1.0           # scale real palm data by this
 image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
-use_palm_force_test = True      # test grasp stability with palm disturbance
+use_palm_force_test = True     # test grasp stability with palm disturbance
+extra_gripper_measuring = True  # use a second gripper for measurements
+palm_force_target = 10          # maximum force at which palm force test ends
+XY_force_target = 10            # maximum force at which XY force test ends
 
 # important paths
 test_save_path = "/home/luke/gripper-ros/"
@@ -80,11 +85,12 @@ continue_grasping = True        # is grasping currently in progress and continui
 currently_testing = False       # is a test currently in progress
 continue_demo = False           # is the demo currently in progress and continuing
 demo_panda_is_at = -1           # flag for the position the panda is in (only applies to a demo)
-demo_loop_int = -1              # where in the demo loop are we
+demo_loop_int = -1              # where in the demo loop are wek
 risk_table_hit = False
 
 # declare global variables, these will be overwritten
 step_num = 0                    # number of steps in our grasp
+franka_instance = None          # franka FCI connection class
 panda_z_height = 0.0            # panda z height state reading (=0 @ 10mm above gnd)
 current_test_data = None        # current live test data structure
 ftenv = None                    # simulated environment for fake force/torque sensor readings
@@ -102,6 +108,17 @@ panda_in_motion = False         # is the panda currently moving
 gripper_target_reached = False  # has the gripper reached its target
 grasp_frc_stable = False        # is the gripper the appropriate height with forces stable
 stable_grasp_frc = None         # measured forces in stable grasp
+palm_SI_pub = None              # publisher for palm force in SI units (newtons)
+extra_gripper_palm_frc = None   # palm force in newtons from the 2nd gripper (if in use)
+extra_gripper_palm_raw = None   # palm force in newtons without any offset
+extra_gripper_palm_pos = None   # palm position in metres from the 2nd gripper
+extra_demand_pub = None         # demand publisher for the 2nd gripper
+extra_gripper_z_offset = 0.0    # palm force offset in newtons, zeroed upon any reset if using 2nd gripper
+extra_zfrc_pub = None           # palm force publisher for the 2nd gripper
+trial_object_num = None         # number of the current object on trial
+trial_object_axis = None        # name of the force axis to measure with the current object
+axis_force_tol = None           # last force tolerated in a particular axis
+prevent_force_test = False      # cancel signal to stop a force test from proceeding
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -201,16 +218,17 @@ def data_callback(state):
   ]
 
   # get panda estimated external wrenches
-  local_wrench = franka_instance.get_end_effector_wrench_local()
-  global_wrench = franka_instance.get_end_effector_wrench_global()
+  if franka_instance is not None:
+    local_wrench = franka_instance.get_end_effector_wrench_local()
+    global_wrench = franka_instance.get_end_effector_wrench_global()
 
-  if use_panda_ft_sensing:
-    state.ftdata.force.x = local_wrench[0]
-    state.ftdata.force.y = local_wrench[1]
-    state.ftdata.force.z = local_wrench[2] * -1 # we want positive force to be upwards
-    state.ftdata.torque.x = local_wrench[3]
-    state.ftdata.torque.y = local_wrench[4]
-    state.ftdata.torque.z = local_wrench[5]
+    if use_panda_ft_sensing:
+      state.ftdata.force.x = local_wrench[0]
+      state.ftdata.force.y = local_wrench[1]
+      state.ftdata.force.z = local_wrench[2] * -1 # we want positive force to be upwards
+      state.ftdata.torque.x = local_wrench[3]
+      state.ftdata.torque.y = local_wrench[4]
+      state.ftdata.torque.z = local_wrench[5]
 
   # optional: scale data
   global scale_gauge_data, scale_palm_data, scale_wrist_data
@@ -255,11 +273,15 @@ def data_callback(state):
   ]
 
   # TEMPORARY FIX - WILL NEED TO BE UPGRADED
-  if model.trainer.env.params.XY_base_actions:
-    state_vec.append(0)
-    state_vec.append(0)
-  if model.trainer.env.params.Z_base_rotation:
-    state_vec.append(0)
+  if use_devel:
+    try:
+      if model.trainer.env.params.XY_base_actions:
+        state_vec.append(0)
+        state_vec.append(0)
+      if model.trainer.env.params.Z_base_rotation:
+        state_vec.append(0)
+    except Exception as e:
+      pass
 
   # input the data
   model.trainer.env.mj.input_real_data(state_vec, sensor_vec)
@@ -299,22 +321,25 @@ def data_callback(state):
   norm_sensor.palm = model.trainer.env.mj.real_sensors.normalised.read_palm_sensor()
   norm_sensor.wrist_z = model.trainer.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
 
-  local_wrench_msg.force.x = local_wrench[0]
-  local_wrench_msg.force.y = local_wrench[1]
-  local_wrench_msg.force.z = local_wrench[2]
-  local_wrench_msg.torque.x = local_wrench[3]
-  local_wrench_msg.torque.y = local_wrench[4]
-  local_wrench_msg.torque.z = local_wrench[5]
+  SI_palm = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
 
-  global_wrench_msg.force.x = global_wrench[0]
-  global_wrench_msg.force.y = global_wrench[1]
-  global_wrench_msg.force.z = global_wrench[2]
-  global_wrench_msg.torque.x = global_wrench[3]
-  global_wrench_msg.torque.y = global_wrench[4]
-  global_wrench_msg.torque.z = global_wrench[5]
+  if franka_instance is not None:
+    local_wrench_msg.force.x = local_wrench[0]
+    local_wrench_msg.force.y = local_wrench[1]
+    local_wrench_msg.force.z = local_wrench[2]
+    local_wrench_msg.torque.x = local_wrench[3]
+    local_wrench_msg.torque.y = local_wrench[4]
+    local_wrench_msg.torque.z = local_wrench[5]
 
-  panda_local_wrench_pub.publish(local_wrench_msg)
-  panda_global_wrench_pub.publish(global_wrench_msg)
+    global_wrench_msg.force.x = global_wrench[0]
+    global_wrench_msg.force.y = global_wrench[1]
+    global_wrench_msg.force.z = global_wrench[2]
+    global_wrench_msg.torque.x = global_wrench[3]
+    global_wrench_msg.torque.y = global_wrench[4]
+    global_wrench_msg.torque.z = global_wrench[5]
+
+    panda_local_wrench_pub.publish(local_wrench_msg)
+    panda_global_wrench_pub.publish(global_wrench_msg)
   
   # if using a simulated ft sensor, replace with this data instead
   if use_sim_ftsensor:
@@ -330,6 +355,7 @@ def data_callback(state):
 
   norm_state_pub.publish(norm_state)
   norm_sensor_pub.publish(norm_sensor)
+  palm_SI_pub.publish(SI_palm)
 
   global grasp_frc_stable, stable_grasp_frc
 
@@ -363,6 +389,27 @@ def data_callback(state):
 
     global gripper_target_reached
     gripper_target_reached = True
+
+def extra_gripper_data_callback(state):
+  """
+  Data callback if a second gripper is being used
+  """
+
+  global extra_gripper_palm_frc, extra_gripper_palm_raw
+
+  raw_gauge = state.gauge4
+
+  gauge_5N = 200000
+  if raw_gauge > gauge_5N * 10 or raw_gauge < -gauge_5N * 10:
+    return
+
+  # gauge_cal_factor = -4.6199e-5 # december 9th calibration
+  gauge_cal_factor = 2.787e-5 # feb 13th calibration (12V POWER SUPPLY)
+
+  extra_gripper_palm_raw = raw_gauge * gauge_cal_factor 
+  extra_gripper_palm_frc = extra_gripper_palm_raw - extra_gripper_z_offset
+
+  extra_zfrc_pub.publish(extra_gripper_palm_frc)
 
 def generate_action():
   """
@@ -516,47 +563,112 @@ def move_panda_z_abs(franka, target_z):
 
   return
 
-def test_palm_force(current_gripper_state):
+def run_extra_force_test(request=None):
   """
-  Test grasp stability by applying extra palm force and seeing if the object remains in grasp
+  Wrapper function to run a force test
+  """
+
+  global prevent_force_test
+  if prevent_force_test:
+    rospy.logwarn("run_extra_force_test stopped by user")
+    prevent_force_test = False
+    return 0.0
+
+  axis = str(request.axis).lower()
+  rospy.loginfo(f"run_extra_force_test() called: axis={axis}, object_num={request.obj_num}")
+
+  if axis in ["x", "y"]:
+
+    # move the panda to a hardcoded probe position
+    if request.obj_num != 0:
+      target_joints = hardcoded_object_force_measuring_ycb[str(request.obj_num)][axis.upper()]
+      success = set_panda_joints(target_joints)
+      if not success:
+        # user or error has interrupted motion
+        rospy.logwarn("run_extra_force_test() failed on panda motion, returning")
+        connect_panda()
+        return None
+
+    # probe the force at this position
+    max_force = test_force_with_extra_gripper()
+
+    # reset the probe
+    new_demand = GripperRequest()
+    new_demand.message_type = "home"
+
+    if log_level > 0: rospy.loginfo(f"Homing extra gripper following force test")
+    extra_demand_pub.publish(new_demand)
+
+  elif axis == "z":
+    max_force = test_palm_force()
+
+  else:
+    max_force = 0.0
+    rospy.logwarn(f"run_extra_force_test() warning: axis = {axis} not recognised")
+
+  # report the result
+  if max_force is None:
+    rospy.logwarn("--- Force test FAILED, got None ---")
+    return max_force
+  
+  rospy.logwarn(f"--- Force test axis: {axis} had force: {max_force:.1f}N ---")
+
+  # save information to globals
+  global trial_object_axis, axis_force_tol
+  trial_object_axis = axis
+  axis_force_tol = max_force
+
+  return max_force
+
+def test_force_with_extra_gripper(request=None):
+  """
+  Probe forwards with the palm of a 2nd gripper, in order to test the tolerated
+  force. This assumes that the object and 2nd gripper are already in correct
+  alignment before this function is called
   """
 
   if continue_demo:
     rospy.loginfo("No palm force test run, demo is active, returning")
-    return
+    return 0.0
 
-  global gripper_target_reached, use_palm_force_test
+  global extra_gripper_measuring, XY_force_target, prevent_force_test
 
-  rospy.loginfo("Running palm force test now")
+  rospy.loginfo("Running XY force test now")
 
-  # first move panda up to avoid table
-  time.sleep(0.1)
-  req = ResetPanda()
-  req.reset_height_mm = 80
-  reset_panda(req)
+  # # first move panda up to avoid table
+  # time.sleep(0.1)
+  # req = ResetPanda()
+  # req.reset_height_mm = 80
+  # reset_panda(req)
 
-  if not use_palm_force_test: return
+  if not extra_gripper_measuring: 
+    rospy.logwarn("test_force_with_extra_gripper() called but extra_gripper_measuring=False")
+    return 0.0
 
   start = time.time()
-  max_time = 10
-  palm_move = 0
-  max_palm_move = 30e-3
+  max_time = 20
+  palm_move = 5e-3
+  palm_move_after_contact = 0
+  max_palm_move = 150e-3
+  max_palm_move_after_contact = 50e-3 # probe length
+  force_for_contact = 0.5
+  move_increment = 2e-3 # in metres
 
-  force_target = 5
-  start_force = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+  force_target = XY_force_target
+  start_force = extra_gripper_palm_frc
   max_tolerated_force = 0
 
-  while time.time() - start < max_time:
+  while time.time() - start < max_time and (not prevent_force_test):
 
-    if gripper_target_reached:
+    if True:
 
       # check if required force is reached
-      new_force = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+      new_force = extra_gripper_palm_frc
       tolerated_force = new_force - start_force
       if tolerated_force > max_tolerated_force: max_tolerated_force = tolerated_force
       if tolerated_force > force_target:
         rospy.logwarn(f"Palm test complete, tolerated {max_tolerated_force:.1f}N. Current force {new_force:.1f}, start force {start_force:.1f}, target force {force_target:.1f}")
-        return
+        return max_tolerated_force
       
       # check if dangerous forces are recorded
       norm_gauge1 = model.trainer.env.mj.real_sensors.normalised.read_finger1_gauge()
@@ -567,19 +679,137 @@ def test_palm_force(current_gripper_state):
 
       rospy.loginfo(f"Palm test in progress, just tolerated {tolerated_force:.1f}N, maximum tolerated {max_tolerated_force:.1f}. Current force {new_force:.1f}, start force {start_force:.1f}, target force {force_target:.1f}. (g1,g2,g3,p,w) = ({norm_gauge1:.2f}, {norm_gauge2:.2f}, {norm_gauge3:.2f}, {norm_palm:.2f}, {norm_wrist_z:.2f})")
 
-      if norm_gauge1 > 0.99 or norm_gauge2 > 0.99 or norm_gauge3 > 0.99 or norm_wrist_z > 0.3:
+      gauge_lim = 0.7 # sat yield factor is 1.5, hence yield is 1.0/1.5 = 0.67
+      if norm_gauge1 > gauge_lim or norm_gauge2 > gauge_lim or norm_gauge3 > gauge_lim: # or norm_wrist_z > 0.3:
         rospy.logwarn(f"Palm test failed, safe sensors exceeded (g1,g2,g3,p,w) = ({norm_gauge1:.2f}, {norm_gauge2:.2f}, {norm_gauge3:.2f}, {norm_palm:.2f}, {norm_wrist_z:.2f}). Maximum tolerated force {max_tolerated_force:.1f}N")
-        return
+        return max_tolerated_force
+
+      # if move_gripper is False:
+      #   if log_level > 1: rospy.loginfo(f"Gripper action ignored as move_gripper=False")
+      #   continue
+
+      palm_move += move_increment
+
+      if max_tolerated_force > force_for_contact:
+        palm_move_after_contact += move_increment
+      
+      if palm_move > max_palm_move:
+        rospy.logwarn(f"Palm test failed, maximum palm movement of {palm_move:.3f} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+        return max_tolerated_force
+      
+      if palm_move_after_contact > max_palm_move_after_contact:
+        rospy.logwarn(f"Palm test failed, maximum palm movement after contact of {palm_move_after_contact:.3f} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+        return max_tolerated_force
+
+      # send a demand to move the palm
+      new_demand = GripperRequest()
+      new_demand.x = 130e-3
+      new_demand.y = 130e-3
+      new_demand.z = palm_move
+      new_demand.message_type = "command"
+
+      if log_level > 0: rospy.loginfo(f"test_force_with_extra_gripper is send the palm to {palm_move * 1000:.1f} mm")
+      extra_demand_pub.publish(new_demand)
+
+      # sleep for it to be executed (hand tune this value)
+      time.sleep(0.175)
+
+  if prevent_force_test:
+    rospy.logwarn("Force XY test stopped by user")
+    prevent_force_test = False
+  else:
+    rospy.logwarn(f"Force XY test failed, timeout of {max_time} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+
+  return max_tolerated_force
+
+def test_palm_force():
+  """
+  Test grasp stability by applying extra palm force and seeing if the object remains in grasp
+  """
+
+  if continue_demo:
+    rospy.loginfo("No palm force test run, demo is active, returning")
+    return
+
+  global gripper_target_reached, use_palm_force_test, palm_force_target, prevent_force_test
+
+  rospy.loginfo("Running palm force test now")
+
+  # first move panda up to avoid table
+  time.sleep(0.1)
+  req = ResetPanda()
+  req.reset_height_mm = 80
+  reset_panda(req)
+
+  if not use_palm_force_test: 
+    rospy.logwarn("test_palm_force() called but use_palm_force_test=False")
+    return
+  
+  # get the current state position
+  current_gripper_state = model.trainer.env.mj.get_state_metres(True) # realworld=True
+
+  start = time.time()
+  max_time = 30
+
+  palm_move = 0e-3
+  palm_move_after_contact = 0
+  max_palm_move = 165e-3 - current_gripper_state[2]
+  max_palm_move_after_contact = 50e-3
+  force_for_contact = 0.5
+  move_increment = 2e-3 # in metres
+
+  force_target = palm_force_target
+  start_force = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+  max_tolerated_force = 0
+
+  while time.time() - start < max_time and not(prevent_force_test):
+
+    if gripper_target_reached:
+
+      # check if required force is reached
+      new_force = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+      tolerated_force = new_force - start_force
+      if tolerated_force > max_tolerated_force: max_tolerated_force = tolerated_force
+      if tolerated_force > force_target:
+        rospy.logwarn(f"Palm test complete, tolerated {max_tolerated_force:.1f}N. Current force {new_force:.1f}, start force {start_force:.1f}, target force {force_target:.1f}")
+        return max_tolerated_force
+      
+      # check if dangerous forces are recorded
+      norm_gauge1 = model.trainer.env.mj.real_sensors.normalised.read_finger1_gauge()
+      norm_gauge2 = model.trainer.env.mj.real_sensors.normalised.read_finger2_gauge()
+      norm_gauge3 = model.trainer.env.mj.real_sensors.normalised.read_finger3_gauge ()
+      norm_palm = model.trainer.env.mj.real_sensors.normalised.read_palm_sensor()
+      norm_wrist_z = model.trainer.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
+
+      rospy.loginfo(f"Palm test in progress, just tolerated {tolerated_force:.1f}N, maximum tolerated {max_tolerated_force:.1f}. Current force {new_force:.1f}, start force {start_force:.1f}, target force {force_target:.1f}. (g1,g2,g3,p,w) = ({norm_gauge1:.2f}, {norm_gauge2:.2f}, {norm_gauge3:.2f}, {norm_palm:.2f}, {norm_wrist_z:.2f})")
+
+      gauge_lim = 0.7 # sat yield factor is 1.5, hence yield is 1.0/1.5 = 0.67
+      if norm_gauge1 > gauge_lim or norm_gauge2 > gauge_lim or norm_gauge3 > gauge_lim or norm_wrist_z > 0.8:
+        rospy.logwarn(f"Palm test failed, safe sensors exceeded (g1,g2,g3,p,w) = ({norm_gauge1:.2f}, {norm_gauge2:.2f}, {norm_gauge3:.2f}, {norm_palm:.2f}, {norm_wrist_z:.2f}). Maximum tolerated force {max_tolerated_force:.1f}N")
+        return max_tolerated_force
 
       if move_gripper is False:
         if log_level > 1: rospy.loginfo(f"Gripper action ignored as move_gripper=False")
         continue
 
-      palm_move += 1e-3 # increment in metres
+      palm_move += move_increment
+
+      if max_tolerated_force > force_for_contact:
+        palm_move_after_contact += move_increment
       
       if palm_move > max_palm_move:
         rospy.logwarn(f"Palm test failed, maximum palm movement of {palm_move:.3f} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
-        return
+        return max_tolerated_force
+      
+      if palm_move_after_contact > max_palm_move_after_contact:
+        rospy.logwarn(f"Palm test failed, maximum palm movement after contact of {palm_move_after_contact:.3f} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+        return max_tolerated_force
+
+      # palm_move += 1e-3 # increment in metres
+      
+      # if palm_move > max_palm_move:
+      #   rospy.logwarn(f"Palm test failed, maximum palm movement of {palm_move:.3f} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+      #   return max_tolerated_force
 
       new_demand = GripperDemand()
       new_demand.state.pose.x = current_gripper_state[0]
@@ -593,7 +823,16 @@ def test_palm_force(current_gripper_state):
       # data callback will let us know when the gripper demand is fulfilled
       gripper_target_reached = False
 
-  rospy.logwarn(f"Palm test failed, timeout of {max_time} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+      # sleep for it to be executed (hand tune this value)
+      time.sleep(0.175)
+
+  if prevent_force_test:
+    rospy.logwarn("Force test stopped by user")
+    prevent_force_test = False
+  else:
+    rospy.logwarn(f"Palm test failed, timeout of {max_time} exceeded. Maximum tolerated force {max_tolerated_force:.1f}N")
+
+  return max_tolerated_force
 
 def execute_grasping_callback(request=None, reset=True):
   """
@@ -611,13 +850,14 @@ def execute_grasping_callback(request=None, reset=True):
   global gripper_target_reached
   global grasp_frc_stable
   global stable_grasp_frc
+  global prevent_force_test
 
   if reset:
     reset_all(allow_panda_noise=True) # note this calls 'cancel_grasping_callback' if continue_grasping == True
 
-  # this flag allows grasping to proceed
+  # set initial flags
   continue_grasping = True
-
+  prevent_force_test = False
   grasp_frc_stable = False
 
   step_num = 0
@@ -638,14 +878,35 @@ def execute_grasping_callback(request=None, reset=True):
       if use_forces_stable_grasp:
 
         if grasp_frc_stable:
+
           cancel_grasping_callback()
-          test_palm_force(new_target_state)
+
+          # using a second gripper for XYZ force measurements
+          if extra_gripper_measuring:
+
+            # only automatically measure if doing a trial
+            if trial_object_num is not None:
+
+              global axis_force_tol
+              rospy.loginfo(f"Trial in progress, extra_gripper_measuring=True. Trial number = {trial_object_num}, trial axis = {trial_object_axis}")
+              test_req = ForceTest()
+              test_req.axis = trial_object_axis
+              test_req.obj_num = trial_object_num
+              run_extra_force_test(test_req)
+
+          # do a regular palm force test
+          elif use_palm_force_test:
+            test_palm_force()
+
           rospy.loginfo(f"Stable grasp forces were: {stable_grasp_frc}")
+
+        # grasp forces are not yet stable, continue
         else:
           # true message latches whilst we execute the action, now reset
           grasp_frc_stable = False
           stable_grasp_frc = None
 
+      # not using forces for stable grasp, check only height
       else:
 
         # if we have reached our target position, terminate grasping
@@ -734,6 +995,16 @@ def cancel_grasping_callback(request=None):
 
   return []
 
+def stop_force_test(request=None):
+  """
+  Prevent a force test from completing
+  """
+
+  global prevent_force_test
+  prevent_force_test = True
+
+  return []
+
 def reset_all(request=None, skip_panda=False, allow_panda_noise=False):
   """
   Reset the gripper and panda
@@ -763,6 +1034,11 @@ def reset_all(request=None, skip_panda=False, allow_panda_noise=False):
 
   # reset the environment for real world testing
   model.trainer.env.reset(realworld=True) # recalibrates sensors
+
+  if extra_gripper_measuring:
+    # manually reset offset to rezero the sensor
+    global extra_gripper_z_offset
+    extra_gripper_z_offset = extra_gripper_palm_raw
 
   if currently_testing and current_test_data.data.heuristic:
     model.trainer.env.start_heuristic_grasping(realworld=True)
@@ -821,45 +1097,6 @@ def reset_panda(request=None, allow_noise=False):
 
   else:
 
-    # # calibrations 16/11/23 no neoprene mat, just bare table
-    # cal_0_mm = [-0.10888434, 0.12920959, 0.05087754, -1.56977304, -0.02553182, 1.74840618, 0.85652936]
-    # cal_2_mm = [-0.10888385, 0.13086490, 0.05087110, -1.56557915, -0.02566678, 1.74316332, 0.85653284]
-    # cal_4_mm = [-0.10888475, 0.13257838, 0.05086848, -1.56092191, -0.02565890, 1.73763922, 0.85653600]
-    # cal_6_mm = [-0.10887365, 0.13335276, 0.05087044, -1.55499801, -0.02566282, 1.73228311, 0.85653337]
-    # cal_8_mm = [-0.10885725, 0.13403452, 0.05086941, -1.54878220, -0.02566139, 1.72690344, 0.85651799]
-    # cal_10_mm = [-0.10884833, 0.13486549, 0.05087349, -1.54285273, -0.02566048, 1.72160804, 0.85647790]
-    # cal_12_mm = [-0.10884008, 0.13555951, 0.05086974, -1.53668406, -0.02566486, 1.71629449, 0.85641875]
-    # cal_14_mm = [-0.10882252, 0.13640044, 0.05087226, -1.53045862, -0.02567098, 1.71099106, 0.85636076]
-    # cal_16_mm = [-0.10880308, 0.13733528, 0.05086848, -1.52400617, -0.02567792, 1.70562401, 0.85630213]
-    # cal_18_mm = [-0.10876986, 0.13844784, 0.05086774, -1.51761217, -0.02569230, 1.70003810, 0.85623644]
-    # cal_20_mm = [-0.10844112, 0.13925107, 0.05087015, -1.51147060, -0.02571112, 1.69453602, 0.85617455]
-    # cal_30_mm = [-0.10808472, 0.14447685, 0.05086825, -1.47855505, -0.02606768, 1.66734410, 0.85586075]
-    # cal_40_mm = [-0.10758827, 0.15118460, 0.05087011, -1.44392922, -0.02617517, 1.63934895, 0.85555093]
-    # cal_50_mm = [-0.10704419, 0.15879855, 0.05086899, -1.40791856, -0.02656406, 1.61070871, 0.85527770]
-
-    # # new calibrations 75DEGREE FINGERS and bare table (with wrist) 6mm=just ground, 4mm=full touch
-    # cal_0_mm = [-0.22404728, 0.13964483, 0.19326293, -1.59632575, -0.04677542, 1.74173468, 0.94479131]
-    # cal_2_mm = [-0.22400640, 0.14061183, 0.19326888, -1.59172601, -0.04688521, 1.73664071, 0.94476763]
-    # cal_4_mm = [-0.22379355, 0.14178988, 0.19327067, -1.58689679, -0.04687025, 1.73133279, 0.94471706]
-    # cal_6_mm = [-0.22373200, 0.14227193, 0.19326218, -1.58134623, -0.04688259, 1.72605045, 0.94464816]
-    # cal_8_mm = [-0.22351149, 0.14278805, 0.19326339, -1.57552217, -0.04691154, 1.72080118, 0.94455851]
-    # cal_10_mm = [-0.22338047, 0.14321961, 0.19326377, -1.56981998, -0.04695056, 1.71554049, 0.94449444]
-    # cal_12_mm = [-0.22315984, 0.14381249, 0.19326313, -1.56409162, -0.04698193, 1.71030302, 0.94444504]
-    # cal_14_mm = [-0.22292906, 0.14431743, 0.19326377, -1.55827568, -0.04702110, 1.70502988, 0.94440883]
-    # cal_16_mm = [-0.22276281, 0.14494761, 0.19325951, -1.55227551, -0.04706476, 1.69968350, 0.94437151]
-    # cal_18_mm = [-0.22252589, 0.14561535, 0.19325899, -1.54629105, -0.04715328, 1.69432361, 0.94433168]
-    # cal_20_mm = [-0.22231108, 0.14632759, 0.19325899, -1.54034111, -0.04744622, 1.68898482, 0.94428580]
-    # cal_22_mm = [-0.22207719, 0.14706373, 0.19325731, -1.53430670, -0.04748396, 1.68364684, 0.94425756]
-    # cal_24_mm = [-0.22183249, 0.14783977, 0.19325970, -1.52809313, -0.04753047, 1.67828278, 0.94422883]
-    # cal_26_mm = [-0.22158723, 0.14868816, 0.19325800, -1.52179314, -0.04764007, 1.67290760, 0.94420086]
-    # cal_28_mm = [-0.22133253, 0.14948755, 0.19326136, -1.51568426, -0.04791198, 1.66752722, 0.94418284]
-    # cal_30_mm = [-0.22108151, 0.15049103, 0.19326123, -1.50937568, -0.04796742, 1.66207521, 0.94416797]
-    # cal_40_mm = [-0.21973381, 0.15568114, 0.19325782, -1.47684101, -0.04883687, 1.63470783, 0.94413594]
-    # cal_50_mm = [-0.21816549, 0.16187687, 0.19325522, -1.44269509, -0.04997707, 1.60679131, 0.94414039]
-    # cal_60_mm = [-0.21654716, 0.17092935, 0.19319171, -1.40934662, -0.05118662, 1.57841229, 0.94429795]
-    # cal_70_mm = [-0.21452425, 0.17962777, 0.19318727, -1.37163661, -0.05285736, 1.54933323, 0.94457650]
-    # cal_80_mm = [-0.21210073, 0.18971941, 0.19318226, -1.33181922, -0.05481463, 1.51933398, 0.94491698]
-
     # new calibrations 75DEGREE FINGERS BARE TABLE (NO WRIST) 4mm=light touch, 2mm=press
     cal_0_mm = [-0.27387776, -0.02585006, 0.30729622, -1.89643083, 0.00676038, 1.87621824, 0.84037356]
     cal_2_mm = [-0.27392039, -0.02572424, 0.30729622, -1.89337982, 0.00672408, 1.87142800, 0.84036733]
@@ -882,9 +1119,40 @@ def reset_panda(request=None, allow_noise=False):
     cal_60_mm = [-0.27538812, -0.02767563, 0.30729625, -1.74815756, 0.00737045, 1.72428787, 0.83968787]
     cal_70_mm = [-0.27534187, -0.02516956, 0.30729125, -1.71972291, 0.00653091, 1.69838691, 0.84020591]
     cal_80_mm = [-0.27489364, -0.02177300, 0.30729093, -1.69023271, 0.00559191, 1.67217843, 0.84087814]
+    cal_90_mm = [-0.27442663, -0.01700015, 0.30725260, -1.66094411, 0.00428391, 1.64610852, 0.84159472]
+    cal_100_mm = [-0.27342677, -0.01169027, 0.30724883, -1.62902436, 0.00271029, 1.61938627, 0.84278577]
+    cal_110_mm = [-0.27221279, -0.00529769, 0.30724584, -1.59589389, 0.00080301, 1.59226100, 0.84416299]
+    cal_120_mm = [-0.27068688, 0.00206569, 0.30723810, -1.56146977, -0.00141168, 1.56471790, 0.84578688]
+    cal_130_mm = [-0.26867866, 0.01051012, 0.30723448, -1.52532189, -0.00398714, 1.53676718, 0.84757781]
+    cal_140_mm = [-0.26635378, 0.02023801, 0.30722737, -1.48763902, -0.00694801, 1.50828884, 0.84963912]
 
+    # # calibration 15/02/24 60DEGREE FINGERS EI1 0mm=press, 2mm=light touch
+    # cal_0_mm = [-0.26363617, -0.05473505, 0.30020690, -1.90742241, 0.00734889, 1.87581724, 0.82313380]
+    # cal_2_mm = [-0.26366258, -0.05472722, 0.30021328, -1.90369823, 0.00735250, 1.87093787, 0.82305917]
+    # cal_4_mm = [-0.26371654, -0.05471687, 0.30021328, -1.89936716, 0.00741290, 1.86591738, 0.82294415]
+    # cal_6_mm = [-0.26391464, -0.05504486, 0.30021328, -1.89472156, 0.00748206, 1.86090533, 0.82281917]
+    # cal_8_mm = [-0.26396259, -0.05532080, 0.30021161, -1.88997358, 0.00757329, 1.85586071, 0.82272108]
+    # cal_10_mm = [-0.26403608, -0.05563658, 0.30021328, -1.88528073, 0.00770713, 1.85078742, 0.82262177]
+    # cal_12_mm = [-0.26422203, -0.05593439, 0.30021523, -1.88056663, 0.00779554, 1.84573231, 0.82252450]
+    # cal_14_mm = [-0.26427300, -0.05619965, 0.30021331, -1.87574604, 0.00784266, 1.84068288, 0.82243819]
+    # cal_16_mm = [-0.26438289, -0.05632581, 0.30021690, -1.87089863, 0.00788102, 1.83561542, 0.82236489]
+    # cal_18_mm = [-0.26453586, -0.05657995, 0.30021523, -1.86600990, 0.00791936, 1.83057723, 0.82228960]
+    # cal_20_mm = [-0.26458381, -0.05668035, 0.30021328, -1.86109418, 0.00795603, 1.82553612, 0.82223020]
+    # cal_22_mm = [-0.26463690, -0.05691966, 0.30021328, -1.85616508, 0.00798505, 1.82048298, 0.82216497]
+    # cal_24_mm = [-0.26482269, -0.05695218, 0.30022009, -1.85119037, 0.00800458, 1.81538102, 0.82211627]
+    # cal_26_mm = [-0.26486016, -0.05698160, 0.30021650, -1.84621390, 0.00801417, 1.81027087, 0.82207689]
+    # cal_28_mm = [-0.26489700, -0.05699540, 0.30021845, -1.84108635, 0.00801764, 1.80515880, 0.82204296]
+    # cal_30_mm = [-0.26493536, -0.05700533, 0.30021845, -1.83597784, 0.00801835, 1.80008457, 0.82202409]
+    # cal_40_mm = [-0.26529586, -0.05696333, 0.30022013, -1.80990437, 0.00799617, 1.77460503, 0.82199937]
+    # cal_50_mm = [-0.26544880, -0.05556902, 0.30021846, -1.78293351, 0.00772567, 1.74892897, 0.82204890]
+    # cal_60_mm = [-0.26546751, -0.05339131, 0.30021507, -1.75493735, 0.00707560, 1.72307920, 0.82238232]
+    # cal_70_mm = [-0.26539159, -0.05028930, 0.30021145, -1.72586789, 0.00612781, 1.69704613, 0.82291076]
+    # cal_80_mm = [-0.26503468, -0.04624956, 0.30021437, -1.69573253, 0.00491428, 1.67075798, 0.82362430]
+    # cal_90_mm = [-0.26424438, -0.04132709, 0.30020633, -1.66449699, 0.00342211, 1.64419101, 0.82454922]
+    # cal_100_mm = [-0.26334276, -0.03539899, 0.30020896, -1.63179003, 0.00161609, 1.61728759, 0.82568431]
+  
   # umh = 4 # uncertainty matrix height
-  calibrated_0mm = 4# + umh # height in mm where table touch occurs with above calibration
+  calibrated_0mm = 2# + umh # height in mm where table touch occurs with above calibration
 
   # beyond this we do not have additional 2mm increments
   if request.reset_height_mm >= 28: calibrated_0mm = 0
@@ -932,6 +1200,40 @@ def reset_panda(request=None, allow_noise=False):
 
   return True
 
+def set_panda_joints(target_state):
+  """
+  Set the panda joints to a particular state
+  """
+
+  rospy.loginfo(f"About to set panda to target joints: {target_state}")
+
+  # move the joints slowly to the reset position - this could be dangerous!
+  speed_factor = 0.1 # 0.1 is slow movements, 0.05 very slow
+
+  # to prevent 'attempted to start multiple motions'
+  time.sleep(0.1)
+
+  global panda_in_motion
+  panda_in_motion = True
+
+  if use_panda_threads:
+    process = Process(target=franka_instance.move_joints, args=(target_state, speed_factor))
+    process.start()
+    process.join()
+    process.close()
+    if process.exception:
+      rospy.logwarn(f"Panda movement exception. Cancelling grasping. Error message: {process.exception}")
+      cancel_grasping_callback()
+      return False
+  else:
+    franka_instance.move_joints(target_state, speed_factor) # now approach reset height
+
+  panda_in_motion = False
+
+  rospy.loginfo("Panda set to the target joint state")
+
+  return True
+
 def reset_gripper(request=None):
   """
   Publish a homing command for the gripper
@@ -950,6 +1252,11 @@ def reset_gripper(request=None):
 
   if log_level > 0: rospy.loginfo("rl_grasping_node requests homing gripper position")
   demand_pub.publish(homing_demand)
+
+  if extra_gripper_measuring:
+    home_request = GripperRequest()
+    home_request.message_type = "home"
+    extra_demand_pub.publish(home_request)
 
   return []
 
@@ -1245,6 +1552,10 @@ def start_trial(request):
   global current_test_data
   current_test_data.start_trial(request.object_name, request.object_number, request.trial_number)
 
+  global trial_object_num, trial_object_axis
+  trial_object_num = request.object_number
+  trial_object_axis = str(request.axis)
+
   # grasp
   execute_grasping_callback()
 
@@ -1266,8 +1577,26 @@ def save_trial(request):
   except Exception as e:
     rospy.logwarn(f"Unable to reset in save_trail(), error: {e}")
 
+  # special behaviour for automatically filling in force tolerated values, wipe these variables below!
+  global trial_object_axis, trial_object_num, axis_force_tol
+  if extra_gripper_measuring:
+    if request.s_h:
+      if trial_object_axis is not None and axis_force_tol is not None:
+        if trial_object_axis.lower() == "x" and request.XFTol < 1e-4:
+          rospy.logwarn(f"Auto recording X AXIS force as {axis_force_tol:.1f}N")
+          request.XFTol = axis_force_tol
+        elif trial_object_axis.lower() == "y" and request.YFTol < 1e-4:
+          rospy.logwarn(f"Auto recording Y AXIS force as {axis_force_tol:.1f}N")
+          request.YFTol = axis_force_tol
+        elif trial_object_axis.lower() == "z" and request.pFTol < 1e-4:
+          rospy.logwarn(f"Auto recording Z AXIS force as {axis_force_tol:.1f}N")
+          request.pFTol = axis_force_tol
+      rospy.loginfo(f"Tolerated forces: X={request.XFTol:.1f} Y={request.YFTol:.1f} Z={request.pFTol:.1f}")
+    else:
+      rospy.loginfo("Tolerated forces: NONE as stable height = False")
+
   global current_test_data
-  current_test_data.finish_trial(request)
+  current_test_data.finish_trial(request, stable_forces=stable_grasp_frc)
 
   global image_batch_size
   if image_batch_size:
@@ -1287,6 +1616,11 @@ def save_trial(request):
                  suffix_numbering=False)
 
       if log_level > 1: rospy.loginfo("Saving batch of image data complete")
+
+  # wipe local data, added for XYZ force measurement (marked as global above!)
+  trial_object_num = None
+  trial_object_axis = None
+  axis_force_tol = None
 
   if log_level > 1:
     rospy.loginfo("Trial data saved")
@@ -2066,6 +2400,158 @@ def reset_demo(request=None):
   
   return True
 
+def print_panda_state(request=None):
+  """
+  Print the panda state
+  """
+
+  state = franka_instance.getState()
+
+  vec_str = "[{0:.8f}, {1:.8f}, {2:.8f}, {3:.8f}, {4:.8f}, {5:.8f}, {6:.8f}]".format(*state.q)
+
+  print("Panda joint state:")
+  print(vec_str)
+
+  return []
+
+hardcoded_object_force_measuring_green = {
+  "2" : {
+    "X" : [-0.28069337, -0.18465624, 0.11252855, -1.79308801, 0.00557113, 1.63109549, 0.22820591],
+    "Y" : [-0.28067816, -0.20041854, 0.12062921, -1.81007805, 0.00557847, 1.63082551, -0.18339117],
+  },
+  "4" : {
+    "X" : [-0.28060156, -0.23367603, 0.16820210, -1.85873665, 0.00614091, 1.69284216, 0.51941030],
+    "Y" : [-0.28038861, -0.21276796, 0.16017152, -1.86001793, 0.00612240, 1.68230830, 0.08397833],
+  },
+  "6" : {
+    "X" : [-0.27871970, -0.11468955, 0.23129969, -1.77778824, 0.00761231, 1.66875519, 0.76874122],
+    "Y" : [-0.28046264, -0.10543998, 0.23374335, -1.76794357, 0.00584989, 1.65160690, 0.07113314],
+  },
+  "8" : {
+    "X" : [-0.28091029, -0.16420879, 0.15070010, -1.88149919, 0.00120455, 1.73359205, 0.44847199],
+    "Y" : [-0.28072572, -0.15555267, 0.15084620, -1.88166048, 0.00122767, 1.73450316, 0.02170936],
+  },
+  "10" : {
+    "X" : [-0.27469432, -0.18660782, 0.17350099, -1.79283709, 0.00682472, 1.64312909, 0.49513677],
+    "Y" : [-0.27242907, -0.17497830, 0.18407547, -1.80016360, 0.00494904, 1.64173521, 0.04556134],
+  },
+  "12" : {
+    "X" : [-0.27469746, -0.17492785, 0.21402303, -1.75574718, 0.00691229, 1.57555222, 0.50163380], #[-0.28056639, -0.06934160, 0.18793227, -1.66450525, 0.00657487, 1.61252933, 0.90604727],
+    "Y" : [-0.18743505, -0.09945260, 0.35270521, -1.67386494, 0.00567364, 1.58914825, -0.31718803], #[-0.19389855, -0.06905497, 0.34948230, -1.67012694, 0.00364755, 1.62753837, -0.31871014],
+  },
+  "14" : {
+    "X" : [-0.27606672, -0.13369937, 0.21072207, -1.79500398, 0.00510505, 1.69592195, 0.81058123],
+    "Y" : [-0.25066182, -0.13217422, 0.24753858, -1.74344409, -0.00369604, 1.61144976, -0.43415420],
+  },
+  "16" : {
+    "X" : [-0.27643267, -0.13256331, 0.13743127, -1.70460825, 0.00226769, 1.55355555, 0.28268021],
+    "Y" : [-0.26965222, -0.13548586, 0.14517343, -1.70662584, 0.00205102, 1.56661795, -0.14188716],
+  },
+  "18" : {
+    "X" : [-0.26172567, -0.06315081, 0.20643580, -1.64939824, -0.04018200, 1.58129323, 1.04921773],
+    "Y" : [-0.29219042, -0.17514905, 0.21090864, -1.77085120, 0.00254249, 1.63615826, 0.69604525],
+  },
+  "20" : {
+    "X" : [-0.27637320, -0.22302036, 0.25724313, -1.86360882, 0.02409553, 1.64668284, 1.01960013],
+    "Y" : [-0.28444011, -0.11949539, 0.23183313, -1.77593529, 0.01693870, 1.67218893, 0.87288591],
+  },
+  "22" : {
+    "X" : [-0.27534684, -0.15339331, 0.16271155, -1.80162031, 0.01187669, 1.66734649, 0.61472686],
+    "Y" : [-0.26185587, -0.16152694, 0.19397875, -1.80414769, -0.00820810, 1.64714971, -0.00852966],
+  },
+  "24" : {
+    "X" : [-0.27188509, -0.06363571, 0.23049632, -1.64849280, -0.01652225, 1.48626309, 1.03559028],
+    "Y" : [-0.17227974, -0.10750029, 0.34341929, -1.72045947, -0.00156884, 1.66381998, -0.24240502],
+  },
+  "26" : {
+    "X" : [-0.27697475, -0.14601591, 0.22186620, -1.77951218, 0.00268244, 1.66197248, 0.73880315],
+    "Y" : [-0.27499572, -0.15417218, 0.22693995, -1.78087218, 0.00223199, 1.64768070, 0.15117543],
+  },
+  "28" : {
+    "X" : [-0.27611278, -0.19119269, 0.16501353, -1.76116749, 0.02709927, 1.61511364, 0.58347988],
+    "Y" : [-0.27799380, -0.21297657, 0.15657929, -1.76939147, 0.02562485, 1.60693449, 0.01892179],
+  },
+  "30" : {
+    "X" : [-0.28173900, -0.11908118, 0.26559166, -1.81942041, -0.03252781, 1.72787966, 0.90076040],
+    "Y" : [-0.26307180, -0.12834553, 0.26490279, -1.82014274, -0.03056514, 1.72639261, 0.32351686],
+  },
+}
+
+hardcoded_object_force_measuring_ycb = {
+  "1" : {
+    "X" : [-0.36822848, -0.24370299, 0.26221085, -1.82266134, 0.00660396, 1.63084830, 0.04742342],
+    "Y" : [-0.34878434, -0.19379540, 0.22452411, -1.77025586, 0.00845984, 1.60588533, 0.03239621],
+  },
+  "2" : {
+    "X" : [-0.38938788, -0.21589496, 0.25725081, -1.79024386, 0.01695426, 1.61316229, 0.23300391],
+    "Y" : [-0.34964094, -0.25129792, 0.20835552, -1.83186395, 0.00998687, 1.63875029, -0.06993842],
+  },
+  "3" : {
+    "X" : [-0.39849714, -0.17619944, 0.25171656, -1.74413389, 0.01700903, 1.58506178, 0.34202753],
+    "Y" : [-0.35814276, -0.19549277, 0.23708305, -1.76393569, 0.00889229, 1.59696620, -0.05891695],
+  },
+  "4" : {
+    "X" : [-0.42908830, -0.25237199, 0.29438708, -1.83039462, 0.00104007, 1.60534001, 1.36668947],
+    "Y" : [-0.40696170, -0.20175402, 0.27362313, -1.76671062, -0.00176479, 1.59019100, -0.14504454],
+  },
+  "5" : {
+    "X" : [-0.33734248, -0.22562461, 0.21329443, -1.81359614, -0.00115945, 1.62097849, 0.27809521],
+    "Y" : [-0.31184307, -0.22979622, 0.16276000, -1.83101824, 0.01560823, 1.62756959, -0.13225184],
+  },
+  "6" : {
+    "X" : [-0.35113246, -0.21038871, 0.20779082, -1.79192823, 0.01264486, 1.61473502, 0.50283690],
+    "Y" : [-0.37982736, -0.22834180, 0.22571717, -1.80426171, 0.02785046, 1.61833920, 0.00403935],
+  },
+  "7" : {
+    "X" : [-0.46441629, -0.23208175, 0.31465964, -1.80422963, 0.03132587, 1.61427766, -0.32375088],
+    "Y" : [-0.28523755, -0.12735198, 0.31327087, -1.66000702, -0.03820321, 1.57394596, 0.26259663],
+  },
+  "8" : {
+    "X" : [-0.49468934, -0.33287497, 0.36455098, -1.91088287, 0.06234966, 1.68656495, -0.14729543],
+    "Y" : [-0.31960041, -0.21811382, 0.38460827, -1.76505973, 0.05219151, 1.59815581, 1.62348173],
+  },
+  "9" : {
+    "X" : [-0.35091209, -0.15675582, 0.22496334, -1.72634900, 0.03306611, 1.58245729, 0.62402635],
+    "Y" : [-0.34559731, -0.24551939, 0.25637673, -1.85514882, 0.00940002, 1.64749501, -0.00985726],
+  },
+  "10" : {
+    "X" : [-0.33302105, -0.23920591, 0.20862076, -1.82806662, 0.03724969, 1.64035617, -0.11816009],
+    "Y" : [-0.35600591, -0.16159757, 0.25744177, -1.81287052, 0.00821057, 1.68553400, 0.76692049],
+  },
+  "11" : {
+    "X" : [-0.30908622, -0.21088443, 0.17168812, -1.78770874, 0.04277118, 1.62067892, 0.55839070],
+    "Y" : [-0.32503490, -0.15846392, 0.18842926, -1.69382091, 0.03550327, 1.54220376, -0.10574355],
+  },
+  "12" : {
+    "X" : [-0.29576385, -0.16584597, 0.28066389, -1.79689273, 0.02170473, 1.63896001, 0.57205689],
+    "Y" : [-0.36313028, -0.07106410, 0.26736304, -1.65453560, 0.05581303, 1.60219679, 0.98449366],
+  },
+  "13" : {
+    "X" : [-0.38268714, -0.17334462, 0.25190128, -1.75094423, 0.02115341, 1.60080303, -0.10838403],
+    "Y" : [-0.36415470, -0.11309172, 0.26738716, -1.61339559, 0.01974911, 1.52049612, 0.82221509],
+  },
+  "14" : {
+    "X" : [-0.34708535, -0.24665460, 0.22070357, -1.85637020, 0.06002641, 1.62860031, 1.11184908],
+    "Y" : [-0.31142471, -0.21162924, 0.14801621, -1.82123772, 0.04136386, 1.65757537, 0.62377793],
+  },
+  "15" : {
+    "X" : [-0.33771638, -0.21299671, 0.23698876, -1.82735471, -0.02304901, 1.63979386, -0.11648936],
+    "Y" : [-0.31621413, -0.25791378, 0.24425740, -1.83870807, 0.01254511, 1.59059062, 0.99776312],
+  },
+  "16" : {
+    "X" : [-0.33679335, -0.34140686, 0.22445922, -2.03388591, -0.00107697, 1.77158404, -0.36154753],
+    "Y" : [-0.33196573, -0.27557177, 0.23241505, -1.96176534, 0.01486781, 1.71198869, 1.22303114],
+  },
+  "17" : {
+    "X" : [-0.27970909, -0.22227602, 0.20857714, -1.80011564, 0.01011829, 1.60661487, -0.03122316],
+    "Y" : [-0.32448044, -0.17954766, 0.20391652, -1.78247072, 0.01073538, 1.65693519, 0.74255822],
+  },
+  "18" : {
+    "X" : [-0.32820666, -0.17805193, 0.19110956, -1.75821472, 0.00861790, 1.60394009, 0.54447852],
+    "Y" : [-0.28030205, -0.25169401, 0.17057721, -1.83578748, 0.00854337, 1.63339174, -0.10541317],
+  },
+}
+
 # ----- scripting to initialise and run node ----- #
 
 if __name__ == "__main__":
@@ -2096,23 +2582,30 @@ if __name__ == "__main__":
   rospy.Subscriber("/gripper/real/state", GripperState, data_callback)
   demand_pub = rospy.Publisher("/gripper/demand", GripperDemand, queue_size=10)
 
+  if extra_gripper_measuring:
+    rospy.Subscriber("/gripper/other/output", GripperOutput, extra_gripper_data_callback)
+    extra_demand_pub = rospy.Publisher("/gripper/other/request", GripperRequest)
+    extra_zfrc_pub = rospy.Publisher(f"/{node_ns}/other_frc", Float32)
+
   # subscribers for image topics
   rospy.Subscriber("/camera/rgb", Image, rgb_callback)
   rospy.Subscriber("/camera/depth", Image, depth_callback)
 
   # publishers for displaying normalised nn input values
-  if move_gripper:
-    norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
-    norm_sensor_pub = rospy.Publisher(f"/{node_ns}/sensor", NormalisedSensor, queue_size=10)
-    debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
-  if move_panda:
-    panda_local_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/local_wrench", Wrench, queue_size=10)
-    panda_global_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/global_wrench", Wrench, queue_size=10)
-  
+  norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
+  norm_sensor_pub = rospy.Publisher(f"/{node_ns}/sensor", NormalisedSensor, queue_size=10)
+  palm_SI_pub = rospy.Publisher(f"/{node_ns}/palm_SI", Float32, queue_size=10)
+  debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
+  panda_local_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/local_wrench", Wrench, queue_size=10)
+  panda_global_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/global_wrench", Wrench, queue_size=10)
   img_obs_pub = rospy.Publisher(f"/{node_ns}/img_obs", Image, queue_size=10)
 
+  # publish the first message to rqt keeps things going
+  norm_state_pub.publish(NormalisedState())
+  norm_sensor_pub.publish(NormalisedSensor())
+
   # user set - what do we load by default
-  if use_devel and True:
+  if use_devel and False:
 
     rospy.logwarn("Loading DEVEL policy")
 
@@ -2136,6 +2629,18 @@ if __name__ == "__main__":
     load.job_number = 4
     load.run_id = "best"
 
+    # Program: palm_vs_no_palm_1
+    load.timestamp = "19-01-24_16-54"
+    load.run_id = "best"
+    # load.job_number = 6 # no palm, 45deg, E1
+    # load.job_number = 16 # no palm, 60deg, E1
+    # load.job_number = 28 # no palm, 75deg, E1
+    # load.job_number = 37 # no palm, 90deg, E1
+    # load.job_number = 44 # palm, 45deg, E1
+    # load.job_number = 53 # palm, 60deg, E1
+    load.job_number = 61 # palm, 75deg, E1
+    # load.job_number = 78 # palm, 90deg, E1
+
     load_model(load)
 
     # # special case for testing GAN image rendering
@@ -2154,6 +2659,9 @@ if __name__ == "__main__":
     load.width = 28e-3
     load.sensors = 3
     load_baseline_1_model(load)
+
+    # make forwards compatible
+    model.trainer.env.params.use_rgb_in_observation = False
 
   else:
 
@@ -2203,6 +2711,9 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/reset_demo", Empty, reset_demo)
   rospy.Service(f"/{node_ns}/continue_demo", Demo, loop_demo)
   rospy.Service(f"/{node_ns}/set_reject_wrist_noise", SetBool, set_reject_wrist_noise_callback)
+  rospy.Service(f"/{node_ns}/extra_frc_test", ForceTest, run_extra_force_test)
+  rospy.Service(f"/{node_ns}/print_panda_state", Empty, print_panda_state)
+  rospy.Service(f"/{node_ns}/stop_force_test", Empty, stop_force_test)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests

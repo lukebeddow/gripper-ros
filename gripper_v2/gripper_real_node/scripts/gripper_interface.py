@@ -21,6 +21,16 @@ def command_line_callback(data):
   mygripper.command.z = data.z
   mygripper.send_message(type=data.message_type)
 
+def other_demand_callback(data):
+  """
+  Gripper demand message for using a second gripper (ie other gripper)
+  """
+
+  othergripper.command.x = data.x
+  othergripper.command.y = data.y
+  othergripper.command.z = data.z
+  othergripper.send_message(type=data.message_type)
+
 def demand_callback(data):
   """
   Receive a gripper ROS input demand and send it to the real gripper
@@ -85,17 +95,20 @@ if __name__ == "__main__":
 
   gripper_initialised = False
 
+  use_both_grippers = True
+
   try:
 
     # establish connection with the gripper
     bt_port = "/dev/rfcomm0"
     usb_port = "/dev/ttyACM0"
 
+    if use_both_grippers:
+      othergripper = Gripper()
+      othergripper.connect("/dev/ttyACM1")
+
     mygripper = Gripper()
     mygripper.connect(usb_port)
-
-    # create output message
-    output_msg = GripperOutput()
 
     # create raw data publishers
     connected_pub = rospy.Publisher("/gripper/real/connected", Bool, queue_size=10)
@@ -109,17 +122,10 @@ if __name__ == "__main__":
     rospy.Subscriber("/gripper/request", GripperRequest, command_line_callback)
     state_pub = rospy.Publisher("/gripper/real/output", GripperOutput, queue_size=10)
 
-    # # for testing: publish rolling averages
-    # gauge1avg_pub = rospy.Publisher("/gripper/real/gauge1avg", Float64, queue_size=10)
-    # gauge2avg_pub = rospy.Publisher("/gripper/real/gauge2avg", Float64, queue_size=10)
-    # gauge3avg_pub = rospy.Publisher("/gripper/real/gauge3avg", Float64, queue_size=10)
-    # gauge4avg_pub = rospy.Publisher("/gripper/real/gauge4avg", Float64, queue_size=10)
-    # i = 0
-    # num_for_avg = 10
-    # gauge1avg = np.zeros(num_for_avg)
-    # gauge2avg = np.zeros(num_for_avg)
-    # gauge3avg = np.zeros(num_for_avg)
-    # gauge4avg = np.zeros(num_for_avg)
+    # publishers and subscribers for using both grippers
+    if use_both_grippers:
+      rospy.Subscriber("/gripper/other/request", GripperRequest, other_demand_callback)
+      other_pub = rospy.Publisher("/gripper/other/output", GripperOutput, queue_size=10)
 
     gripper_message_rate = 20
 
@@ -132,6 +138,7 @@ if __name__ == "__main__":
         mygripper.send_message(type="resume")
         mygripper.send_message(type="home")
         mygripper.send_message(type="debug_on")
+        mygripper.send_message(type="power_saving_on")
 
         mygripper.command.x = 0.2
         mygripper.send_message(type="change_timed_action")
@@ -160,8 +167,6 @@ if __name__ == "__main__":
       # get the most recent state of the gripper
       state = mygripper.update_state()
 
-      # mygripper.send_message("print")
-
       # check if the connection is live yet
       connected_pub.publish(mygripper.connected)
 
@@ -181,23 +186,21 @@ if __name__ == "__main__":
           gauge3_pub.publish(state.gauge3_data)
           gauge4_pub.publish(state.gauge4_data)
 
-          # # get averages
-          # gauge1avg[i] = state.gauge1_data
-          # gauge2avg[i] = state.gauge2_data
-          # gauge3avg[i] = state.gauge3_data
-          # gauge4avg[i] = state.gauge4_data
-          # i += 1
-          # if i == num_for_avg:
-          #   gauge1avg_pub.publish(np.mean(gauge1avg))
-          #   gauge2avg_pub.publish(np.mean(gauge2avg))
-          #   gauge3avg_pub.publish(np.mean(gauge3avg))
-          #   gauge4avg_pub.publish(np.mean(gauge4avg))
-          #   i = 0
-
       # otherwise try to reconnect
       else: 
         gripper_initialised = False
         mygripper.connect(usb_port)
+
+      if use_both_grippers:
+
+        otherstate = othergripper.update_state()
+        
+        if othergripper.connected:
+          if othergripper.first_message_received:
+            other_msg = state_to_msg(otherstate)
+            other_pub.publish(other_msg)
+        else:
+          rospy.logwarn("use_both_grippers = True, but NOT connected")
 
       rate.sleep()
 

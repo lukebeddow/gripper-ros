@@ -69,6 +69,7 @@ add_service_files(
   PandaMoveToInt.srv
   PandaMoveZ.srv
   Demo.srv
+  ForceTest.srv
 )
 
 ## Generate actions in the 'action' folder

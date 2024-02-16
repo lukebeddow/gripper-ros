@@ -3,12 +3,22 @@ from collections import namedtuple
 from copy import deepcopy
 from dataclasses import dataclass
 
-global palm_force_threshold
+global palm_force_threshold, X_force_threshold, Y_force_threshold
 palm_force_threshold = 5
+X_force_threshold = 5
+Y_force_threshold = 5
 
 def set_palm_frc_threshold(value):
   global palm_force_threshold
   palm_force_threshold = value
+
+def set_X_frc_threshold(value):
+  global X_force_threshold
+  X_force_threshold = value
+
+def set_Y_frc_threshold(value):
+  global Y_force_threshold
+  Y_force_threshold = value
 
 class GraspTestData:
 
@@ -45,6 +55,14 @@ class GraspTestData:
     exceed_palm: bool
     palm_frc_tol: float
     palm_tol_grasp: bool
+    X_frc_tol: float
+    Y_frc_tol: float
+    X_tol_grasp: bool
+    Y_tol_grasp: bool
+    finger1_force: float
+    finger2_force: float
+    finger3_force: float
+    palm_force: float
     info: str
 
   @dataclass
@@ -92,12 +110,29 @@ class GraspTestData:
     avg_palm_frc_under: float = 0
     avg_palm_frc_saturated: float = 0
     num_palm_frc_tol: int = 0
+    avg_X_frc_tol: float = 0
+    avg_X_frc_under: float = 0
+    avg_X_frc_saturated: float = 0
+    num_X_frc_tol: int = 0
+    avg_Y_frc_tol: float = 0
+    avg_Y_frc_under: float = 0
+    avg_Y_frc_saturated: float = 0
+    num_Y_frc_tol: int = 0
+    num_X_probe: int = 0
+    num_Y_probe: int = 0
+    num_Z_probe: int = 0
+    avg_f1_frc: float = 0
+    avg_f2_frc: float = 0
+    avg_f3_frc: float = 0
+    avg_f_frc: float = 0
+    avg_p_frc: float = 0
 
   def __init__(self):
     """
     Empty initialisation, should now call start_test(...)
     """
 
+    self.add_palm_start_force = False
     pass
 
   def capture_depth_image(self):
@@ -175,6 +210,14 @@ class GraspTestData:
       0,              # exceed_palm
       0,              # palm frc tol
       0,              # palm_tol_grasp
+      0,              # X_frc_tol
+      0,              # Y_frc_tol
+      0,              # X_tol_grasp
+      0,              # Y_tol_grasp
+      0,              # finger1_force
+      0,              # finger2_force
+      0,              # finger3_force
+      0,              # palm force
       "",             # info string
     )
     self.current_trial_with_images = GraspTestData.TrialData(
@@ -195,6 +238,14 @@ class GraspTestData:
       0,              # exceed_palm
       0,              # palm frc tol
       0,              # palm_tol_grasp
+      0,              # X_frc_tol
+      0,              # Y_frc_tol
+      0,              # X_tol_grasp
+      0,              # Y_tol_grasp
+      0,              # finger1_force
+      0,              # finger2_force
+      0,              # finger3_force
+      0,              # palm force
       "",             # info string
     )
 
@@ -231,10 +282,19 @@ class GraspTestData:
       self.current_trial_with_images.steps.append(this_step)
       self.current_trial_with_images.images.append(this_image)
 
-  def finish_trial(self, request):
+  def finish_trial(self, request, stable_forces=None):
     """
     Finish a trial and save the results
     """
+
+    if stable_forces is None:
+      if request.s_h:
+        raise RuntimeError("stable height is TRUE but there are NO stable grasp forces")
+      stable_forces = [0, 0, 0, 0]
+    elif len(stable_forces) != 4:
+      raise RuntimeError(f"Stable forces of {stable_forces}, invalid input")
+    else:
+      print("Trial stable forces are:", stable_forces)
 
     # special cases where one flag implies another
     if request.s_h: request.t_h = 1 # ie True
@@ -254,7 +314,13 @@ class GraspTestData:
     self.current_trial.dropped = request.drp
     self.current_trial.out_of_bounds = request.oob
     self.current_trial.palm_frc_tol = request.pFTol
+    self.current_trial.X_frc_tol = request.XFTol
+    self.current_trial.Y_frc_tol = request.YFTol
     self.current_trial.info = request.info
+    self.current_trial.finger1_force = stable_forces[0]
+    self.current_trial.finger2_force = stable_forces[1]
+    self.current_trial.finger3_force = stable_forces[2]
+    self.current_trial.palm_force = stable_forces[3]
     self.data.trials.append(deepcopy(self.current_trial))
     self.current_trial = None
 
@@ -269,7 +335,13 @@ class GraspTestData:
     self.current_trial_with_images.dropped = request.drp
     self.current_trial_with_images.out_of_bounds = request.oob
     self.current_trial_with_images.palm_frc_tol = request.pFTol
+    self.current_trial_with_images.X_frc_tol = request.XFTol
+    self.current_trial_with_images.Y_frc_tol = request.YFTol
     self.current_trial_with_images.info = request.info
+    self.current_trial_with_images.finger1_force = stable_forces[0]
+    self.current_trial_with_images.finger2_force = stable_forces[1]
+    self.current_trial_with_images.finger3_force = stable_forces[2]
+    self.current_trial_with_images.palm_force = stable_forces[3]
     self.image_data.trials.append(deepcopy(self.current_trial_with_images))
     self.current_trial_with_images = None
 
@@ -289,6 +361,20 @@ class GraspTestData:
     cum_palm_frc_under_threshold = 0
     cum_palm_frc_saturated = 0
 
+    num_X_probe = 0
+    num_Y_probe = 0
+    num_Z_probe = 0
+
+    num_X_frc_grasps = 0
+    num_X_frc_under_threshold = 0
+    cum_X_frc_under_threshold = 0
+    cum_X_frc_saturated = 0
+
+    num_Y_frc_grasps = 0
+    num_Y_frc_under_threshold = 0
+    cum_Y_frc_under_threshold = 0
+    cum_Y_frc_saturated = 0
+
     if len(data.trials) == 0:
       print("WARNING: get_test_results() found 0 trials")
       return None
@@ -301,14 +387,40 @@ class GraspTestData:
 
       num_trials += 1
 
-      if trial.palm_frc_tol > 0.01 and trial.palm_frc_tol < palm_force_threshold - 1e-5:
-        num_palm_frc_under_threshold += 1
-        cum_palm_frc_under_threshold += trial.palm_frc_tol
       if trial.palm_frc_tol > 0.01:
-        if trial.palm_frc_tol > palm_force_threshold - 1e-5:
-          cum_palm_frc_saturated += palm_force_threshold
+        if self.add_palm_start_force:
+          trial.palm_frc_tol += trial.palm_force
+        num_Z_probe += 1
+        if trial.palm_frc_tol < palm_force_threshold - 1e-5:
+          num_palm_frc_under_threshold += 1
+          cum_palm_frc_under_threshold += trial.palm_frc_tol
         else:
-          cum_palm_frc_saturated += trial.palm_frc_tol
+          if trial.palm_frc_tol > palm_force_threshold - 1e-5:
+            cum_palm_frc_saturated += palm_force_threshold
+          else:
+            cum_palm_frc_saturated += trial.palm_frc_tol
+
+      if trial.X_frc_tol > 0.01:
+        num_X_probe += 1
+        if trial.X_frc_tol < X_force_threshold - 1e-5:
+          num_X_frc_under_threshold += 1
+          cum_X_frc_under_threshold += trial.X_frc_tol
+        else:
+          if trial.X_frc_tol > X_force_threshold - 1e-5:
+            cum_X_frc_saturated += X_force_threshold
+          else:
+            cum_X_frc_saturated += trial.X_frc_tol
+
+      if trial.Y_frc_tol > 0.01:
+        num_Y_probe += 1
+        if trial.Y_frc_tol < Y_force_threshold - 1e-5:
+          num_Y_frc_under_threshold += 1
+          cum_Y_frc_under_threshold += trial.Y_frc_tol
+        else:
+          if trial.Y_frc_tol > Y_force_threshold - 1e-5:
+            cum_Y_frc_saturated += Y_force_threshold
+          else:
+            cum_Y_frc_saturated += trial.Y_frc_tol
 
       found = False
       for j in range(len(object_nums)):
@@ -321,8 +433,16 @@ class GraspTestData:
         # create a new entry for this object
         new_entry = deepcopy(trial)
         new_entry.trial_num = 1
-        new_entry.palm_frc_tol += trial.palm_frc_tol * trial.stable_height
+        new_entry.palm_frc_tol *= trial.stable_height # set to zero if no stable height
         new_entry.palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold - 1e-5) * trial.stable_height
+        new_entry.X_frc_tol *= trial.stable_height # set to zero if no stable height
+        new_entry.X_tol_grasp += (trial.X_frc_tol > X_force_threshold - 1e-5) * trial.stable_height
+        new_entry.Y_frc_tol *= trial.stable_height # set to zero if no stable height
+        new_entry.Y_tol_grasp += (trial.Y_frc_tol > Y_force_threshold - 1e-5) * trial.stable_height
+        new_entry.finger1_force *= trial.stable_height # set to zero if no stable height
+        new_entry.finger2_force *= trial.stable_height # set to zero if no stable height
+        new_entry.finger3_force *= trial.stable_height # set to zero if no stable height
+        new_entry.palm_force *= trial.stable_height # set to zero if no stable height
         entries.append(new_entry)
         object_nums.append(trial.object_num)
 
@@ -344,6 +464,14 @@ class GraspTestData:
         entries[j].exceed_palm += trial.exceed_palm
         entries[j].palm_frc_tol += trial.palm_frc_tol * trial.stable_height
         entries[j].palm_tol_grasp += (trial.palm_frc_tol > palm_force_threshold - 1e-5) * trial.stable_height
+        entries[j].X_frc_tol += trial.X_frc_tol * trial.stable_height
+        entries[j].X_tol_grasp += (trial.X_frc_tol > X_force_threshold - 1e-5) * trial.stable_height
+        entries[j].Y_frc_tol += trial.Y_frc_tol * trial.stable_height
+        entries[j].Y_tol_grasp += (trial.Y_frc_tol > Y_force_threshold - 1e-5) * trial.stable_height
+        entries[j].finger1_force += trial.finger1_force * trial.stable_height
+        entries[j].finger2_force += trial.finger2_force * trial.stable_height
+        entries[j].finger3_force += trial.finger3_force * trial.stable_height
+        entries[j].palm_force += trial.palm_force * trial.stable_height
         entries[j].info += trial.info
 
     # create TestResults to return
@@ -353,7 +481,7 @@ class GraspTestData:
     for i in range(len(entries)):
 
       if print_trials:
-        print(f"Object num = {entries[i].object_num}, num trials = {entries[i].trial_num}, TH = {entries[i].target_height} SH = {entries[i].stable_height}")
+        print(f"Object num = {entries[i].object_num}, num trials = {entries[i].trial_num}, SH = {entries[i].stable_height}")
 
       result.num_trials += entries[i].trial_num
       result.num_objects += 1
@@ -371,6 +499,14 @@ class GraspTestData:
       result.avg_exceed_palm += entries[i].exceed_palm
       result.avg_palm_frc_tol += entries[i].palm_frc_tol
       result.num_palm_frc_tol += entries[i].palm_tol_grasp
+      result.avg_X_frc_tol += entries[i].X_frc_tol
+      result.num_X_frc_tol += entries[i].X_tol_grasp
+      result.avg_Y_frc_tol += entries[i].Y_frc_tol
+      result.num_Y_frc_tol += entries[i].Y_tol_grasp
+      result.avg_f1_frc += entries[i].finger1_force
+      result.avg_f2_frc += entries[i].finger2_force
+      result.avg_f3_frc += entries[i].finger3_force
+      result.avg_p_frc += entries[i].palm_force
 
       if (entries[i].object_num >= self.sphere_min and
           entries[i].object_num <= self.sphere_max):
@@ -396,6 +532,10 @@ class GraspTestData:
 
 
     # finalise and normalise
+    num_stable_height = result.avg_stable_height # store this before it is averaged
+    result.num_X_probe = num_X_probe
+    result.num_Y_probe = num_Y_probe
+    result.num_Z_probe = num_Z_probe
     result.avg_steps /= result.num_trials
     result.avg_stable_height /= result.num_trials
     result.avg_target_height /= result.num_trials
@@ -407,13 +547,43 @@ class GraspTestData:
     result.avg_dropped /= result.num_trials
     result.avg_out_of_bounds /= result.num_trials
     result.avg_exceed_palm /= result.num_trials
-    result.avg_palm_frc_tol /= result.num_trials
-    if num_palm_frc_under_threshold == 0:
-      result.avg_palm_frc_under = 0.0
-    else:
-      result.avg_palm_frc_under = cum_palm_frc_under_threshold / num_palm_frc_under_threshold
-    result.avg_palm_frc_saturated = cum_palm_frc_saturated / result.num_trials
-    result.num_palm_frc_tol /= result.num_trials
+
+    # determine palm force tolerances
+    if result.num_Z_probe > 0:
+      result.avg_palm_frc_tol /= result.num_Z_probe
+      if num_palm_frc_under_threshold == 0:
+        result.avg_palm_frc_under = 0.0
+      else:
+        result.avg_palm_frc_under = cum_palm_frc_under_threshold / num_palm_frc_under_threshold
+      result.avg_palm_frc_saturated = cum_palm_frc_saturated / result.num_X_probe
+      result.num_palm_frc_tol /= result.num_X_probe
+
+    # determine X force tolerances
+    if result.num_X_probe > 0:
+      result.avg_X_frc_tol /= result.num_X_probe
+      if num_X_frc_under_threshold == 0:
+        result.avg_X_frc_under = 0.0
+      else:
+        result.avg_X_frc_under = cum_X_frc_under_threshold / num_X_frc_under_threshold
+      result.avg_X_frc_saturated = cum_X_frc_saturated / result.num_X_probe
+      result.num_X_frc_tol /= result.num_X_probe
+
+    # determine Y force tolerances
+    if result.num_Y_probe > 0:
+      result.avg_Y_frc_tol /= result.num_Y_probe
+      if num_Y_frc_under_threshold == 0:
+        result.avg_Y_frc_under = 0.0
+      else:
+        result.avg_Y_frc_under = cum_Y_frc_under_threshold / num_Y_frc_under_threshold
+      result.avg_Y_frc_saturated = cum_Y_frc_saturated / result.num_Y_probe
+      result.num_Y_frc_tol /= result.num_Y_probe
+
+    # get average forces from the end of stable grasps
+    result.avg_f1_frc /= num_stable_height
+    result.avg_f2_frc /= num_stable_height
+    result.avg_f3_frc /= num_stable_height
+    result.avg_p_frc /= num_stable_height
+    result.avg_f_frc = (1.0/3.0) * (result.avg_f1_frc + result.avg_f2_frc + result.avg_f3_frc)
 
     if result.num_sphere > 0:
       result.sphere_SR /= result.num_sphere
@@ -487,23 +657,44 @@ class GraspTestData:
       info_str += f"avg_dropped = {results.avg_dropped:.4f}\n"
       info_str += f"avg_out_of_bounds = {results.avg_out_of_bounds:.4f}\n"
       info_str += f"avg_exceed_palm = {results.avg_exceed_palm:.4f}\n"
+      info_str += "\n"
+      info_str += f"num_palm_probes = {results.num_Z_probe} out of {results.avg_stable_height * results.num_trials:.0f} (s.h)\n"
       info_str += f"avg_palm_frc_tol ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_tol:.4f}\n"
       info_str += f"avg_palm_frc_under ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_under:.4f}\n"
       info_str += f"avg_palm_frc_saturated ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_saturated:.4f}\n"
       info_str += f"num_palm_frc_tol ({palm_force_threshold:.1f}N) = {results.num_palm_frc_tol:.4f}\n"
+      info_str += "\n"
+      info_str += f"num_X_probes = {results.num_X_probe} out of {results.avg_stable_height * results.num_trials:.0f} (s.h)\n"
+      info_str += f"avg_X_frc_tol ({X_force_threshold:.1f}N) = {results.avg_X_frc_tol:.4f}\n"
+      info_str += f"avg_X_frc_under ({X_force_threshold:.1f}N) = {results.avg_X_frc_under:.4f}\n"
+      info_str += f"avg_X_frc_saturated ({X_force_threshold:.1f}N) = {results.avg_X_frc_saturated:.4f}\n"
+      info_str += f"num_X_frc_tol ({X_force_threshold:.1f}N) = {results.num_X_frc_tol:.4f}\n"
+      info_str += "\n"
+      info_str += f"num_Y_probes = {results.num_Y_probe} out of {results.avg_stable_height * results.num_trials:.0f} (s.h)\n"
+      info_str += f"avg_Y_frc_tol ({Y_force_threshold:.1f}N) = {results.avg_Y_frc_tol:.4f}\n"
+      info_str += f"avg_Y_frc_under ({Y_force_threshold:.1f}N) = {results.avg_Y_frc_under:.4f}\n"
+      info_str += f"avg_Y_frc_saturated ({Y_force_threshold:.1f}N) = {results.avg_Y_frc_saturated:.4f}\n"
+      info_str += f"num_Y_frc_tol ({Y_force_threshold:.1f}N) = {results.num_Y_frc_tol:.4f}\n"
+      info_str += "\n"
+      info_str += f"average stable grasp finger1 force = {results.avg_f1_frc:.3f}N\n"
+      info_str += f"average stable grasp finger2 force = {results.avg_f2_frc:.3f}N\n"
+      info_str += f"average stable grasp finger3 force = {results.avg_f3_frc:.3f}N\n"
+      info_str += f"average stable grasp palm force = {results.avg_p_frc:.3f}N\n"
       info_str += "\n"
       
     info_str += f"Sphere success rate: {results.sphere_SR:.4f}\n"
     info_str += f"cylinder success rate: {results.cylinder_SR:.4f}\n"
     info_str += f"cuboid success rate: {results.cuboid_SR:.4f}\n"
     info_str += f"cube success rate: {results.cube_SR:.4f}\n"
-    info_str += "\n"
+    info_str += "\n --- Key information ---\n\n"
     info_str += f"Total number of trials: {results.num_trials}\n"
     info_str += f"Total number of objects: {results.num_objects}\n"
+    info_str += f"Grasp palm {palm_force_threshold:.1f}N stable % (out of successful grasps): {results.num_palm_frc_tol / results.avg_stable_height:.4f}\n"
+    info_str += f"Grasp X {X_force_threshold:.1f}N stable % (out of successful grasps): {results.num_X_frc_tol / results.avg_stable_height:.4f}\n"
+    info_str += f"Grasp Y {Y_force_threshold:.1f}N stable % (out of successful grasps): {results.num_Y_frc_tol / results.avg_stable_height:.4f}\n"
+    info_str += f"Successful grasp average forces, finger = {results.avg_f_frc:.2f}N and palm = {results.avg_p_frc:.2f}N\n"
+    info_str += "\n"
     info_str += f"Overall success rate: {results.avg_stable_height:.4f}\n"
-    info_str += f"Grasp {palm_force_threshold}N stable % (out of successful grasps): {results.num_palm_frc_tol / results.avg_stable_height:.4f}"
-    
-
     return info_str
 
   def print_trial(self, trial, steps=[0], state=True, sensor_state=[1, 5], SI=True, action=True):
