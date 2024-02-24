@@ -6,10 +6,10 @@ int32 xLim
 int32 xPlm
 int32 xBnd
 int32 loop
-float32 pFTol
-float32 XFTol
-float32 YFTol
 int32 xAxl
 int32 oob
+float32 XFTol
+float32 YFTol
+float32 pFTol
 int32 s_h
 ---

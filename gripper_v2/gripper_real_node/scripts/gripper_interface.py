@@ -41,7 +41,9 @@ def demand_callback(data):
     mygripper.send_message(type="stop")
     return
   if data.home: 
-    mygripper.send_message(type="home")
+    print(f"Sending homing message of type: {home_type}")
+    mygripper.send_message(type=home_type)
+    print(f"Message sent")
     return
     
   if data.print_debug:
@@ -101,14 +103,17 @@ if __name__ == "__main__":
 
     # establish connection with the gripper
     bt_port = "/dev/rfcomm0"
-    usb_port = "/dev/ttyACM0"
+    usb_port = "/dev/ttyACM1"
 
     if use_both_grippers:
       othergripper = Gripper()
-      othergripper.connect("/dev/ttyACM1")
+      othergripper.connect("/dev/ttyACM0")
 
     mygripper = Gripper()
     mygripper.connect(usb_port)
+
+    # add code to figure out which gripper is which? Could have a message ping that
+    # identifies each gripper?
 
     # create raw data publishers
     connected_pub = rospy.Publisher("/gripper/real/connected", Bool, queue_size=10)
@@ -128,6 +133,11 @@ if __name__ == "__main__":
       other_pub = rospy.Publisher("/gripper/other/output", GripperOutput, queue_size=10)
 
     gripper_message_rate = 20
+    use_homing_blocking = True
+    if use_homing_blocking:
+      home_type = "home_blocking"
+    else:
+      home_type = "home"
 
     rate = rospy.Rate(gripper_message_rate) # 10Hz
  
@@ -135,12 +145,12 @@ if __name__ == "__main__":
 
       if not gripper_initialised and mygripper.connected:
 
-        mygripper.send_message(type="resume")
-        mygripper.send_message(type="home")
         mygripper.send_message(type="debug_on")
+        mygripper.send_message(type="resume")
+        mygripper.send_message(type=home_type)
         mygripper.send_message(type="power_saving_on")
 
-        mygripper.command.x = 0.2
+        mygripper.command.x = 0.3
         mygripper.send_message(type="change_timed_action")
         mygripper.command.x = 0.0 # was 0.3 for tests
         mygripper.send_message(type="change_timed_action_early_pub")

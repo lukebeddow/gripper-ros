@@ -41,6 +41,7 @@ class Gripper:
   setPublishHzByte = to_byte(122)
   setSerialHzByte = to_byte(123)
   setMotorHzByte = to_byte(124)
+  homeBlockingByte = to_byte(125)
 
   # define bytes for communication protocol and error messages
   messageReceivedByte = to_byte(200)
@@ -241,6 +242,9 @@ class Gripper:
 
     elif type == "home":
       byte_msg += bytearray(self.homeByte)
+
+    elif type == "home_blocking":
+      byte_msg += bytearray(self.homeBlockingByte)
 
     elif type == "power_saving_off":
       byte_msg += bytearray(self.powerSavingOffByte)

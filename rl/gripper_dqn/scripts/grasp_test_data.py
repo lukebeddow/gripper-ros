@@ -126,6 +126,7 @@ class GraspTestData:
     avg_f3_frc: float = 0
     avg_f_frc: float = 0
     avg_p_frc: float = 0
+    avg_SR_per_obj: float = 0
 
   def __init__(self):
     """
@@ -394,34 +395,28 @@ class GraspTestData:
         if trial.palm_frc_tol < palm_force_threshold - 1e-5:
           num_palm_frc_under_threshold += 1
           cum_palm_frc_under_threshold += trial.palm_frc_tol
-        else:
-          if trial.palm_frc_tol > palm_force_threshold - 1e-5:
-            cum_palm_frc_saturated += palm_force_threshold
-          else:
-            cum_palm_frc_saturated += trial.palm_frc_tol
+          cum_palm_frc_saturated += trial.palm_frc_tol
+        elif trial.palm_frc_tol > palm_force_threshold - 1e-5:
+          cum_palm_frc_saturated += palm_force_threshold
 
       if trial.X_frc_tol > 0.01:
         num_X_probe += 1
         if trial.X_frc_tol < X_force_threshold - 1e-5:
           num_X_frc_under_threshold += 1
           cum_X_frc_under_threshold += trial.X_frc_tol
-        else:
-          if trial.X_frc_tol > X_force_threshold - 1e-5:
-            cum_X_frc_saturated += X_force_threshold
-          else:
-            cum_X_frc_saturated += trial.X_frc_tol
+          cum_X_frc_saturated += trial.X_frc_tol
+        elif trial.X_frc_tol > X_force_threshold - 1e-5:
+          cum_X_frc_saturated += X_force_threshold
 
       if trial.Y_frc_tol > 0.01:
         num_Y_probe += 1
         if trial.Y_frc_tol < Y_force_threshold - 1e-5:
           num_Y_frc_under_threshold += 1
           cum_Y_frc_under_threshold += trial.Y_frc_tol
-        else:
-          if trial.Y_frc_tol > Y_force_threshold - 1e-5:
-            cum_Y_frc_saturated += Y_force_threshold
-          else:
-            cum_Y_frc_saturated += trial.Y_frc_tol
-
+          cum_Y_frc_saturated += trial.Y_frc_tol
+        elif trial.Y_frc_tol > Y_force_threshold - 1e-5:
+          cum_Y_frc_saturated += Y_force_threshold
+            
       found = False
       for j in range(len(object_nums)):
         if object_nums[j] == trial.object_num:
@@ -507,6 +502,8 @@ class GraspTestData:
       result.avg_f2_frc += entries[i].finger2_force
       result.avg_f3_frc += entries[i].finger3_force
       result.avg_p_frc += entries[i].palm_force
+      if entries[i].stable_height > 0:
+        result.avg_SR_per_obj += float(entries[i].stable_height) / float(entries[i].trial_num)
 
       if (entries[i].object_num >= self.sphere_min and
           entries[i].object_num <= self.sphere_max):
@@ -547,6 +544,7 @@ class GraspTestData:
     result.avg_dropped /= result.num_trials
     result.avg_out_of_bounds /= result.num_trials
     result.avg_exceed_palm /= result.num_trials
+    result.avg_SR_per_obj /= result.num_objects
 
     # determine palm force tolerances
     if result.num_Z_probe > 0:
@@ -579,11 +577,12 @@ class GraspTestData:
       result.num_Y_frc_tol /= result.num_Y_probe
 
     # get average forces from the end of stable grasps
-    result.avg_f1_frc /= num_stable_height
-    result.avg_f2_frc /= num_stable_height
-    result.avg_f3_frc /= num_stable_height
-    result.avg_p_frc /= num_stable_height
-    result.avg_f_frc = (1.0/3.0) * (result.avg_f1_frc + result.avg_f2_frc + result.avg_f3_frc)
+    if num_stable_height > 0:
+      result.avg_f1_frc /= num_stable_height
+      result.avg_f2_frc /= num_stable_height
+      result.avg_f3_frc /= num_stable_height
+      result.avg_p_frc /= num_stable_height
+      result.avg_f_frc = (1.0/3.0) * (result.avg_f1_frc + result.avg_f2_frc + result.avg_f3_frc)
 
     if result.num_sphere > 0:
       result.sphere_SR /= result.num_sphere
@@ -657,6 +656,7 @@ class GraspTestData:
       info_str += f"avg_dropped = {results.avg_dropped:.4f}\n"
       info_str += f"avg_out_of_bounds = {results.avg_out_of_bounds:.4f}\n"
       info_str += f"avg_exceed_palm = {results.avg_exceed_palm:.4f}\n"
+      info_str += f"avg_SR_per_obj = {results.avg_SR_per_obj:.4f}\n"
       info_str += "\n"
       info_str += f"num_palm_probes = {results.num_Z_probe} out of {results.avg_stable_height * results.num_trials:.0f} (s.h)\n"
       info_str += f"avg_palm_frc_tol ({palm_force_threshold:.1f}N) = {results.avg_palm_frc_tol:.4f}\n"

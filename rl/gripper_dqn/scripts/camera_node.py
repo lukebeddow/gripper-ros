@@ -12,6 +12,11 @@ from sensor_msgs.msg import Image
 #   rospy.logerr(f"Depth camera error message: {e}")
 #   depth_camera_connected = False
 
+run_this_node = False
+if not run_this_node:
+  print("CAMERA_NODE.PY QUITTING BEFORE STARTING, run_this_node = False")
+  exit()
+
 depth_camera_connected = True
 
 import pyrealsense2 as rs
