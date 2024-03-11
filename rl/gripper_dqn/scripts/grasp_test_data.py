@@ -357,7 +357,6 @@ class GraspTestData:
     object_nums = []
     num_trials = 0
 
-    num_palm_frc_grasps = 0
     num_palm_frc_under_threshold = 0
     cum_palm_frc_under_threshold = 0
     cum_palm_frc_saturated = 0
@@ -366,12 +365,10 @@ class GraspTestData:
     num_Y_probe = 0
     num_Z_probe = 0
 
-    num_X_frc_grasps = 0
     num_X_frc_under_threshold = 0
     cum_X_frc_under_threshold = 0
     cum_X_frc_saturated = 0
 
-    num_Y_frc_grasps = 0
     num_Y_frc_under_threshold = 0
     cum_Y_frc_under_threshold = 0
     cum_Y_frc_saturated = 0
@@ -388,7 +385,7 @@ class GraspTestData:
 
       num_trials += 1
 
-      if trial.palm_frc_tol > 0.01:
+      if trial.palm_frc_tol > 0.01 and trial.stable_height:
         if self.add_palm_start_force:
           trial.palm_frc_tol += trial.palm_force
         num_Z_probe += 1
@@ -399,7 +396,7 @@ class GraspTestData:
         elif trial.palm_frc_tol > palm_force_threshold - 1e-5:
           cum_palm_frc_saturated += palm_force_threshold
 
-      if trial.X_frc_tol > 0.01:
+      if trial.X_frc_tol > 0.01 and trial.stable_height:
         num_X_probe += 1
         if trial.X_frc_tol < X_force_threshold - 1e-5:
           num_X_frc_under_threshold += 1
@@ -408,7 +405,7 @@ class GraspTestData:
         elif trial.X_frc_tol > X_force_threshold - 1e-5:
           cum_X_frc_saturated += X_force_threshold
 
-      if trial.Y_frc_tol > 0.01:
+      if trial.Y_frc_tol > 0.01 and trial.stable_height:
         num_Y_probe += 1
         if trial.Y_frc_tol < Y_force_threshold - 1e-5:
           num_Y_frc_under_threshold += 1
@@ -553,8 +550,8 @@ class GraspTestData:
         result.avg_palm_frc_under = 0.0
       else:
         result.avg_palm_frc_under = cum_palm_frc_under_threshold / num_palm_frc_under_threshold
-      result.avg_palm_frc_saturated = cum_palm_frc_saturated / result.num_X_probe
-      result.num_palm_frc_tol /= result.num_X_probe
+      result.avg_palm_frc_saturated = cum_palm_frc_saturated / result.num_Z_probe
+      result.num_palm_frc_tol /= result.num_Z_probe
 
     # determine X force tolerances
     if result.num_X_probe > 0:
