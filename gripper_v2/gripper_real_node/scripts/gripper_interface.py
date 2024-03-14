@@ -103,11 +103,11 @@ if __name__ == "__main__":
 
     # establish connection with the gripper
     bt_port = "/dev/rfcomm0"
-    usb_port = "/dev/ttyACM0"
+    usb_port = "/dev/ttyACM1"
 
     if use_both_grippers:
       othergripper = Gripper()
-      othergripper.connect("/dev/ttyACM1")
+      othergripper.connect("/dev/ttyACM0")
 
     mygripper = Gripper()
     mygripper.connect(usb_port)

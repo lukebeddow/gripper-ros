@@ -50,6 +50,7 @@ image_batch_size = 1            # 1=save pictures every trial, 2=every two trial
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
 use_palm_force_test = True     # test grasp stability with palm disturbance
 extra_gripper_measuring = True  # use a second gripper for measurements
+reset_probe_after = True       # do we reset the second gripper after probe measurements
 palm_force_target = 10          # maximum force at which palm force test ends
 XY_force_target = 10            # maximum force at which XY force test ends
 
@@ -601,11 +602,12 @@ def run_extra_force_test(request=None):
     max_force = test_force_with_extra_gripper()
 
     # reset the probe
-    new_demand = GripperRequest()
-    new_demand.message_type = "home"
+    if reset_probe_after:
+      new_demand = GripperRequest()
+      new_demand.message_type = "home"
 
-    if log_level > 0: rospy.loginfo(f"Homing extra gripper following force test")
-    extra_demand_pub.publish(new_demand)
+      if log_level > 0: rospy.loginfo(f"Homing extra gripper following force test")
+      extra_demand_pub.publish(new_demand)
 
   elif axis == "z":
     max_force = test_palm_force()
@@ -2808,8 +2810,8 @@ if __name__ == "__main__":
 
     # Program: palm_vs_no_palm_1, first batch
     # git checkout palm_run_1 for gripper-mujoco
-    load.timestamp = "19-01-24_16-54"
-    load.job_number = 6 # no palm, 45deg, E1
+    # load.timestamp = "19-01-24_16-54"
+    # load.job_number = 6 # no palm, 45deg, E1
     # load.job_number = 16 # no palm, 60deg, E1
     # load.job_number = 28 # no palm, 75deg, E1
     # load.job_number = 37 # no palm, 90deg, E1
@@ -2832,10 +2834,10 @@ if __name__ == "__main__":
     # load.job_number = 150 # palm, 75deg, E2
     # load.job_number = 159 # palm, 90deg, E2
     
-    # load.timestamp = "16-02-24_16-44"
+    load.timestamp = "16-02-24_16-44"
     # load.job_number = 209 # palm, 45deg, E3
     # load.job_number = 219 # palm, 60deg, E3
-    # load.job_number = 226 # palm, 75deg, E3
+    load.job_number = 226 # palm, 75deg, E3
 
     # load.timestamp = "17-02-24_17-58"
     # load.job_number = 195 # no palm, 90deg E3
