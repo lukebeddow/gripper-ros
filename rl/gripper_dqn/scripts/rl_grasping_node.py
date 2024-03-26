@@ -29,15 +29,28 @@ from grasp_test_data import GraspTestData
 
 # ----- essential user settings ----- #
 
+"""
+Speed information:
+
+testing, reliable and noticeable gaps between actions
+  - action_delay = 0.1
+  - panda_z_move_duration = 0.22
+
+demo, fast, limited gaps between actions, could have issues
+  - action_delay = 0.05
+  - panda_z_move_duration = 0.18
+
+"""
+
 # important user settings
 camera = False                  # do we want to take camera images
-use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
+use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
 photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = True       # do we run panda in a seperate thread
 use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
-action_delay = 0.1              # safety delay between action generation and publishing
-panda_z_move_duration = 0.22    # how long in seconds to move the panda z height vertically up
+action_delay = 0.05 #0.1              # safety delay between action generation and publishing
+panda_z_move_duration = 0.18 #0.22    # how long in seconds to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
@@ -889,7 +902,10 @@ def execute_grasping_callback(request=None, reset=True):
 
         if grasp_frc_stable:
 
+          # stop grasping and determine if we are force testing
+          force_test = True if not prevent_force_test else False
           cancel_grasping_callback()
+          prevent_force_test = False if force_test else True
 
           # using a second gripper for XYZ force measurements
           if extra_gripper_measuring:
@@ -999,9 +1015,14 @@ def cancel_grasping_callback(request=None):
 
   rospy.loginfo("Cancelling grasping now")
 
+  # stop any grasping
   global continue_grasping, grasp_frc_stable
   continue_grasping = False
   grasp_frc_stable = False 
+
+  # stop any force testing as well
+  global prevent_force_test
+  prevent_force_test = True
 
   return []
 
@@ -2679,15 +2700,15 @@ hardcoded_object_force_measuring_ycb_75_90 = {
   },
   "6" : {
     "X" : [-0.36108359, -0.23270150, 0.18886534, -1.87060478, 0.00476651, 1.65578579, -0.26902519],
-    "Y" : [-0.41136685, -0.22161917, 0.29456255, -1.85602569, -0.02080486, 1.63182559, 1.29868556],
+    "Y" : [-0.47191576, -0.23802593, 0.33604709, -1.82409262, 0.04146958, 1.64729960, 0.46451137], #[-0.41136685, -0.22161917, 0.29456255, -1.85602569, -0.02080486, 1.63182559, 1.29868556],
   },
   "7" : {
     "X" : [-0.46441629, -0.23208175, 0.31465964, -1.80422963, 0.03132587, 1.61427766, -0.32375088],
-    "Y" : [-0.23528141, -0.16389413, 0.35691347, -1.67768594, -0.11535340, 1.48655417, 1.58656480],
+    "Y" : [-0.34470254, -0.23631372, 0.37028695, -1.72558015, 0.03142036, 1.56632045, 1.52739276], #[-0.23528141, -0.16389413, 0.35691347, -1.67768594, -0.11535340, 1.48655417, 1.58656480],
   },
   "8" : {
     "X" : [-0.50351577, -0.29233395, 0.36051187, -1.91198191, 0.05630120, 1.68566936, -0.10834712],
-    "Y" : [-0.34523688, -0.22563333, 0.36739445, -1.86890926, 0.04583158, 1.66678714, 1.58181834],
+    "Y" : [-0.34075016, -0.27022569, 0.38534743, -1.85207819, 0.08182240, 1.67282211, 1.62966842], #[-0.34523688, -0.22563333, 0.36739445, -1.86890926, 0.04583158, 1.66678714, 1.58181834],
   },
   "9" : {
     "X" : [-0.35091209, -0.15675582, 0.22496334, -1.72634900, 0.03306611, 1.58245729, 0.62402635],
@@ -2822,10 +2843,10 @@ if __name__ == "__main__":
 
     # Program: palm_vs_no_palm_1, second batch
     # git checkout luke-devel
-    # load.timestamp = "12-02-24_17-29"
+    load.timestamp = "12-02-24_17-29"
     # load.job_number = 81 # no palm, 45deg, E2
     # load.job_number = 100 # no palm, 60deg, E2
-    # load.job_number = 102 # no palm, 75deg, E2
+    load.job_number = 102 # no palm, 75deg, E2
     # load.job_number = 116 # no palm, 90deg, E2
     # load.job_number = 126 # palm, 45deg, E2
 
@@ -2834,10 +2855,10 @@ if __name__ == "__main__":
     # load.job_number = 150 # palm, 75deg, E2
     # load.job_number = 159 # palm, 90deg, E2
     
-    load.timestamp = "16-02-24_16-44"
+    # load.timestamp = "16-02-24_16-44"
     # load.job_number = 209 # palm, 45deg, E3
     # load.job_number = 219 # palm, 60deg, E3
-    load.job_number = 226 # palm, 75deg, E3
+    # load.job_number = 226 # palm, 75deg, E3
 
     # load.timestamp = "17-02-24_17-58"
     # load.job_number = 195 # no palm, 90deg E3
@@ -2878,6 +2899,9 @@ if __name__ == "__main__":
     load.width = 24e-3
     load.sensors = 3
     load_baseline_1_model(load)
+
+    # make forwards compatible
+    model.trainer.env.params.use_rgb_in_observation = False
 
   if log_level >= 3:
     # turn on all debug information
