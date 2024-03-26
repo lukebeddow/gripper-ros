@@ -45,7 +45,6 @@ demo, fast, limited gaps between actions, could have issues
 # important user settings
 camera = False                  # do we want to take camera images
 use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
-photoshoot_calibration = False  # do we grasp in ideal position for taking side-on-videos
 use_panda_threads = True       # do we run panda in a seperate thread
 use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
@@ -54,18 +53,14 @@ panda_z_move_duration = 0.18 #0.22    # how long in seconds to move the panda z 
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
-scale_actions_on_load = 1.0     # scale action sizes upon loading a model
-scale_gauge_data = 1.0          # scale real gauge data by this
-scale_wrist_data = 1.0          # scale real wrist data by this
-scale_palm_data = 1.0           # scale real palm data by this
-image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
-image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
+
+# grasp stability evaluation settings
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
 use_palm_force_test = True     # test grasp stability with palm disturbance
 extra_gripper_measuring = True  # use a second gripper for measurements
-reset_probe_after = True       # do we reset the second gripper after probe measurements
 palm_force_target = 10          # maximum force at which palm force test ends
 XY_force_target = 10            # maximum force at which XY force test ends
+reset_probe_after = True       # do we reset the second gripper after probe measurements
 
 # important paths
 test_save_path = "/home/luke/gripper-ros/"
@@ -73,19 +68,17 @@ if use_devel: mymujoco_rl_path = "/home/luke/mujoco-devel/rl"
 else: mymujoco_rl_path = "/home/luke/mymujoco/rl"
 pyfranka_path = "/home/luke/libs/franka/franka_interface/build"
 
-# experimental feature settings
+# debugging and advanced user settings
 debug_observation = False        # print debug information about the observation
 print_network_eval_time = True  # print the time taken to evaluate the network
+scale_actions_on_load = 1.0     # scale action sizes upon loading a model
+scale_gauge_data = 1.0          # scale real gauge data by this
+scale_wrist_data = 1.0          # scale real wrist data by this
+scale_palm_data = 1.0           # scale real palm data by this
+image_rate = 1                  # 1=take pictures every step, 2=every two steps etc
+image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 number_gripper_demands = 1      # how many gripper position commands to send to try ensure motions are achieved
-use_sim_ftsensor = False        # use a simulated ft sensor instead of real life
-dynamic_recal_ftsensor = False  # recalibrate ftsensor to zero whenever connection is lost
-# sim_ft_sensor_step_offset = 2   # lower simulated ft sensor gripper down X steps
-# prevent_back_palm = False       # swap any backward palm actions for forwards
-prevent_x_open = False           # swap action 1 (X open) for action 2 (Y close)
-render_sim_view = False         # render simulated gripper (CRASHES ON 2nd GRASP)
-quit_on_palm = None               # quit grasping with a palm value above this (during test only), set None for off
-reject_wrist_noise = False       # try to ignore large spikes in the wrist sensor
-prevent_table_hit = False         # prevent the gripper from going below a certain height
+quit_on_palm = None             # quit grasping with a palm value above this (during test only), set None for off
 
 # ----- global variable declarations ----- #
 
@@ -100,7 +93,6 @@ currently_testing = False       # is a test currently in progress
 continue_demo = False           # is the demo currently in progress and continuing
 demo_panda_is_at = -1           # flag for the position the panda is in (only applies to a demo)
 demo_loop_int = -1              # where in the demo loop are wek
-risk_table_hit = False
 
 # declare global variables, these will be overwritten
 step_num = 0                    # number of steps in our grasp
@@ -141,8 +133,8 @@ from ModelSaver import ModelSaver
 
 # create model instance
 device = "cpu" #none
-dqn_log_level = 1 if log_level > 1 else 0
-model = TrainingManager(log_level=dqn_log_level, device=device)
+tm_log_level = 1 if log_level > 1 else 0
+model = TrainingManager(log_level=tm_log_level, device=device)
 
 # create openCV bridge
 bridge = CvBridge()
@@ -252,31 +244,6 @@ def data_callback(state):
   state.sensor.gauge4 *= scale_palm_data
   state.ftdata.force.z *= scale_wrist_data
 
-  # if use a simulated ftsensor, override with simulated data
-  if use_sim_ftsensor:
-    state.ftdata.force.z = model.trainer.env.mj.sim_sensors.read_wrist_Z_sensor()
-
-  # if we rezero ftsensor every time values repeat (ie connection lost)
-  global last_ft_value
-  if dynamic_recal_ftsensor:
-    # rospy.loginfo(f"last value = {last_ft_value}, new value = {state.ftdata.force.z}")
-    # if new value and old are exactly floating-point equal
-    if state.ftdata.force.z == last_ft_value:
-      model.trainer.env.mj.real_sensors.wrist_Z.offset = last_ft_value
-      # if log_level > 1:
-      #   rospy.loginfo("RECALIBRATED FTSENSOR TO ZERO")
-    last_ft_value = state.ftdata.force.z
-
-  # if we are trying to reject noise from the wrist sensor
-  if reject_wrist_noise:
-    rejection_threshold = 5
-    new_reading = state.ftdata.force.z
-    if last_ft_value is None:
-      pass
-    elif abs(state.ftdata.force.z - last_ft_value) > rejection_threshold:
-      state.ftdata.force.z = last_ft_value
-    last_ft_value = new_reading
-
   # assemble our state vector (order is vitally important! Check mjclass.cpp)
   sensor_vec = [
     state.sensor.gauge1, 
@@ -354,18 +321,6 @@ def data_callback(state):
 
     panda_local_wrench_pub.publish(local_wrench_msg)
     panda_global_wrench_pub.publish(global_wrench_msg)
-  
-  # if using a simulated ft sensor, replace with this data instead
-  if use_sim_ftsensor:
-    norm_sensor.wrist_z = model.trainer.env.mj.sim_sensors.read_wrist_Z_sensor()
-
-  # if we are trying to prevent hitting the table
-  if prevent_table_hit:
-    global risk_table_hit
-    if norm_sensor.wrist_z > 0.99 and norm_sensor.palm > 0.99:
-      risk_table_hit = True
-    else:
-      risk_table_hit = False
 
   norm_state_pub.publish(norm_state)
   norm_sensor_pub.publish(norm_sensor)
@@ -465,29 +420,8 @@ def generate_action():
 
   if log_level >= 2: rospy.loginfo(f"Generated action, action code is: {action}")
 
-  # # if we are preventing palm backwards actions
-  # if prevent_back_palm and action == 5:
-  #   if log_level > 0: rospy.loginfo(f"prevent_back_palm=TRUE, backwards palm prevented")
-  #   action = 4
-
-  # prevent x open
-  if prevent_x_open and action == 1:
-    if log_level > 0: rospy.loginfo(f"prevent_x_open=TRUE, setting Y close instead")
-    action = 2
-
-  # prevent the controller from hitting the table
-  if prevent_table_hit and action == 6 and risk_table_hit:
-    action = 7
-    rospy.loginfo("Risk of table hit")
-
   # apply the action and get the new target state (vector)
   new_target_state = model.trainer.env._set_action(action)
-
-  # if using a simulated ft sensor, resolve the action in simulation
-  if use_sim_ftsensor or render_sim_view:
-    if log_level > 0: rospy.loginfo("use_sim_ftsensor=TRUE, taking simulated action")
-    model.trainer.env.mj.action_step()
-    if render_sim_view: model.trainer.env.mj.render()
 
   # if at test time, save simple, unnormalised state data for this step
   if currently_testing:
@@ -1074,11 +1008,6 @@ def reset_all(request=None, skip_panda=False, allow_panda_noise=False):
   if currently_testing and current_test_data.data.heuristic:
     model.trainer.env.start_heuristic_grasping(realworld=True)
 
-  # check for settings clashes
-  if use_sim_ftsensor and dynamic_recal_ftsensor:
-      if log_level > 0: 
-        rospy.logwarn("use_sim_ftsensor and dynamic_recal_ft_sensor both True at the same time")
-
   if log_level > 1: rospy.loginfo("rl_grasping_node reset_all() is finished, sensors recalibrated")
 
   return []
@@ -1100,7 +1029,6 @@ def reset_panda(request=None, allow_noise=False):
   global move_panda
   global log_level
   global panda_z_height
-  global photoshoot_calibration
 
   if not move_panda:
     if log_level > 0: rospy.logwarn("asked to reset_panda() but move_panda is false")
@@ -1110,165 +1038,117 @@ def reset_panda(request=None, allow_noise=False):
   while panda_in_motion:
     time.sleep(0.01)
 
-  if photoshoot_calibration:
+  if abs(model.trainer.env.params.finger_hook_angle_degrees - 90) < 1e-5:
 
-    # calibrations 31/5/23 for side on videos (tie palm cable back), 0=v. firm neoprene press
-    cal_0_mm = [-0.10402882, 0.50120518, 0.10778944, -1.01105512, -0.04686748, 1.50164708, -1.26073515]
-    cal_2_mm = [-0.10387006, 0.50527945, 0.10769805, -1.00157544, -0.04692841, 1.49511798, -1.26073252]
-    cal_4_mm = [-0.10330050, 0.50944433, 0.10765647, -0.99195720, -0.04720724, 1.48748527, -1.26073653]
-    cal_6_mm = [-0.10260091, 0.51340940, 0.10745183, -0.98116904, -0.04766048, 1.47974774, -1.26075086]
-    cal_10_mm = [-0.10159385, 0.52105691, 0.10745041, -0.95851852, -0.04829950, 1.46465763, -1.26075028]
-    cal_12_mm = [-0.10102108, 0.52506261, 0.10745403, -0.94637724, -0.04867820, 1.45684754, -1.26076261]
-    cal_14_mm = [-0.10039027, 0.52930519, 0.10745403, -0.93433454, -0.04912472, 1.44883549, -1.26076231]
-    cal_16_mm = [-0.09971443, 0.53378781, 0.10745403, -0.92148019, -0.04960671, 1.44069648, -1.26076865]
-    cal_20_mm = [-0.09815959, 0.54329784, 0.10745573, -0.89504912, -0.05062444, 1.42390813, -1.26081059]
-    cal_30_mm = [-0.09425711, 0.57439487, 0.10747072, -0.82226615, -0.05352376, 1.37814662, -1.26075268]
-    cal_40_mm = [-0.08839450, 0.61583667, 0.10746761, -0.72435514, -0.05777517, 1.32181706, -1.26131619]
-    cal_50_mm = [-0.07592334, 0.70676842, 0.10747491, -0.53616111, -0.06762633, 1.22484667, -1.26360272]
+    # calibration 18/02/24 90DEGREE FINGERS EI2 0mm=press, 2mm=full touch
+    touch_height_mm = 6
+    cal_0_mm = [-0.22735047, 0.07764017, 0.29187174, -1.80121015, -0.02719755, 1.87792673, 0.89952540]
+    cal_2_mm = [-0.22735047, 0.07766074, 0.29186202, -1.79806534, -0.02720234, 1.87358750, 0.89929920]
+    cal_4_mm = [-0.22735409, 0.07770124, 0.29185190, -1.79434772, -0.02718927, 1.86849952, 0.89923834]
+    cal_6_mm = [-0.22735242, 0.07762914, 0.29185190, -1.78994878, -0.02716141, 1.86361421, 0.89911325]
+    cal_8_mm = [-0.22735284, 0.07700316, 0.29185283, -1.78530338, -0.02711940, 1.85858461, 0.89897425]
+    cal_10_mm = [-0.22734769, 0.07652020, 0.29185035, -1.78081513, -0.02667632, 1.85358087, 0.89886547]
+    cal_12_mm = [-0.22734449, 0.07607479, 0.29184860, -1.77634064, -0.02661313, 1.84858942, 0.89873454]
+    cal_14_mm = [-0.22734173, 0.07565648, 0.29185035, -1.77169450, -0.02656403, 1.84356910, 0.89861984]
+    cal_16_mm = [-0.22733150, 0.07527275, 0.29185397, -1.76711536, -0.02651769, 1.83852584, 0.89852024]
+    cal_18_mm = [-0.22732211, 0.07492007, 0.29185397, -1.76240957, -0.02648662, 1.83359266, 0.89842931]
+    cal_20_mm = [-0.22731530, 0.07477739, 0.29185397, -1.75757535, -0.02645714, 1.82866858, 0.89834729]
+    cal_22_mm = [-0.22730870, 0.07447185, 0.29185397, -1.75283607, -0.02642588, 1.82373462, 0.89826242]
+    cal_24_mm = [-0.22727891, 0.07414268, 0.29185102, -1.74808701, -0.02584221, 1.81864916, 0.89818750]
+    cal_26_mm = [-0.22727540, 0.07408516, 0.29185081, -1.74334378, -0.02582160, 1.81355426, 0.89810795]
+    cal_28_mm = [-0.22700131, 0.07402443, 0.29184564, -1.73846758, -0.02579477, 1.80849515, 0.89803354]
+    cal_30_mm = [-0.22699018, 0.07370638, 0.29184926, -1.73332179, -0.02578193, 1.80342610, 0.89797816]
+    cal_40_mm = [-0.22664184, 0.07360134, 0.29184491, -1.70806267, -0.02574838, 1.77812006, 0.89771416]
+    cal_50_mm = [-0.22606942, 0.07361168, 0.29184751, -1.68172271, -0.02574944, 1.75245942, 0.89768645]
+    cal_60_mm = [-0.22530564, 0.07464560, 0.29184561, -1.65436262, -0.02577510, 1.72651245, 0.89768542]
+    cal_70_mm = [-0.22438173, 0.07737909, 0.29184758, -1.62583973, -0.02584150, 1.70047544, 0.89772618]
+    cal_80_mm = [-0.22337230, 0.08077094, 0.29184035, -1.59602708, -0.02623951, 1.67390127, 0.89812051]
+    cal_90_mm = [-0.22197642, 0.08517698, 0.29184035, -1.56507880, -0.02772294, 1.64703665, 0.89863802]
+    cal_100_mm = [-0.22015800, 0.09046841, 0.29183534, -1.53265202, -0.02896271, 1.61987860, 0.89934124]
 
-  else:
+  elif abs(model.trainer.env.params.finger_hook_angle_degrees - 75) < 1e-5:
 
-    if abs(model.trainer.env.params.finger_hook_angle_degrees - 90) < 1e-5:
+    # calibration 18/02/24 75DEGREE FINGERS EI2 0mm=press, 2mm=full touch
+    touch_height_mm = 2
+    cal_0_mm = [-0.26465677, -0.06653508, 0.30426445, -1.94810009, 0.00519931, 1.90495333, 0.85446492]
+    cal_2_mm = [-0.26468163, -0.06687588, 0.30426973, -1.94497111, 0.00517773, 1.90039799, 0.85425492]
+    cal_4_mm = [-0.26471358, -0.06685380, 0.30427141, -1.94091235, 0.00518325, 1.89530001, 0.85410143]
+    cal_6_mm = [-0.26503110, -0.06690994, 0.30427141, -1.93651970, 0.00519738, 1.89024569, 0.85392881]
+    cal_8_mm = [-0.26507791, -0.06754549, 0.30427143, -1.93211447, 0.00522090, 1.88522869, 0.85378509]
+    cal_10_mm = [-0.26518058, -0.06801998, 0.30427503, -1.92764600, 0.00524558, 1.88022699, 0.85362153]
+    cal_12_mm = [-0.26540390, -0.06849060, 0.30427548, -1.92303129, 0.00527987, 1.87519219, 0.85347924]
+    cal_14_mm = [-0.26545875, -0.06897778, 0.30427141, -1.91841813, 0.00532508, 1.87020468, 0.85334477]
+    cal_16_mm = [-0.26576501, -0.06940543, 0.30427503, -1.91375831, 0.00574556, 1.86524832, 0.85320996]
+    cal_18_mm = [-0.26580655, -0.06978559, 0.30426974, -1.90907449, 0.00577708, 1.86022842, 0.85307874]
+    cal_20_mm = [-0.26585404, -0.07014882, 0.30427335, -1.90438504, 0.00580201, 1.85512281, 0.85296376]
+    cal_22_mm = [-0.26614276, -0.07026808, 0.30427715, -1.89974040, 0.00582059, 1.85000908, 0.85285480]
+    cal_24_mm = [-0.26618544, -0.07062135, 0.30427597, -1.89489858, 0.00583393, 1.84488728, 0.85274799]
+    cal_26_mm = [-0.26622521, -0.07069334, 0.30427338, -1.88996905, 0.00584898, 1.83986722, 0.85263867]
+    cal_28_mm = [-0.26626606, -0.07106799, 0.30427715, -1.88515273, 0.00586181, 1.83481416, 0.85256351]
+    cal_30_mm = [-0.26659076, -0.07112033, 0.30427670, -1.88033117, 0.00587356, 1.82983591, 0.85248238]
+    cal_40_mm = [-0.26699620, -0.07170002, 0.30427141, -1.85536463, 0.00589009, 1.80442038, 0.85213604]
+    cal_50_mm = [-0.26733672, -0.07169671, 0.30427670, -1.82948831, 0.00588733, 1.77903604, 0.85199639]
+    cal_60_mm = [-0.26760782, -0.07087460, 0.30427503, -1.80268477, 0.00586122, 1.75335092, 0.85198065]
+    cal_70_mm = [-0.26763740, -0.06916432, 0.30427142, -1.77486078, 0.00580894, 1.72752090, 0.85200943]
+    cal_80_mm = [-0.26763818, -0.06612083, 0.30426833, -1.74604985, 0.00500372, 1.70165443, 0.85220496]
+    cal_90_mm = [-0.26758452, -0.06232216, 0.30426923, -1.71628907, 0.00403251, 1.67534211, 0.85279979]
+    cal_100_mm = [-0.26716275, -0.05741868, 0.30426233, -1.68520777, 0.00271554, 1.64887705, 0.85350829]
 
-      # calibration 18/02/24 90DEGREE FINGERS EI2 0mm=press, 2mm=full touch
-      touch_height_mm = 6
-      cal_0_mm = [-0.22735047, 0.07764017, 0.29187174, -1.80121015, -0.02719755, 1.87792673, 0.89952540]
-      cal_2_mm = [-0.22735047, 0.07766074, 0.29186202, -1.79806534, -0.02720234, 1.87358750, 0.89929920]
-      cal_4_mm = [-0.22735409, 0.07770124, 0.29185190, -1.79434772, -0.02718927, 1.86849952, 0.89923834]
-      cal_6_mm = [-0.22735242, 0.07762914, 0.29185190, -1.78994878, -0.02716141, 1.86361421, 0.89911325]
-      cal_8_mm = [-0.22735284, 0.07700316, 0.29185283, -1.78530338, -0.02711940, 1.85858461, 0.89897425]
-      cal_10_mm = [-0.22734769, 0.07652020, 0.29185035, -1.78081513, -0.02667632, 1.85358087, 0.89886547]
-      cal_12_mm = [-0.22734449, 0.07607479, 0.29184860, -1.77634064, -0.02661313, 1.84858942, 0.89873454]
-      cal_14_mm = [-0.22734173, 0.07565648, 0.29185035, -1.77169450, -0.02656403, 1.84356910, 0.89861984]
-      cal_16_mm = [-0.22733150, 0.07527275, 0.29185397, -1.76711536, -0.02651769, 1.83852584, 0.89852024]
-      cal_18_mm = [-0.22732211, 0.07492007, 0.29185397, -1.76240957, -0.02648662, 1.83359266, 0.89842931]
-      cal_20_mm = [-0.22731530, 0.07477739, 0.29185397, -1.75757535, -0.02645714, 1.82866858, 0.89834729]
-      cal_22_mm = [-0.22730870, 0.07447185, 0.29185397, -1.75283607, -0.02642588, 1.82373462, 0.89826242]
-      cal_24_mm = [-0.22727891, 0.07414268, 0.29185102, -1.74808701, -0.02584221, 1.81864916, 0.89818750]
-      cal_26_mm = [-0.22727540, 0.07408516, 0.29185081, -1.74334378, -0.02582160, 1.81355426, 0.89810795]
-      cal_28_mm = [-0.22700131, 0.07402443, 0.29184564, -1.73846758, -0.02579477, 1.80849515, 0.89803354]
-      cal_30_mm = [-0.22699018, 0.07370638, 0.29184926, -1.73332179, -0.02578193, 1.80342610, 0.89797816]
-      cal_40_mm = [-0.22664184, 0.07360134, 0.29184491, -1.70806267, -0.02574838, 1.77812006, 0.89771416]
-      cal_50_mm = [-0.22606942, 0.07361168, 0.29184751, -1.68172271, -0.02574944, 1.75245942, 0.89768645]
-      cal_60_mm = [-0.22530564, 0.07464560, 0.29184561, -1.65436262, -0.02577510, 1.72651245, 0.89768542]
-      cal_70_mm = [-0.22438173, 0.07737909, 0.29184758, -1.62583973, -0.02584150, 1.70047544, 0.89772618]
-      cal_80_mm = [-0.22337230, 0.08077094, 0.29184035, -1.59602708, -0.02623951, 1.67390127, 0.89812051]
-      cal_90_mm = [-0.22197642, 0.08517698, 0.29184035, -1.56507880, -0.02772294, 1.64703665, 0.89863802]
-      cal_100_mm = [-0.22015800, 0.09046841, 0.29183534, -1.53265202, -0.02896271, 1.61987860, 0.89934124]
+  elif abs(model.trainer.env.params.finger_hook_angle_degrees - 60) < 1e-5:
 
-    elif abs(model.trainer.env.params.finger_hook_angle_degrees - 75) < 1e-5:
+    # calibration 15/02/24 60DEGREE FINGERS EI1 0mm=press, 2mm=light touch
+    touch_height_mm = 2
+    cal_0_mm = [-0.26363617, -0.05473505, 0.30020690, -1.90742241, 0.00734889, 1.87581724, 0.82313380]
+    cal_2_mm = [-0.26366258, -0.05472722, 0.30021328, -1.90369823, 0.00735250, 1.87093787, 0.82305917]
+    cal_4_mm = [-0.26371654, -0.05471687, 0.30021328, -1.89936716, 0.00741290, 1.86591738, 0.82294415]
+    cal_6_mm = [-0.26391464, -0.05504486, 0.30021328, -1.89472156, 0.00748206, 1.86090533, 0.82281917]
+    cal_8_mm = [-0.26396259, -0.05532080, 0.30021161, -1.88997358, 0.00757329, 1.85586071, 0.82272108]
+    cal_10_mm = [-0.26403608, -0.05563658, 0.30021328, -1.88528073, 0.00770713, 1.85078742, 0.82262177]
+    cal_12_mm = [-0.26422203, -0.05593439, 0.30021523, -1.88056663, 0.00779554, 1.84573231, 0.82252450]
+    cal_14_mm = [-0.26427300, -0.05619965, 0.30021331, -1.87574604, 0.00784266, 1.84068288, 0.82243819]
+    cal_16_mm = [-0.26438289, -0.05632581, 0.30021690, -1.87089863, 0.00788102, 1.83561542, 0.82236489]
+    cal_18_mm = [-0.26453586, -0.05657995, 0.30021523, -1.86600990, 0.00791936, 1.83057723, 0.82228960]
+    cal_20_mm = [-0.26458381, -0.05668035, 0.30021328, -1.86109418, 0.00795603, 1.82553612, 0.82223020]
+    cal_22_mm = [-0.26463690, -0.05691966, 0.30021328, -1.85616508, 0.00798505, 1.82048298, 0.82216497]
+    cal_24_mm = [-0.26482269, -0.05695218, 0.30022009, -1.85119037, 0.00800458, 1.81538102, 0.82211627]
+    cal_26_mm = [-0.26486016, -0.05698160, 0.30021650, -1.84621390, 0.00801417, 1.81027087, 0.82207689]
+    cal_28_mm = [-0.26489700, -0.05699540, 0.30021845, -1.84108635, 0.00801764, 1.80515880, 0.82204296]
+    cal_30_mm = [-0.26493536, -0.05700533, 0.30021845, -1.83597784, 0.00801835, 1.80008457, 0.82202409]
+    cal_40_mm = [-0.26529586, -0.05696333, 0.30022013, -1.80990437, 0.00799617, 1.77460503, 0.82199937]
+    cal_50_mm = [-0.26544880, -0.05556902, 0.30021846, -1.78293351, 0.00772567, 1.74892897, 0.82204890]
+    cal_60_mm = [-0.26546751, -0.05339131, 0.30021507, -1.75493735, 0.00707560, 1.72307920, 0.82238232]
+    cal_70_mm = [-0.26539159, -0.05028930, 0.30021145, -1.72586789, 0.00612781, 1.69704613, 0.82291076]
+    cal_80_mm = [-0.26503468, -0.04624956, 0.30021437, -1.69573253, 0.00491428, 1.67075798, 0.82362430]
+    cal_90_mm = [-0.26424438, -0.04132709, 0.30020633, -1.66449699, 0.00342211, 1.64419101, 0.82454922]
+    cal_100_mm = [-0.26334276, -0.03539899, 0.30020896, -1.63179003, 0.00161609, 1.61728759, 0.82568431]
 
-      # # new calibrations 75DEGREE FINGERS BARE TABLE (NO WRIST) 4mm=light touch, 2mm=press
-      # touch_height_mm = 4
-      # cal_0_mm = [-0.27387776, -0.02585006, 0.30729622, -1.89643083, 0.00676038, 1.87621824, 0.84037356]
-      # cal_2_mm = [-0.27392039, -0.02572424, 0.30729622, -1.89337982, 0.00672408, 1.87142800, 0.84036733]
-      # cal_4_mm = [-0.27400394, -0.02574353, 0.30729093, -1.88897988, 0.00673235, 1.86650059, 0.84031136]
-      # cal_6_mm = [-0.27421166, -0.02623554, 0.30729463, -1.88446972, 0.00674949, 1.86159163, 0.84021751]
-      # cal_8_mm = [-0.27424804, -0.02660902, 0.30729630, -1.88004050, 0.00677693, 1.85652403, 0.84012095]
-      # cal_10_mm = [-0.27428154, -0.02698982, 0.30729559, -1.87545015, 0.00681192, 1.85143192, 0.84002916]
-      # cal_12_mm = [-0.27454526, -0.02738393, 0.30730011, -1.87072350, 0.00689858, 1.84639242, 0.83994788]
-      # cal_14_mm = [-0.27458083, -0.02776590, 0.30729819, -1.86601039, 0.00700295, 1.84137630, 0.83987414]
-      # cal_16_mm = [-0.27461111, -0.02810298, 0.30729511, -1.86128947, 0.00710709, 1.83632393, 0.83981037]
-      # cal_18_mm = [-0.27463627, -0.02841951, 0.30729817, -1.85654005, 0.00718308, 1.83133528, 0.83975061]
-      # cal_20_mm = [-0.27467913, -0.02870156, 0.30729826, -1.85180733, 0.00724723, 1.82633607, 0.83968904]
-      # cal_22_mm = [-0.27492752, -0.02881564, 0.30730066, -1.84703765, 0.00730904, 1.82137303, 0.83964258]
-      # cal_24_mm = [-0.27495433, -0.02910731, 0.30729987, -1.84214418, 0.00736595, 1.81627148, 0.83959877]
-      # cal_26_mm = [-0.27498185, -0.02917162, 0.30729728, -1.83711943, 0.00740111, 1.81114207, 0.83956440]
-      # cal_28_mm = [-0.27500193, -0.02946890, 0.30729693, -1.83219466, 0.00744732, 1.80599850, 0.83953597]
-      # cal_30_mm = [-0.27501834, -0.02951123, 0.30730128, -1.82733378, 0.00747141, 1.80099033, 0.83951795]
-      # cal_40_mm = [-0.27535423, -0.02973620, 0.30729625, -1.80185362, 0.00748783, 1.77566828, 0.83950376]
-      # cal_50_mm = [-0.27537779, -0.02964236, 0.30729646, -1.77550289, 0.00747043, 1.75009969, 0.83951632]
-      # cal_60_mm = [-0.27538812, -0.02767563, 0.30729625, -1.74815756, 0.00737045, 1.72428787, 0.83968787]
-      # cal_70_mm = [-0.27534187, -0.02516956, 0.30729125, -1.71972291, 0.00653091, 1.69838691, 0.84020591]
-      # cal_80_mm = [-0.27489364, -0.02177300, 0.30729093, -1.69023271, 0.00559191, 1.67217843, 0.84087814]
-      # cal_90_mm = [-0.27442663, -0.01700015, 0.30725260, -1.66094411, 0.00428391, 1.64610852, 0.84159472]
-      # cal_100_mm = [-0.27342677, -0.01169027, 0.30724883, -1.62902436, 0.00271029, 1.61938627, 0.84278577]
-      # cal_110_mm = [-0.27221279, -0.00529769, 0.30724584, -1.59589389, 0.00080301, 1.59226100, 0.84416299]
-      # cal_120_mm = [-0.27068688, 0.00206569, 0.30723810, -1.56146977, -0.00141168, 1.56471790, 0.84578688]
-      # cal_130_mm = [-0.26867866, 0.01051012, 0.30723448, -1.52532189, -0.00398714, 1.53676718, 0.84757781]
-      # cal_140_mm = [-0.26635378, 0.02023801, 0.30722737, -1.48763902, -0.00694801, 1.50828884, 0.84963912]
+  elif abs(model.trainer.env.params.finger_hook_angle_degrees - 45) < 1e-5:
 
-      # calibration 18/02/24 75DEGREE FINGERS EI2 0mm=press, 2mm=full touch
-      touch_height_mm = 2
-      cal_0_mm = [-0.26465677, -0.06653508, 0.30426445, -1.94810009, 0.00519931, 1.90495333, 0.85446492]
-      cal_2_mm = [-0.26468163, -0.06687588, 0.30426973, -1.94497111, 0.00517773, 1.90039799, 0.85425492]
-      cal_4_mm = [-0.26471358, -0.06685380, 0.30427141, -1.94091235, 0.00518325, 1.89530001, 0.85410143]
-      cal_6_mm = [-0.26503110, -0.06690994, 0.30427141, -1.93651970, 0.00519738, 1.89024569, 0.85392881]
-      cal_8_mm = [-0.26507791, -0.06754549, 0.30427143, -1.93211447, 0.00522090, 1.88522869, 0.85378509]
-      cal_10_mm = [-0.26518058, -0.06801998, 0.30427503, -1.92764600, 0.00524558, 1.88022699, 0.85362153]
-      cal_12_mm = [-0.26540390, -0.06849060, 0.30427548, -1.92303129, 0.00527987, 1.87519219, 0.85347924]
-      cal_14_mm = [-0.26545875, -0.06897778, 0.30427141, -1.91841813, 0.00532508, 1.87020468, 0.85334477]
-      cal_16_mm = [-0.26576501, -0.06940543, 0.30427503, -1.91375831, 0.00574556, 1.86524832, 0.85320996]
-      cal_18_mm = [-0.26580655, -0.06978559, 0.30426974, -1.90907449, 0.00577708, 1.86022842, 0.85307874]
-      cal_20_mm = [-0.26585404, -0.07014882, 0.30427335, -1.90438504, 0.00580201, 1.85512281, 0.85296376]
-      cal_22_mm = [-0.26614276, -0.07026808, 0.30427715, -1.89974040, 0.00582059, 1.85000908, 0.85285480]
-      cal_24_mm = [-0.26618544, -0.07062135, 0.30427597, -1.89489858, 0.00583393, 1.84488728, 0.85274799]
-      cal_26_mm = [-0.26622521, -0.07069334, 0.30427338, -1.88996905, 0.00584898, 1.83986722, 0.85263867]
-      cal_28_mm = [-0.26626606, -0.07106799, 0.30427715, -1.88515273, 0.00586181, 1.83481416, 0.85256351]
-      cal_30_mm = [-0.26659076, -0.07112033, 0.30427670, -1.88033117, 0.00587356, 1.82983591, 0.85248238]
-      cal_40_mm = [-0.26699620, -0.07170002, 0.30427141, -1.85536463, 0.00589009, 1.80442038, 0.85213604]
-      cal_50_mm = [-0.26733672, -0.07169671, 0.30427670, -1.82948831, 0.00588733, 1.77903604, 0.85199639]
-      cal_60_mm = [-0.26760782, -0.07087460, 0.30427503, -1.80268477, 0.00586122, 1.75335092, 0.85198065]
-      cal_70_mm = [-0.26763740, -0.06916432, 0.30427142, -1.77486078, 0.00580894, 1.72752090, 0.85200943]
-      cal_80_mm = [-0.26763818, -0.06612083, 0.30426833, -1.74604985, 0.00500372, 1.70165443, 0.85220496]
-      cal_90_mm = [-0.26758452, -0.06232216, 0.30426923, -1.71628907, 0.00403251, 1.67534211, 0.85279979]
-      cal_100_mm = [-0.26716275, -0.05741868, 0.30426233, -1.68520777, 0.00271554, 1.64887705, 0.85350829]
-
-    elif abs(model.trainer.env.params.finger_hook_angle_degrees - 60) < 1e-5:
-
-      # calibration 15/02/24 60DEGREE FINGERS EI1 0mm=press, 2mm=light touch
-      touch_height_mm = 2
-      cal_0_mm = [-0.26363617, -0.05473505, 0.30020690, -1.90742241, 0.00734889, 1.87581724, 0.82313380]
-      cal_2_mm = [-0.26366258, -0.05472722, 0.30021328, -1.90369823, 0.00735250, 1.87093787, 0.82305917]
-      cal_4_mm = [-0.26371654, -0.05471687, 0.30021328, -1.89936716, 0.00741290, 1.86591738, 0.82294415]
-      cal_6_mm = [-0.26391464, -0.05504486, 0.30021328, -1.89472156, 0.00748206, 1.86090533, 0.82281917]
-      cal_8_mm = [-0.26396259, -0.05532080, 0.30021161, -1.88997358, 0.00757329, 1.85586071, 0.82272108]
-      cal_10_mm = [-0.26403608, -0.05563658, 0.30021328, -1.88528073, 0.00770713, 1.85078742, 0.82262177]
-      cal_12_mm = [-0.26422203, -0.05593439, 0.30021523, -1.88056663, 0.00779554, 1.84573231, 0.82252450]
-      cal_14_mm = [-0.26427300, -0.05619965, 0.30021331, -1.87574604, 0.00784266, 1.84068288, 0.82243819]
-      cal_16_mm = [-0.26438289, -0.05632581, 0.30021690, -1.87089863, 0.00788102, 1.83561542, 0.82236489]
-      cal_18_mm = [-0.26453586, -0.05657995, 0.30021523, -1.86600990, 0.00791936, 1.83057723, 0.82228960]
-      cal_20_mm = [-0.26458381, -0.05668035, 0.30021328, -1.86109418, 0.00795603, 1.82553612, 0.82223020]
-      cal_22_mm = [-0.26463690, -0.05691966, 0.30021328, -1.85616508, 0.00798505, 1.82048298, 0.82216497]
-      cal_24_mm = [-0.26482269, -0.05695218, 0.30022009, -1.85119037, 0.00800458, 1.81538102, 0.82211627]
-      cal_26_mm = [-0.26486016, -0.05698160, 0.30021650, -1.84621390, 0.00801417, 1.81027087, 0.82207689]
-      cal_28_mm = [-0.26489700, -0.05699540, 0.30021845, -1.84108635, 0.00801764, 1.80515880, 0.82204296]
-      cal_30_mm = [-0.26493536, -0.05700533, 0.30021845, -1.83597784, 0.00801835, 1.80008457, 0.82202409]
-      cal_40_mm = [-0.26529586, -0.05696333, 0.30022013, -1.80990437, 0.00799617, 1.77460503, 0.82199937]
-      cal_50_mm = [-0.26544880, -0.05556902, 0.30021846, -1.78293351, 0.00772567, 1.74892897, 0.82204890]
-      cal_60_mm = [-0.26546751, -0.05339131, 0.30021507, -1.75493735, 0.00707560, 1.72307920, 0.82238232]
-      cal_70_mm = [-0.26539159, -0.05028930, 0.30021145, -1.72586789, 0.00612781, 1.69704613, 0.82291076]
-      cal_80_mm = [-0.26503468, -0.04624956, 0.30021437, -1.69573253, 0.00491428, 1.67075798, 0.82362430]
-      cal_90_mm = [-0.26424438, -0.04132709, 0.30020633, -1.66449699, 0.00342211, 1.64419101, 0.82454922]
-      cal_100_mm = [-0.26334276, -0.03539899, 0.30020896, -1.63179003, 0.00161609, 1.61728759, 0.82568431]
-
-    elif abs(model.trainer.env.params.finger_hook_angle_degrees - 45) < 1e-5:
-
-      # calibration 17/02/24 45DEGREE FINGERS EI1 0mm=press, 2=touch
-      touch_height_mm = 2
-      cal_0_mm = [-0.25846346, -0.09142749, 0.29959801, -1.92880532, 0.01334620, 1.85091865, 0.83178104]
-      cal_2_mm = [-0.25870198, -0.09147041, 0.29959110, -1.92550948, 0.01331499, 1.84638432, 0.83170138]
-      cal_4_mm = [-0.25880085, -0.09145244, 0.29958943, -1.92094128, 0.01331539, 1.84132962, 0.83144733]
-      cal_6_mm = [-0.25893341, -0.09144813, 0.29959277, -1.91614196, 0.01331951, 1.83633531, 0.83141448]
-      cal_8_mm = [-0.25902936, -0.09150171, 0.29958943, -1.91140079, 0.01332294, 1.83133743, 0.83137158]
-      cal_10_mm = [-0.25920749, -0.09164791, 0.29959110, -1.90661197, 0.01332703, 1.82621356, 0.83131193]
-      cal_12_mm = [-0.25925322, -0.09187866, 0.29958943, -1.90174872, 0.01333121, 1.82119543, 0.83124218]
-      cal_14_mm = [-0.25946668, -0.09193467, 0.29959277, -1.89680717, 0.01333804, 1.81617031, 0.83112259]
-      cal_16_mm = [-0.25952683, -0.09201289, 0.29958748, -1.89181902, 0.01333661, 1.81101491, 0.83102176]
-      cal_18_mm = [-0.25958494, -0.09225744, 0.29959109, -1.88687240, 0.01333972, 1.80588839, 0.83097190]
-      cal_20_mm = [-0.25981331, -0.09227619, 0.29959277, -1.88189885, 0.01334080, 1.80087797, 0.83093134]
-      cal_22_mm = [-0.25985366, -0.09229092, 0.29959472, -1.87688817, 0.01334009, 1.79581659, 0.83089471]
-      cal_24_mm = [-0.25992494, -0.09230065, 0.29959277, -1.87184252, 0.01334212, 1.79078809, 0.83085940]
-      cal_26_mm = [-0.26017999, -0.09230066, 0.29958871, -1.86667663, 0.01333933, 1.78573958, 0.83083132]
-      cal_28_mm = [-0.26021408, -0.09230109, 0.29959107, -1.86152746, 0.01334141, 1.78061220, 0.83080412]
-      cal_30_mm = [-0.26026884, -0.09230342, 0.29959277, -1.85639911, 0.01333733, 1.77549605, 0.83077798]
-      cal_40_mm = [-0.26082449, -0.09226030, 0.29958748, -1.82978011, 0.01331539, 1.74991513, 0.83076478]
-      cal_50_mm = [-0.26113845, -0.09032312, 0.29958943, -1.80233337, 0.01277609, 1.72413216, 0.83078100]
-      cal_60_mm = [-0.26119477, -0.08769341, 0.29958748, -1.77383102, 0.01209097, 1.69836126, 0.83088790]
-      cal_70_mm = [-0.26120006, -0.08401203, 0.29958589, -1.74435985, 0.01111002, 1.67226951, 0.83143025]
-      cal_80_mm = [-0.26115087, -0.07952169, 0.29958052, -1.71367803, 0.00987935, 1.64588992, 0.83217959]
-      cal_90_mm = [-0.26065998, -0.07420020, 0.29957523, -1.68188725, 0.00825537, 1.61942467, 0.83311926]
-      cal_100_mm = [-0.25974838, -0.06776345, 0.29957022, -1.64890949, 0.00631284, 1.59253614, 0.83427676]
+    # calibration 17/02/24 45DEGREE FINGERS EI1 0mm=press, 2=touch
+    touch_height_mm = 2
+    cal_0_mm = [-0.25846346, -0.09142749, 0.29959801, -1.92880532, 0.01334620, 1.85091865, 0.83178104]
+    cal_2_mm = [-0.25870198, -0.09147041, 0.29959110, -1.92550948, 0.01331499, 1.84638432, 0.83170138]
+    cal_4_mm = [-0.25880085, -0.09145244, 0.29958943, -1.92094128, 0.01331539, 1.84132962, 0.83144733]
+    cal_6_mm = [-0.25893341, -0.09144813, 0.29959277, -1.91614196, 0.01331951, 1.83633531, 0.83141448]
+    cal_8_mm = [-0.25902936, -0.09150171, 0.29958943, -1.91140079, 0.01332294, 1.83133743, 0.83137158]
+    cal_10_mm = [-0.25920749, -0.09164791, 0.29959110, -1.90661197, 0.01332703, 1.82621356, 0.83131193]
+    cal_12_mm = [-0.25925322, -0.09187866, 0.29958943, -1.90174872, 0.01333121, 1.82119543, 0.83124218]
+    cal_14_mm = [-0.25946668, -0.09193467, 0.29959277, -1.89680717, 0.01333804, 1.81617031, 0.83112259]
+    cal_16_mm = [-0.25952683, -0.09201289, 0.29958748, -1.89181902, 0.01333661, 1.81101491, 0.83102176]
+    cal_18_mm = [-0.25958494, -0.09225744, 0.29959109, -1.88687240, 0.01333972, 1.80588839, 0.83097190]
+    cal_20_mm = [-0.25981331, -0.09227619, 0.29959277, -1.88189885, 0.01334080, 1.80087797, 0.83093134]
+    cal_22_mm = [-0.25985366, -0.09229092, 0.29959472, -1.87688817, 0.01334009, 1.79581659, 0.83089471]
+    cal_24_mm = [-0.25992494, -0.09230065, 0.29959277, -1.87184252, 0.01334212, 1.79078809, 0.83085940]
+    cal_26_mm = [-0.26017999, -0.09230066, 0.29958871, -1.86667663, 0.01333933, 1.78573958, 0.83083132]
+    cal_28_mm = [-0.26021408, -0.09230109, 0.29959107, -1.86152746, 0.01334141, 1.78061220, 0.83080412]
+    cal_30_mm = [-0.26026884, -0.09230342, 0.29959277, -1.85639911, 0.01333733, 1.77549605, 0.83077798]
+    cal_40_mm = [-0.26082449, -0.09226030, 0.29958748, -1.82978011, 0.01331539, 1.74991513, 0.83076478]
+    cal_50_mm = [-0.26113845, -0.09032312, 0.29958943, -1.80233337, 0.01277609, 1.72413216, 0.83078100]
+    cal_60_mm = [-0.26119477, -0.08769341, 0.29958748, -1.77383102, 0.01209097, 1.69836126, 0.83088790]
+    cal_70_mm = [-0.26120006, -0.08401203, 0.29958589, -1.74435985, 0.01111002, 1.67226951, 0.83143025]
+    cal_80_mm = [-0.26115087, -0.07952169, 0.29958052, -1.71367803, 0.00987935, 1.64588992, 0.83217959]
+    cal_90_mm = [-0.26065998, -0.07420020, 0.29957523, -1.68188725, 0.00825537, 1.61942467, 0.83311926]
+    cal_100_mm = [-0.25974838, -0.06776345, 0.29957022, -1.64890949, 0.00631284, 1.59253614, 0.83427676]
   
   # code not used anywhere else, only kept for reference currently
   using_uncertainty_matrix = False # do not set true
@@ -1460,9 +1340,9 @@ def load_model(request):
   """
   
   global model_loaded
-  global model, dqn_log_level
+  global model, tm_log_level
 
-  model = TrainingManager(log_level=dqn_log_level, device=device)
+  model = TrainingManager(log_level=tm_log_level, device=device)
 
   if request.timestamp != "" and request.job_number != 0:
     use_timestamp_job_number = True
@@ -1892,46 +1772,6 @@ def load_baseline_1_model(request=None):
   load_model(load)
 
   return True
-
-def set_sim_ft_sensor_callback(request):
-  """
-  Set the flag for using a simulated force torque sensor
-  """
-
-  global use_sim_ftsensor
-  if log_level > 1: rospy.loginfo(f"use_sim_ftsensor originally set to {use_sim_ftsensor}")
-  use_sim_ftsensor = request.data
-  if log_level > 0: rospy.loginfo(f"use_sim_ftsensor is now set to {request.data}")
-
-  return []
-
-def set_dynamic_recal_ft_callback(request):
-  """
-  Set the bool value of whether we dynamically reset the ftsensor to zero
-  every time we get two exactly repeated values (indicating a connection drop,
-  which implies the sensor is in steady state and under no force)
-  """
-
-  global dynamic_recal_ftsensor
-  if log_level > 1: rospy.loginfo(f"dynamic_recal_ftsensor originally set to {dynamic_recal_ftsensor}")
-  dynamic_recal_ftsensor = request.data
-  if log_level > 0: rospy.loginfo(f"dynamic_recal_ftsensor is now set to {dynamic_recal_ftsensor}")
-
-  return []
-
-def set_reject_wrist_noise_callback(request):
-  """
-  Set the bool value of whether we dynamically reset the ftsensor to zero
-  every time we get two exactly repeated values (indicating a connection drop,
-  which implies the sensor is in steady state and under no force)
-  """
-
-  global reject_wrist_noise
-  if log_level > 1: rospy.loginfo(f"reject_wrist_noise originally set to {reject_wrist_noise}")
-  reject_wrist_noise = request.data
-  if log_level > 0: rospy.loginfo(f"reject_wrist_noise is now set to {reject_wrist_noise}")
-
-  return []
 
 def make_test_heurisitc(request=None):
   """
@@ -2770,10 +2610,7 @@ if __name__ == "__main__":
   rospy.loginfo(f"  > move panda is {move_panda}")
   rospy.loginfo(f"  > using camera is {camera}")
   rospy.loginfo(f"  > using devel model is {use_devel}")
-  rospy.loginfo(f"  > photoshoot calibration is {photoshoot_calibration}")
   rospy.loginfo(f"  > use panda threads is {use_panda_threads}")
-  rospy.loginfo(f"  > reject wrist noise is {reject_wrist_noise}")
-  rospy.loginfo(f"  > prevent table hit is {prevent_table_hit}")
 
   # do we need to import the franka control library
   if move_panda: connect_panda()
@@ -2932,8 +2769,6 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/delete_trial", Empty, delete_last_trial)
   rospy.Service(f"/{node_ns}/print_test", Empty, print_test_results)
   rospy.Service(f"/{node_ns}/load_baseline_model", LoadBaselineModel, load_baseline_1_model)
-  rospy.Service(f"/{node_ns}/set_use_sim_ft_sensor", SetBool, set_sim_ft_sensor_callback)
-  rospy.Service(f"/{node_ns}/set_dynamic_recal_ft", SetBool, set_dynamic_recal_ft_callback)
   rospy.Service(f"/{node_ns}/make_test_heuristic", Empty, make_test_heurisitc)
   rospy.Service(f"/{node_ns}/place", Empty, gentle_place)
   rospy.Service(f"/{node_ns}/panda_move_to_int", PandaMoveToInt, move_panda_to)
@@ -2941,7 +2776,6 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/stop_demo", Empty, stop_demo)
   rospy.Service(f"/{node_ns}/reset_demo", Empty, reset_demo)
   rospy.Service(f"/{node_ns}/continue_demo", Demo, loop_demo)
-  rospy.Service(f"/{node_ns}/set_reject_wrist_noise", SetBool, set_reject_wrist_noise_callback)
   rospy.Service(f"/{node_ns}/extra_frc_test", ForceTest, run_extra_force_test)
   rospy.Service(f"/{node_ns}/print_panda_state", Empty, print_panda_state)
   rospy.Service(f"/{node_ns}/stop_force_test", Empty, stop_force_test)
