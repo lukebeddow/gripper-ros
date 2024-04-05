@@ -44,7 +44,7 @@ demo, fast, limited gaps between actions, could have issues
 
 # important user settings
 camera = False                  # do we want to take camera images
-use_devel = False               # do we load trainings from mujoco-devel and run with that compilation
+use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
 use_panda_threads = True       # do we run panda in a seperate thread
 use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
@@ -53,6 +53,7 @@ panda_z_move_duration = 0.18 #0.22    # how long in seconds to move the panda z 
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
+use_MAT = True                  # use MAT baseline grasping
 
 # grasp stability evaluation settings
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
@@ -97,7 +98,10 @@ demo_loop_int = -1              # where in the demo loop are wek
 # declare global variables, these will be overwritten
 step_num = 0                    # number of steps in our grasp
 franka_instance = None          # franka FCI connection class
-panda_z_height = 0.0            # panda z height state reading (=0 @ 10mm above gnd)
+panda_x_pos = 0.0               # panda x position in metres
+panda_y_pos = 0.0               # panda y position in metres
+panda_z_height = 0.0            # panda z height state reading in metres (=0 @ 10mm above gnd)
+panda_z_rotation = 0.0          # panda wrist z rotation (yaw) in radians
 current_test_data = None        # current live test data structure
 ftenv = None                    # simulated environment for fake force/torque sensor readings
 norm_state_pub = None           # ROS publisher for normalised state readings
@@ -125,6 +129,7 @@ trial_object_num = None         # number of the current object on trial
 trial_object_axis = None        # name of the force axis to measure with the current object
 axis_force_tol = None           # last force tolerated in a particular axis
 prevent_force_test = False      # cancel signal to stop a force test from proceeding
+lift_termination_done = False   # have we done a lift termination to end grasping
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -215,13 +220,22 @@ def data_callback(state):
   # we cannot start saving data until the model class is ready (else silent crash)
   if not model_loaded: return
 
-  # create vectors of observation data, order is very important!
+  # create state observation data, start with gripper motors (order is vitally important! Check mjclass.cpp)
   state_vec = [
     state.pose.x, 
     state.pose.y, 
     state.pose.z, 
-    panda_z_height * -1 # simulation flips up/down
+    # panda_z_height * -1 # simulation flips up/down
   ]
+
+  # add in panda states depending on what state sensing is in use
+  if model.trainer.env.mj.set.base_state_sensor_XY.in_use:
+    state_vec.append(panda_x_pos)
+    state_vec.append(panda_y_pos)
+  if model.trainer.env.mj.set.base_state_sensor_Z.in_use:
+    state_vec.append(panda_z_height * -1) # simulation flips up/down !!! very important
+  if model.trainer.env.mj.set.base_state_sensor_yaw.in_use:
+    state_vec.append(panda_z_rotation)
 
   # get panda estimated external wrenches
   if franka_instance is not None:
@@ -244,7 +258,7 @@ def data_callback(state):
   state.sensor.gauge4 *= scale_palm_data
   state.ftdata.force.z *= scale_wrist_data
 
-  # assemble our state vector (order is vitally important! Check mjclass.cpp)
+  # assemble our vector of sensor states (order is vitally important! Check mjclass.cpp)
   sensor_vec = [
     state.sensor.gauge1, 
     state.sensor.gauge2, 
@@ -253,16 +267,13 @@ def data_callback(state):
     state.ftdata.force.z
   ]
 
-  # TEMPORARY FIX - WILL NEED TO BE UPGRADED
-  if use_devel:
-    try:
-      if model.trainer.env.params.XY_base_actions:
-        state_vec.append(0)
-        state_vec.append(0)
-      if model.trainer.env.params.Z_base_rotation:
-        state_vec.append(0)
-    except Exception as e:
-      pass
+  if model.trainer.env.mj.set.cartesian_contacts_XYZ.in_use:
+    # get the contact positions
+    SI_forces = model.trainer.env.mj.get_SI_gauge_forces(sensor_vec[:4])
+    cart_xyz = get_cartesian_contact_positions(state_vec[:3], SI_forces)
+    # add them to the sensor vector
+    for xyz in cart_xyz:
+      sensor_vec.append(xyz)
 
   # input the data
   model.trainer.env.mj.input_real_data(state_vec, sensor_vec)
@@ -418,10 +429,23 @@ def generate_action():
     t2 = time.time()
     rospy.loginfo(f"Time take for RL action selection {1e3 * (t2 - t1):.3f} milliseconds")
 
-  if log_level >= 2: rospy.loginfo(f"Generated action, action code is: {action}")
+  if log_level >= 2: rospy.loginfo(f"Generated action: {action}")
 
-  # apply the action and get the new target state (vector)
-  new_target_state = model.trainer.env._set_action(action)
+  # if using MAT, see if we need to lift or reopen
+  if use_MAT and model.trainer.env.params.use_MAT:
+    new_target_state = model.trainer.env._set_MAT_action(action)
+    if model.trainer.env.params.MAT_use_reopen:
+      if action[-2] > 0.5:
+        reopen_action()
+      elif model.trainer.env.mj.set.use_termination_action:
+        if action[-3] > 0.5:
+          lift_termination()
+    elif model.trainer.env.mj.set.use_termination_action:
+      if action[-1] > 0.5:
+        lift_termination()
+  else:
+    # apply the action and get the new target state (vector)
+    new_target_state = model.trainer.env._set_action(action)
 
   # if at test time, save simple, unnormalised state data for this step
   if currently_testing:
@@ -449,7 +473,7 @@ def move_panda_service(request):
 
   return True
 
-def move_panda_z_abs(franka, target_z):
+def move_panda_z_abs(franka, target_z, duration_override=None):
   """
   Move the panda to a new z position with cartesian motion using Valerio's library,
   an instance of which is passed as 'franka'
@@ -490,11 +514,14 @@ def move_panda_z_abs(franka, target_z):
 
   # define duration in seconds (too low and we get acceleration errors)
   global panda_z_move_duration
+  duration = panda_z_move_duration
+  if duration_override is not None:
+    duration = duration_override
 
   panda_in_motion = True
 
   if use_panda_threads:
-    process = Process(target=franka.move, args=("relative", T, panda_z_move_duration))
+    process = Process(target=franka.move, args=("relative", T, duration))
     process.start()
     process.join()
     process.close()
@@ -502,7 +529,7 @@ def move_panda_z_abs(franka, target_z):
       rospy.logwarn(f"Panda movement exception. Cancelling grasping. Error message: {process.exception}")
       cancel_grasping_callback()
   else:
-    franka.move("relative", T, panda_z_move_duration)
+    franka.move("relative", T, duration)
 
   panda_in_motion = False
 
@@ -808,6 +835,7 @@ def execute_grasping_callback(request=None, reset=True):
   global grasp_frc_stable
   global stable_grasp_frc
   global prevent_force_test
+  global lift_termination_done
 
   if reset:
     reset_all(allow_panda_noise=True) # note this calls 'cancel_grasping_callback' if continue_grasping == True
@@ -816,6 +844,7 @@ def execute_grasping_callback(request=None, reset=True):
   continue_grasping = True
   prevent_force_test = False
   grasp_frc_stable = False
+  lift_termination_done = False
 
   step_num = 0
 
@@ -837,9 +866,9 @@ def execute_grasping_callback(request=None, reset=True):
         if grasp_frc_stable:
 
           # stop grasping and determine if we are force testing
-          force_test = True if not prevent_force_test else False
+          force_test = prevent_force_test
           cancel_grasping_callback()
-          prevent_force_test = False if force_test else True
+          prevent_force_test = force_test
 
           # using a second gripper for XYZ force measurements
           if extra_gripper_measuring:
@@ -895,6 +924,9 @@ def execute_grasping_callback(request=None, reset=True):
       if not continue_grasping:
         if log_level > 1: rospy.loginfo("Grasping cancelled, action not executed") 
         break
+      if lift_termination_done:
+        if log_level > 1: rospy.loginfo("Grasping stopping, lift termination detected")
+        continue
 
       # if the action is for the gripper
       if model.trainer.env.using_continous_actions() or not for_franka:
@@ -918,20 +950,29 @@ def execute_grasping_callback(request=None, reset=True):
       # if the action is for the panda
       if model.trainer.env.using_continous_actions() or for_franka:
 
-        if move_panda is False:
-          if log_level > 1: rospy.loginfo(f"Panda action ignored as move_panda=False")
-          continue
-
         if model.trainer.env.params.XY_base_actions:
           panda_x = new_target_state[3]
           panda_y = new_target_state[4]
           panda_z = -new_target_state[5]
-          panda_target = panda_z
-          panda_target = -new_target_state[5] # negative/positive flipped
+          if model.trainer.env.params.Z_base_rotation:
+            panda_z_rotation = new_target_state[6]
         else:
-          panda_target = -new_target_state[3] # negative/positive flipped
-        if log_level > 1: rospy.loginfo(f"dqn is sending a panda control signal to z = {panda_target:.6f}")
-        move_panda_z_abs(franka_instance, panda_target)
+          panda_z = -new_target_state[3] # negative/positive flipped
+          if model.trainer.env.params.Z_base_rotation:
+            panda_z_rotation = new_target_state[4]
+
+        if log_level > 1:
+          if model.trainer.env.params.XY_base_actions:
+            rospy.logwarn(f"panda_x position target: {panda_x * 1e3:.1f} mm, not implemented")
+            rospy.logwarn(f"panda_y position target: {panda_y * 1e3:.1f} mm, not implemented")
+          if model.trainer.env.params.Z_base_rotation:
+            rospy.logwarn(f"panda_z_rotation target: {panda_z_rotation * (180/3.14159):.1f} deg, not implemented")
+          rospy.loginfo(f"panda_z position target: {panda_z * 1e3:.1f} mm")
+
+        if move_panda is False:
+          if log_level > 1: rospy.loginfo(f"Panda action ignored as move_panda=False")
+          continue
+        move_panda_z_abs(franka_instance, panda_z)
 
         # move panda is blocking, so we know we can now have a new action
         # ready_for_new_action = True
@@ -969,6 +1010,36 @@ def stop_force_test(request=None):
   prevent_force_test = True
 
   return []
+
+def lift_termination(request=None):
+  """
+  Terminate a grasp and lift up the panda to a preset height
+  """
+
+  move_panda_z_abs(franka_instance, 30e-3 - 1e-6, duration_override=1.0)
+
+  global grasp_frc_stable, stable_grasp_frc, lift_termination_done
+  lift_termination_done = True
+
+  # determine the final forces in grasp
+  gauge1 = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
+  gauge2 = model.trainer.env.mj.real_sensors.SI.read_finger2_gauge()
+  gauge3 = model.trainer.env.mj.real_sensors.SI.read_finger3_gauge ()
+  palm = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+  avg_gauge = (gauge1 + gauge2 + gauge3) / 3.0
+
+  # say grasp was stable
+  force_str = f"Avg gauge = {avg_gauge:.1f} ({gauge1:.1f}, {gauge2:.1f}, {gauge3:.1f}), palm = {palm:.1f}"
+  if log_level > 0:
+    rospy.loginfo(f"Lift termination, final forces were = {force_str}")
+  stable_grasp_frc = [gauge1, gauge2, gauge3, palm]
+  grasp_frc_stable = True
+
+def reopen_action():
+  """
+  Perform a reopen action during MAT
+  """
+  rospy.logwarn("Reopen action called, not yet implemented")
 
 def reset_all(request=None, skip_panda=False, allow_panda_noise=False):
   """
@@ -2379,6 +2450,93 @@ def print_panda_state(request=None):
 
   return []
 
+def get_cartesian_contact_positions(gripper_joint_pos, finger_forces_SI):
+  """
+  For MAT baseline: return the cartesian xyz positions of finger contacts.
+
+  gripper_joint_pos should be (x, y, z)
+  finger_forces_SI should be (3 finger gauges, palm gauge)
+  """
+  
+  # force threshold
+  ft =  0.2 # Newtons
+
+  # get gripper base positions
+  base_x = panda_x_pos
+  base_y = panda_y_pos
+  base_z = panda_z_height
+  base_z_rot = panda_z_rotation
+
+  """
+  Current co-ordinate system for finger bending/tilting is:
+  X straight foward from arm
+  Y right from arm (towards monitor)
+  Z vertically upwards
+
+  Base motions should fit with this. Check co-ordinates!!!
+  """
+
+  # get gripper joint positions
+  fing_x = gripper_joint_pos[0]
+  fing_y = gripper_joint_pos[1]
+  palm_z = gripper_joint_pos[2]
+
+  # hardcoded geometric information about the gripper
+  leadscrew_dist = 35e-3
+  fingerend_to_palm_Z = 165e-3
+  PI_23 = np.pi * (2.0/3.0)
+  angles = [PI_23, 0.0, -PI_23] # take care with co-ordinate system
+  finger_length = model.trainer.env.params.finger_length
+  EI = ((1.0/12.0) * (model.trainer.env.params.finger_thickness ** 3 
+                     * model.trainer.env.params.finger_width)
+        * model.trainer.env.params.finger_modulus)
+  
+  # determine the gripper finger angle
+  fing_th = -1 * np.arcsin((fing_y - fing_x) / leadscrew_dist)
+
+  # determine how high the three fingerends are above the ground
+  untilted_fingerend_height = panda_reset_height_mm*1e-3 + base_z
+  tip_lift = finger_length * (1 - np.cos(fing_th))
+  tilted_fingerend_height = untilted_fingerend_height + tip_lift
+
+  xyz_for_fingers = []
+
+  # loop over the three fingers
+  for i in range(3):
+
+    # apply tilt to position
+    tilt_fing_x = fing_x - finger_length * np.sin(fing_th)
+
+    # apply bending to x and z position
+    deflection = (finger_forces_SI[i] * finger_length ** 3) / (3 * EI)
+    deflection_x = deflection * np.cos(fing_th)
+    deflection_z = deflection * np.sin(fing_th)
+    final_fing_x = tilt_fing_x + deflection_x
+
+    # get final positions of the fingerend
+    x = final_fing_x * np.sin(angles[i] + base_z_rot) + base_x
+    y = final_fing_x * np.cos(angles[i] + base_z_rot) + base_y
+    z = tilted_fingerend_height - deflection_z
+
+    # save the result, if there is a contact (ie force above our threshold)
+    xyz_for_fingers.append(x * (finger_forces_SI[i] > ft))
+    xyz_for_fingers.append(y * (finger_forces_SI[i] > ft))
+    xyz_for_fingers.append(z * (finger_forces_SI[i] > ft))
+
+  # finally, add the palm position (if there is a palm contact)
+  palm_pos_z = untilted_fingerend_height + fingerend_to_palm_Z - palm_z
+  xyz_for_fingers.append(base_x * (finger_forces_SI[3] > ft))
+  xyz_for_fingers.append(base_y * (finger_forces_SI[3] > ft))
+  xyz_for_fingers.append(palm_pos_z * (finger_forces_SI[3] > ft))
+
+  # print("xyz_for_fingers length is", len(xyz_for_fingers))
+  # print("Finger 1 (x,y,z) =", xyz_for_fingers[:3])
+  # print("Finger 2 (x,y,z) =", xyz_for_fingers[3:6])
+  # print("Finger 3 (x,y,z) =", xyz_for_fingers[6:9])
+  # print("Palm (x,y,z) =", xyz_for_fingers[9:])
+
+  return xyz_for_fingers
+
 hardcoded_object_force_measuring_green = {
   "2" : {
     "X" : [-0.28069337, -0.18465624, 0.11252855, -1.79308801, 0.00557113, 1.63109549, 0.22820591],
@@ -2642,7 +2800,7 @@ if __name__ == "__main__":
   norm_sensor_pub.publish(NormalisedSensor())
 
   # user set - what do we load by default
-  if use_devel and True:
+  if use_devel and not use_MAT and True:
 
     rospy.logwarn("Loading DEVEL policy")
 
@@ -2715,6 +2873,19 @@ if __name__ == "__main__":
     # model.trainer.env._load_image_rendering_model(device="cuda", loadA=False) # loadB for reverse transform
     # model.trainer.agent.set_device(model.trainer.env.torch_device)
     # print("READY TO RENDER")
+
+  elif use_MAT:
+
+    # load a MAT training
+    load = LoadModel()
+    load.folderpath = "/home/luke/mujoco-devel/rl/models"
+    load.run_id = "best"
+    load.timestamp = "02-04-24_15-08"
+    load.job_number = 65
+    load_model(load)
+
+    # slow things down due to larger action steps
+    action_delay = 0.25
 
   elif use_devel:
 
