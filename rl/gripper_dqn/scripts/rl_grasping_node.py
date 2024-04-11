@@ -80,6 +80,7 @@ image_rate = 1                  # 1=take pictures every step, 2=every two steps 
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 number_gripper_demands = 1      # how many gripper position commands to send to try ensure motions are achieved
 quit_on_palm = None             # quit grasping with a palm value above this (during test only), set None for off
+print_calibrations = True       # print force readings from the fingers for calibration
 
 # ----- global variable declarations ----- #
 
@@ -121,6 +122,7 @@ stable_grasp_frc = None         # measured forces in stable grasp
 palm_SI_pub = None              # publisher for palm force in SI units (newtons)
 extra_gripper_palm_frc = None   # palm force in newtons from the 2nd gripper (if in use)
 extra_gripper_palm_raw = None   # palm force in newtons without any offset
+extra_gripper_palm_24bit = None # palm force 24bit number, raw and direct from gauge reading
 extra_gripper_palm_pos = None   # palm position in metres from the 2nd gripper
 extra_demand_pub = None         # demand publisher for the 2nd gripper
 extra_gripper_z_offset = 0.0    # palm force offset in newtons, zeroed upon any reset if using 2nd gripper
@@ -130,6 +132,8 @@ trial_object_axis = None        # name of the force axis to measure with the cur
 axis_force_tol = None           # last force tolerated in a particular axis
 prevent_force_test = False      # cancel signal to stop a force test from proceeding
 lift_termination_done = False   # have we done a lift termination to end grasping
+frc_reading_avgs = [[],[],[],[]]# vector [g1, g2, g3, palm] for running averages of 10 samples
+raw_reading_avgs = [[],[],[],[]]# vector [g1, g2, g3, palm] for running averages of 10 samples
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -346,6 +350,41 @@ def data_callback(state):
   palm = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
   avg_gauge = (gauge1 + gauge2 + gauge3) / 3.0
 
+  # calculate running averages (for calibration only)
+  if print_calibrations:
+    global frc_reading_avgs, raw_reading_avgs
+    avg_num = 10
+    use_main_palm = True
+    if len(frc_reading_avgs[0]) < avg_num:
+      frc_reading_avgs[0].append(gauge1)
+      frc_reading_avgs[1].append(gauge2)
+      frc_reading_avgs[2].append(gauge3)
+      if use_main_palm:
+        frc_reading_avgs[3].append(palm)
+      else:
+        frc_reading_avgs[3].append(extra_gripper_palm_frc)
+      raw_reading_avgs[0].append(model.trainer.env.mj.real_sensors.raw.read_finger1_gauge())
+      raw_reading_avgs[1].append(model.trainer.env.mj.real_sensors.raw.read_finger2_gauge())
+      raw_reading_avgs[2].append(model.trainer.env.mj.real_sensors.raw.read_finger3_gauge())
+      if use_main_palm:
+        raw_reading_avgs[3].append(model.trainer.env.mj.real_sensors.raw.read_palm_sensor())
+      else:
+        raw_reading_avgs[3].append(extra_gripper_palm_24bit)
+    if len(frc_reading_avgs[0]) == avg_num:
+      def sum(lst):
+        x = 0
+        for i in lst: x += i
+        return x
+      print(f"\nForce readings for calibration, average of {avg_num} readings:")
+      print(f"""{"Gauge":<10} | {"Force / N":<10} | {"Raw / int":<10}""")
+      line = "{:<10} | {:<10.5f} | {:<10.0f}"
+      print(line.format("Finger 1", sum(frc_reading_avgs[0]) / avg_num, sum(raw_reading_avgs[0]) / avg_num))
+      print(line.format("Finger 2", sum(frc_reading_avgs[1]) / avg_num, sum(raw_reading_avgs[1]) / avg_num))
+      print(line.format("Finger 3", sum(frc_reading_avgs[2]) / avg_num, sum(raw_reading_avgs[2]) / avg_num))
+      print(line.format("Palm", sum(frc_reading_avgs[3]) / avg_num, sum(raw_reading_avgs[3]) / avg_num))
+      frc_reading_avgs = [[],[],[],[]]
+      raw_reading_avgs = [[],[],[],[]]
+
   # check forces are within acceptable limits and the target height is reached
   if (avg_gauge > model.trainer.env.mj.set.stable_finger_force and
       palm > model.trainer.env.mj.set.stable_palm_force and
@@ -375,7 +414,7 @@ def extra_gripper_data_callback(state):
   Data callback if a second gripper is being used
   """
 
-  global extra_gripper_palm_frc, extra_gripper_palm_raw
+  global extra_gripper_palm_frc, extra_gripper_palm_raw, extra_gripper_palm_24bit
 
   raw_gauge = state.gauge4
 
@@ -386,6 +425,7 @@ def extra_gripper_data_callback(state):
   # gauge_cal_factor = -4.6199e-5 # december 9th calibration
   gauge_cal_factor = 2.787e-5 # feb 13th calibration (12V POWER SUPPLY)
 
+  extra_gripper_palm_24bit = raw_gauge
   extra_gripper_palm_raw = raw_gauge * gauge_cal_factor 
   extra_gripper_palm_frc = extra_gripper_palm_raw - extra_gripper_z_offset
 
@@ -2883,6 +2923,12 @@ if __name__ == "__main__":
     load.timestamp = "02-04-24_15-08"
     load.job_number = 65
     load_model(load)
+
+    # set for calibration
+    model.trainer.env.load(
+      finger_width = 28e-3,
+      finger_thickness = 0.9e-3
+    )
 
     # slow things down due to larger action steps
     action_delay = 0.25
