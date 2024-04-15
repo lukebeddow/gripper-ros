@@ -44,12 +44,10 @@ demo, fast, limited gaps between actions, could have issues
 
 # important user settings
 camera = False                  # do we want to take camera images
-use_devel = True               # do we load trainings from mujoco-devel and run with that compilation
-use_panda_threads = True       # do we run panda in a seperate thread
-use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
+use_devel = True                # do we load trainings from mujoco-devel and run with that compilation
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
-action_delay = 0.05 #0.1              # safety delay between action generation and publishing
-panda_z_move_duration = 0.18 #0.22    # how long in seconds to move the panda z height vertically up
+action_delay = 0.05             # safety delay between action generation and publishing
+panda_z_move_duration = 0.18    # how long in seconds to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
@@ -57,11 +55,11 @@ use_MAT = True                  # use MAT baseline grasping
 
 # grasp stability evaluation settings
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
-use_palm_force_test = True     # test grasp stability with palm disturbance
+use_palm_force_test = True      # test grasp stability with palm disturbance
 extra_gripper_measuring = True  # use a second gripper for measurements
 palm_force_target = 10          # maximum force at which palm force test ends
 XY_force_target = 10            # maximum force at which XY force test ends
-reset_probe_after = True       # do we reset the second gripper after probe measurements
+reset_probe_after = True        # do we reset the second gripper after probe measurements
 
 # important paths
 test_save_path = "/home/luke/gripper-ros/"
@@ -70,8 +68,10 @@ else: mymujoco_rl_path = "/home/luke/mymujoco/rl"
 pyfranka_path = "/home/luke/libs/franka/franka_interface/build"
 
 # debugging and advanced user settings
-debug_observation = False        # print debug information about the observation
+debug_observation = False       # print debug information about the observation
 print_network_eval_time = True  # print the time taken to evaluate the network
+use_panda_threads = True        # do we run panda in a seperate thread
+use_panda_ft_sensing = True     # do we use panda wrench estimation for forces, else our f/t sensor
 scale_actions_on_load = 1.0     # scale action sizes upon loading a model
 scale_gauge_data = 1.0          # scale real gauge data by this
 scale_wrist_data = 1.0          # scale real wrist data by this
@@ -80,7 +80,7 @@ image_rate = 1                  # 1=take pictures every step, 2=every two steps 
 image_batch_size = 1            # 1=save pictures every trial, 2=every two trials etc
 number_gripper_demands = 1      # how many gripper position commands to send to try ensure motions are achieved
 quit_on_palm = None             # quit grasping with a palm value above this (during test only), set None for off
-print_calibrations = True       # print force readings from the fingers for calibration
+print_calibrations = False      # print force readings from the fingers for calibration
 
 # ----- global variable declarations ----- #
 
@@ -2920,18 +2920,18 @@ if __name__ == "__main__":
     load = LoadModel()
     load.folderpath = "/home/luke/mujoco-devel/rl/models"
     load.run_id = "best"
-    load.timestamp = "02-04-24_15-08"
-    load.job_number = 65
+
+    # full_mat (liftonly)
+    load.timestamp = "08-04-24_17-27"
+    load.job_number = 13 # best: 94.4%
+    action_delay = 0.25 # slow things down due to larger action steps
+
+    # shaped_mat_2
+    load.timestamp = "09-04-24_17-04"
+    load.job_number = 10 # best with my PPO: 91.8%
+    load.job_number = 16 # best with MAT PPO: 80.9%
+
     load_model(load)
-
-    # set for calibration
-    model.trainer.env.load(
-      finger_width = 28e-3,
-      finger_thickness = 0.9e-3
-    )
-
-    # slow things down due to larger action steps
-    action_delay = 0.25
 
   elif use_devel:
 
