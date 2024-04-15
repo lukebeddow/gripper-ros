@@ -2849,21 +2849,6 @@ if __name__ == "__main__":
     load.folderpath = "/home/luke/mujoco-devel/rl/models"
     load.run_id = "best"
 
-    # # Program: paper_baseline_1_extended
-    # load.timestamp =  "08-12-23_19-19"
-    # load.job_number = 53
-    # load.run_id = "best"
-
-    # # Program: continue_good_curriculum
-    # load.timestamp =  "05-02-24_11-37"
-    # load.job_number = 4
-    # load.run_id = "best"
-
-    # # Program: paper_baseline_1_rigid_fingers
-    # load.timestamp =  "07-02-24_18-22"
-    # load.job_number = 4
-    # load.run_id = "best"
-
     # Program: palm_vs_no_palm_1, first batch
     # git checkout palm_run_1 for gripper-mujoco
     # load.timestamp = "19-01-24_16-54"
@@ -2926,9 +2911,12 @@ if __name__ == "__main__":
     load.job_number = 13 # best: 94.4%
     action_delay = 0.25 # slow things down due to larger action steps
 
-    # shaped_mat_2
+    # shaped_mat_2 using my PPO
     load.timestamp = "09-04-24_17-04"
     load.job_number = 10 # best with my PPO: 91.8%
+
+    # shaped_mat_2 using MAT PPO
+    load.timestamp = "10-04-24_13-51"
     load.job_number = 16 # best with MAT PPO: 80.9%
 
     load_model(load)
