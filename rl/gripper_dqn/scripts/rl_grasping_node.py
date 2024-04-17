@@ -2916,8 +2916,10 @@ if __name__ == "__main__":
     load.job_number = 10 # best with my PPO: 91.8%
 
     # shaped_mat_2 using MAT PPO
-    load.timestamp = "10-04-24_13-51"
-    load.job_number = 16 # best with MAT PPO: 80.9%
+    # load.timestamp = "10-04-24_13-51"
+    # load.job_number = 16 # best with MAT PPO: 80.9% (first PC run)
+    load.timestamp = "12-04-24_16-07"
+    load.job_number = 24 # best with MAT PPO: 85.7%
 
     load_model(load)
 
