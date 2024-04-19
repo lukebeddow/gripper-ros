@@ -132,46 +132,52 @@ if __name__ == "__main__":
       rospy.Subscriber("/gripper/other/request", GripperRequest, other_demand_callback)
       other_pub = rospy.Publisher("/gripper/other/output", GripperOutput, queue_size=10)
 
-    gripper_message_rate = 20
+    # do we stop all message sending/receiving during homing, to reduce noises
     use_homing_blocking = True
     if use_homing_blocking:
       home_type = "home_blocking"
     else:
       home_type = "home"
 
-    rate = rospy.Rate(gripper_message_rate) # 10Hz
+    # gripper key settings
+    gripper_publish_hz = 20
+    gripper_serial_hz = 20
+    gripper_gauge_hz = 80
+    gripper_motor_hz = 100000
+    gripper_xy_speed_rpm = 200
+    gripper_z_speed_rpm = 400
+    gripper_timed_action_s = 0.3
+    gripper_timed_action_early_pub_s = 0.0
+    gripper_xy_rpm = 200
+    gripper_z_rpm = 400
+
+    rate = rospy.Rate(gripper_publish_hz) # 10Hz
  
     while not rospy.is_shutdown():
 
       if not gripper_initialised and mygripper.connected:
 
+        # turn on debugging so changes are echoed in terminal
         mygripper.send_message(type="debug_on")
+
+        # input settings
         mygripper.send_message(type="resume")
         mygripper.send_message(type=home_type)
         mygripper.send_message(type="power_saving_on")
+        mygripper.send_message(type="change_timed_action", value=gripper_timed_action_s)
+        mygripper.send_message(type="change_timed_action_early_pub", value=gripper_timed_action_early_pub_s)
+        mygripper.send_message(type="set_publish_hz", value=gripper_publish_hz)
+        mygripper.send_message(type="set_serial_hz", value=gripper_serial_hz)
+        mygripper.send_message(type="set_gauge_hz", value=gripper_gauge_hz)
+        mygripper.send_message(type="set_motor_hz", value=gripper_motor_hz)
 
-        mygripper.command.x = 0.3
-        mygripper.send_message(type="change_timed_action")
-        mygripper.command.x = 0.0 # was 0.3 for tests
-        mygripper.send_message(type="change_timed_action_early_pub")
-
-        mygripper.command.x = 100
-        mygripper.send_message(type="set_gauge_hz")
-        mygripper.command.x = gripper_message_rate
-        mygripper.send_message(type="set_publish_hz")
-        mygripper.command.x = 20
-        mygripper.send_message(type="set_serial_hz")
-        mygripper.command.x = 100000
-        mygripper.send_message(type="set_motor_hz")
+        # set the speed
+        mygripper.command.x = gripper_xy_rpm
+        mygripper.command.y = gripper_xy_rpm
+        mygripper.command.z = gripper_z_rpm
+        mygripper.send_message(type="set_speed")
 
         mygripper.send_message(type="debug_off")
-
-        # # set a lower speed
-        # mygripper.command.x = 150
-        # mygripper.command.y = 150
-        # mygripper.command.z = 150
-        # mygripper.send_message(type="set_speed")
-
         gripper_initialised = True
 
       # get the most recent state of the gripper

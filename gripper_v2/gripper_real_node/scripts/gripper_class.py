@@ -169,7 +169,7 @@ class Gripper:
 
     return byte_msg
 
-  def send_message(self, type="command", units=None):
+  def send_message(self, type="command", value=None, units=None):
     """
     This method publishes a method of the specified type
     """
@@ -181,6 +181,10 @@ class Gripper:
       return
 
     byte_msg = bytearray()
+
+    # if we are given a value, we overwrite the x command
+    if value is not None:
+      self.command.x = value
 
     # set the start markers
     for i in range(self.startEndSize):

@@ -107,6 +107,7 @@ current_test_data = None        # current live test data structure
 ftenv = None                    # simulated environment for fake force/torque sensor readings
 norm_state_pub = None           # ROS publisher for normalised state readings
 norm_sensor_pub = None          # ROS publisher for normalised sensor readings
+SI_sensor_pub = None            # ROS publisher for SI sensor readings
 debug_pub = None                # ROS publisher for gripper debug information
 panda_local_wrench_pub = None   # ROS publisher for panda external wrench estimates in local frame
 panda_global_wrench_pub = None  # ROS publisher for panda external wrench estimates in global frame
@@ -299,9 +300,10 @@ def data_callback(state):
     img_obs_pub.publish(rgb_msg)
 
   # publish the dqn network normalised input values
-  global norm_state_pub, norm_sensor_pub
+  global norm_state_pub, norm_sensor_pub, SI_sensor_pub
   norm_state = NormalisedState()
   norm_sensor = NormalisedSensor()
+  SI_sensor = NormalisedSensor()
   local_wrench_msg = Wrench()
   global_wrench_msg = Wrench()
 
@@ -317,7 +319,12 @@ def data_callback(state):
   norm_sensor.palm = model.trainer.env.mj.real_sensors.normalised.read_palm_sensor()
   norm_sensor.wrist_z = model.trainer.env.mj.real_sensors.normalised.read_wrist_Z_sensor()
 
-  SI_palm = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+  SI_sensor.gauge1 = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
+  SI_sensor.gauge2 = model.trainer.env.mj.real_sensors.SI.read_finger2_gauge()
+  SI_sensor.gauge3 = model.trainer.env.mj.real_sensors.SI.read_finger3_gauge()
+  SI_sensor.palm = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
+  SI_sensor.wrist_z = model.trainer.env.mj.real_sensors.SI.read_wrist_Z_sensor()
+  avg_gauge = (SI_sensor.gauge1 + SI_sensor.gauge2 + SI_sensor.gauge3) / 3.0
 
   if franka_instance is not None:
     local_wrench_msg.force.x = local_wrench[0]
@@ -339,16 +346,10 @@ def data_callback(state):
 
   norm_state_pub.publish(norm_state)
   norm_sensor_pub.publish(norm_sensor)
-  palm_SI_pub.publish(SI_palm)
+  SI_sensor_pub.publish(SI_sensor)
+  palm_SI_pub.publish(SI_sensor.palm)
 
   global grasp_frc_stable, stable_grasp_frc
-
-  # determine if the grasp is stable
-  gauge1 = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
-  gauge2 = model.trainer.env.mj.real_sensors.SI.read_finger2_gauge()
-  gauge3 = model.trainer.env.mj.real_sensors.SI.read_finger3_gauge ()
-  palm = model.trainer.env.mj.real_sensors.SI.read_palm_sensor()
-  avg_gauge = (gauge1 + gauge2 + gauge3) / 3.0
 
   # calculate running averages (for calibration only)
   if print_calibrations:
@@ -356,11 +357,11 @@ def data_callback(state):
     avg_num = 10
     use_main_palm = True
     if len(frc_reading_avgs[0]) < avg_num:
-      frc_reading_avgs[0].append(gauge1)
-      frc_reading_avgs[1].append(gauge2)
-      frc_reading_avgs[2].append(gauge3)
+      frc_reading_avgs[0].append(SI_sensor.gauge1)
+      frc_reading_avgs[1].append(SI_sensor.gauge2)
+      frc_reading_avgs[2].append(SI_sensor.gauge3)
       if use_main_palm:
-        frc_reading_avgs[3].append(palm)
+        frc_reading_avgs[3].append(SI_sensor.palm)
       else:
         frc_reading_avgs[3].append(extra_gripper_palm_frc)
       raw_reading_avgs[0].append(model.trainer.env.mj.real_sensors.raw.read_finger1_gauge())
@@ -387,17 +388,17 @@ def data_callback(state):
 
   # check forces are within acceptable limits and the target height is reached
   if (avg_gauge > model.trainer.env.mj.set.stable_finger_force and
-      palm > model.trainer.env.mj.set.stable_palm_force and
+      SI_sensor.palm > model.trainer.env.mj.set.stable_palm_force and
       avg_gauge < model.trainer.env.mj.set.stable_finger_force_lim and
-      palm < model.trainer.env.mj.set.stable_palm_force_lim and
+      SI_sensor.palm < model.trainer.env.mj.set.stable_palm_force_lim and
       panda_z_height > model.trainer.env.mj.set.gripper_target_height):
-    force_str = f"Avg gauge = {avg_gauge:.1f} ({gauge1:.1f}, {gauge2:.1f}, {gauge3:.1f}), palm = {palm:.1f}"
+    force_str = f"Avg gauge = {avg_gauge:.1f} ({SI_sensor.gauge1:.1f}, {SI_sensor.gauge2:.1f}, {SI_sensor.gauge3:.1f}), palm = {SI_sensor.palm:.1f}"
     if log_level > 0 and stable_grasp_frc is None:
       rospy.loginfo(f"Stable grasp detected. {force_str}")
-    stable_grasp_frc = [gauge1, gauge2, gauge3, palm]
+    stable_grasp_frc = [SI_sensor.gauge1, SI_sensor.gauge2, SI_sensor.gauge3, SI_sensor.palm]
     grasp_frc_stable = True
 
-  # # latch the True message, reset to False in execute_grasping_callback
+  # # comment out below to latch the True message, reset to False in execute_grasping_callback
   # else:
   #   grasp_frc_stable = False
 
@@ -2577,6 +2578,54 @@ def get_cartesian_contact_positions(gripper_joint_pos, finger_forces_SI):
 
   return xyz_for_fingers
 
+def force_measurement_program(request=None):
+  """
+  Gather data with force measurements as the fingers close linearly
+  """
+
+  global demand_pub
+
+  XY_positions = list(range(130, 56, -2))
+  force_matrix = np.zeros((len(XY_positions), 3))
+
+  for i, xy in enumerate(XY_positions):
+
+    # send the gripper to the target position
+    new_demand = GripperDemand()
+    new_demand.state.pose.x = xy * 1e-3
+    new_demand.state.pose.y = xy * 1e-3
+    new_demand.state.pose.z = 5e-3
+
+    if log_level > 0: rospy.loginfo(f"force_measurement_program() is publishing a new gripper demand for xy = {xy}")
+    demand_pub.publish(new_demand)
+
+    # data callback will let us know when the gripper demand is fulfilled
+    gripper_target_reached = False
+
+    # while not gripper_target_reached:
+    #   time.sleep(0.01)
+    time.sleep(1.0)
+
+    # now save the forces, taking an average of num readings
+    num = 5
+    time.sleep((1/20) * num) # sleep to get num new readings
+    force_matrix[i][0] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger1_gauge(num)))
+    force_matrix[i][1] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger2_gauge(num)))
+    force_matrix[i][2] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger3_gauge(num)))
+    # force_matrix[i][0] = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
+    # force_matrix[i][1] = model.trainer.env.mj.real_sensors.SI.read_finger2_gauge()
+    # force_matrix[i][2] = model.trainer.env.mj.real_sensors.SI.read_finger3_gauge()
+
+  header = f"""{"XY pos":<8} | {"Gauge1":<8} | {"Gauge2":<8} | {"Gauge3":<8} | {"Avg":<8}"""
+  lines = "{:<8} | {:<8.3f} | {:<8.3f} | {:<8.3f} | {:<8.3f}"
+
+  # print a table of forces
+  print(header)
+  for i, xy in enumerate(XY_positions):
+    print(lines.format(xy, force_matrix[i][0], force_matrix[i][1], force_matrix[i][2],
+                       np.average(force_matrix[i][:])))
+
+
 hardcoded_object_force_measuring_green = {
   "2" : {
     "X" : [-0.28069337, -0.18465624, 0.11252855, -1.79308801, 0.00557113, 1.63109549, 0.22820591],
@@ -2829,6 +2878,7 @@ if __name__ == "__main__":
   # publishers for displaying normalised nn input values
   norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
   norm_sensor_pub = rospy.Publisher(f"/{node_ns}/sensor", NormalisedSensor, queue_size=10)
+  SI_sensor_pub = rospy.Publisher(f"/{node_ns}/SI_sensor", NormalisedSensor, queue_size=10)
   palm_SI_pub = rospy.Publisher(f"/{node_ns}/palm_SI", Float32, queue_size=10)
   debug_pub = rospy.Publisher("/gripper/real/input", GripperInput, queue_size=10)
   panda_local_wrench_pub = rospy.Publisher(f"/{node_ns}/panda/local_wrench", Wrench, queue_size=10)
@@ -2838,6 +2888,7 @@ if __name__ == "__main__":
   # publish the first message to rqt keeps things going
   norm_state_pub.publish(NormalisedState())
   norm_sensor_pub.publish(NormalisedSensor())
+  SI_sensor_pub.publish(NormalisedSensor())
 
   # user set - what do we load by default
   if use_devel and not use_MAT and True:
@@ -2947,6 +2998,12 @@ if __name__ == "__main__":
     # make forwards compatible
     model.trainer.env.params.use_rgb_in_observation = False
 
+  override_fingers = True
+  if override_fingers:
+    t = 1.0e-3
+    w = 28e-3
+    model.trainer.env.load(finger_width=w, finger_thickness=t)
+
   if log_level >= 3:
     # turn on all debug information
     model.trainer.env.log_level = 2
@@ -2986,6 +3043,7 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/extra_frc_test", ForceTest, run_extra_force_test)
   rospy.Service(f"/{node_ns}/print_panda_state", Empty, print_panda_state)
   rospy.Service(f"/{node_ns}/stop_force_test", Empty, stop_force_test)
+  rospy.Service(f"/{node_ns}/force_measure_program", Empty, force_measurement_program)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests
