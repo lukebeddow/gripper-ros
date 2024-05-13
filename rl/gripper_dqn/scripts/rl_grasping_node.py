@@ -46,12 +46,12 @@ demo, fast, limited gaps between actions, could have issues
 camera = False                  # do we want to take camera images
 use_devel = True                # do we load trainings from mujoco-devel and run with that compilation
 log_level = 2                   # node log level, 0=disabled, 1=essential, 2=debug, 3=all
-action_delay = 0.05             # safety delay between action generation and publishing
-panda_z_move_duration = 0.18    # how long in seconds to move the panda z height vertically up
+action_delay = 0.1             # safety delay between action generation and publishing
+panda_z_move_duration = 0.22    # how long in seconds to move the panda z height vertically up
 panda_reset_height_mm = 10      # real world panda height to reset to before a grasp
 panda_reset_noise_mm = 6        # noise on panda reset height, +- this value, multiples of 2 only
 panda_target_height_mm = 20     # how high before a grasp is considered complete
-use_MAT = True                  # use MAT baseline grasping
+use_MAT = False                  # use MAT baseline grasping
 
 # grasp stability evaluation settings
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
@@ -239,8 +239,11 @@ def data_callback(state):
     state_vec.append(panda_y_pos)
   if model.trainer.env.mj.set.base_state_sensor_Z.in_use:
     state_vec.append(panda_z_height * -1) # simulation flips up/down !!! very important
-  if model.trainer.env.mj.set.base_state_sensor_yaw.in_use:
-    state_vec.append(panda_z_rotation)
+  try:
+    if model.trainer.env.mj.set.base_state_sensor_yaw.in_use:
+      state_vec.append(panda_z_rotation)
+  except AttributeError:
+    pass
 
   # get panda estimated external wrenches
   if franka_instance is not None:
@@ -272,13 +275,14 @@ def data_callback(state):
     state.ftdata.force.z
   ]
 
-  if model.trainer.env.mj.set.cartesian_contacts_XYZ.in_use:
-    # get the contact positions
-    SI_forces = model.trainer.env.mj.get_SI_gauge_forces(sensor_vec[:4])
-    cart_xyz = get_cartesian_contact_positions(state_vec[:3], SI_forces)
-    # add them to the sensor vector
-    for xyz in cart_xyz:
-      sensor_vec.append(xyz)
+  if use_MAT:
+    if model.trainer.env.mj.set.cartesian_contacts_XYZ.in_use:
+      # get the contact positions
+      SI_forces = model.trainer.env.mj.get_SI_gauge_forces(sensor_vec[:4])
+      cart_xyz = get_cartesian_contact_positions(state_vec[:3], SI_forces)
+      # add them to the sensor vector
+      for xyz in cart_xyz:
+        sensor_vec.append(xyz)
 
   # input the data
   model.trainer.env.mj.input_real_data(state_vec, sensor_vec)
@@ -600,9 +604,11 @@ def run_extra_force_test(request=None):
       if (abs(model.trainer.env.params.finger_hook_angle_degrees - 45) < 1e-5 or
           abs(model.trainer.env.params.finger_hook_angle_degrees - 60) < 1e-5):
         target_joints = hardcoded_object_force_measuring_ycb_45_60[str(request.obj_num)][axis.upper()]
-      elif (abs(model.trainer.env.params.finger_hook_angle_degrees - 75) < 1e-5 or
-            abs(model.trainer.env.params.finger_hook_angle_degrees - 90) < 1e-5):
-        target_joints = hardcoded_object_force_measuring_ycb_75_90[str(request.obj_num)][axis.upper()]
+      elif abs(model.trainer.env.params.finger_hook_angle_degrees - 75) < 1e-5:
+        target_joints = hardcoded_object_force_measuring_ycb_75[str(request.obj_num)][axis.upper()]
+        # target_joints = hardcoded_object_force_measuring_real_75[str(request.obj_num)][axis.upper()]
+      elif abs(model.trainer.env.params.finger_hook_angle_degrees - 90) < 1e-5:
+        target_joints = hardcoded_object_force_measuring_ycb_90[str(request.obj_num)][axis.upper()]
       else:
         raise RuntimeError(f"run_extra_force_test() error: model fingertip angle not recognised: {model.trainer.env.params.finger_hook_angle_degrees}")
         
@@ -1056,6 +1062,8 @@ def lift_termination(request=None):
   """
   Terminate a grasp and lift up the panda to a preset height
   """
+
+  time.sleep(0.25)
 
   move_panda_z_abs(franka_instance, 30e-3 - 1e-6, duration_override=1.0)
 
@@ -1896,6 +1904,17 @@ def make_test_heurisitc(request=None):
   model.trainer.env.mj.set.continous_actions = False
   if log_level > 0: rospy.loginfo(f"test heurisitc now set to TRUE")
 
+  global action_delay
+  action_delay = 0.15 # increase time for actions
+
+  # optional: adjust heuristic settings
+  model.trainer.env.heuristic_params["target_wrist_force_N"] = 3
+  if log_level > 0: rospy.loginfo(f"heurisitc target_wrist_force_N set to {model.trainer.env.heuristic_params['target_wrist_force_N']}")
+
+  # model.trainer.env.heuristic_params["initial_bend_target_N"] = 1.0
+  # if log_level > 0: rospy.loginfo(f"heurisitc initial_bend_target_N set to {model.trainer.env.heuristic_params['initial_bend_target_N']}")
+
+
   return []
 
 def gentle_place(request=None):
@@ -2585,15 +2604,24 @@ def force_measurement_program(request=None):
 
   global demand_pub
 
-  XY_positions = list(range(130, 56, -2))
+  constrict = False # if false, do tilt
+
+  if constrict:
+    XY_positions = list(range(130, 56, -2))
+  else:
+    XY_positions = np.arange(start=100, stop=95, step=-0.25)
   force_matrix = np.zeros((len(XY_positions), 3))
 
   for i, xy in enumerate(XY_positions):
 
     # send the gripper to the target position
     new_demand = GripperDemand()
-    new_demand.state.pose.x = xy * 1e-3
-    new_demand.state.pose.y = xy * 1e-3
+    if constrict:
+      new_demand.state.pose.x = xy * 1e-3
+      new_demand.state.pose.y = xy * 1e-3
+    else:
+      new_demand.state.pose.x = XY_positions[0] * 1e-3
+      new_demand.state.pose.y = xy * 1e-3
     new_demand.state.pose.z = 5e-3
 
     if log_level > 0: rospy.loginfo(f"force_measurement_program() is publishing a new gripper demand for xy = {xy}")
@@ -2604,7 +2632,10 @@ def force_measurement_program(request=None):
 
     # while not gripper_target_reached:
     #   time.sleep(0.01)
-    time.sleep(1.0)
+    if i == 0:
+      time.sleep(3.0)
+    else:
+      time.sleep(0.5)
 
     # now save the forces, taking an average of num readings
     num = 5
@@ -2624,7 +2655,6 @@ def force_measurement_program(request=None):
   for i, xy in enumerate(XY_positions):
     print(lines.format(xy, force_matrix[i][0], force_matrix[i][1], force_matrix[i][2],
                        np.average(force_matrix[i][:])))
-
 
 hardcoded_object_force_measuring_green = {
   "2" : {
@@ -2764,13 +2794,88 @@ hardcoded_object_force_measuring_ycb_45_60 = {
   },
 }
 
-hardcoded_object_force_measuring_ycb_75_90 = {
+hardcoded_object_force_measuring_ycb_75 = {
+  "1" : {
+    "X" : [-0.36822848, -0.24370299, 0.26221085, -1.82266134, 0.00660396, 1.63084830, 0.04742342],
+    "Y" : [-0.35686237, -0.19166522, 0.23184719, -1.79132780, 0.00895240, 1.61475982, 0.52093415],
+  },
+  "2" : {
+    "X" : [-0.38390961, -0.26403382, 0.22008348, -1.88910792, 0.01785224, 1.65932388, -0.22037707],
+    "Y" : [-0.39027286, -0.31141955, 0.27197993, -1.92589462, 0.04595406, 1.67395681, 1.16810787],
+  },
+  "3" : {
+    "X" : [-0.40581993, -0.22326790, 0.26787775, -1.83771309, 0.03519655, 1.63084593, -0.14251059],
+    "Y" : [-0.36701821, -0.22768762, 0.23209212, -1.84376992, 0.02744791, 1.63532470, 1.38971886],
+  },
+  "4" : {
+    "X" : [-0.40773312, -0.27164582, 0.30451143, -1.86737164, 0.01109864, 1.65257479, -0.06292822],
+    "Y" : [-0.40696170, -0.20175402, 0.27362313, -1.76671062, -0.00176479, 1.59019100, -0.14504454],
+  },
+  "5" : {
+    "X" : [-0.33168482, -0.22660199, 0.22619916, -1.85718188, 0.00828872, 1.65147492, -0.04976852],
+    "Y" : [-0.35432934, -0.32493396, 0.23574869, -1.97075634, 0.05482046, 1.71416252, 1.26941745],
+  },
+  "6" : {
+    "X" : [-0.36108359, -0.23270150, 0.18886534, -1.87060478, 0.00476651, 1.65578579, -0.26902519],
+    "Y" : [-0.47188434, -0.24101510, 0.33414932, -1.86161499, 0.04030649, 1.67544178, 0.46611812], #[-0.41136685, -0.22161917, 0.29456255, -1.85602569, -0.02080486, 1.63182559, 1.29868556],
+  },
+  "7" : {
+    "X" : [-0.46441629, -0.23208175, 0.31465964, -1.80422963, 0.03132587, 1.61427766, -0.32375088],
+    "Y" : [-0.34067627, -0.22560207, 0.37038022, -1.75993562, 0.02267680, 1.59660431, 1.35132084], #[-0.23528141, -0.16389413, 0.35691347, -1.67768594, -0.11535340, 1.48655417, 1.58656480],
+  },
+  "8" : {
+    "X" : [-0.50351577, -0.29233395, 0.36051187, -1.91198191, 0.05630120, 1.68566936, -0.10834712],
+    "Y" : [-0.34075016, -0.27022569, 0.38534743, -1.85207819, 0.08182240, 1.67282211, 1.62966842], #[-0.34523688, -0.22563333, 0.36739445, -1.86890926, 0.04583158, 1.66678714, 1.58181834],
+  },
+  "9" : {
+    "X" : [-0.34184186, -0.21702661, 0.24275447, -1.78772367, 0.03071648, 1.59126935, -0.09905695],
+    "Y" : [-0.33736510, -0.27516238, 0.27008644, -1.87258948, 0.01295079, 1.65180749, 0.46217146],
+  },
+  "10" : {
+    "X" : [-0.33286747, -0.25489654, 0.23090559, -1.89121440, 0.02726356, 1.70444619, -0.27458437],
+    "Y" : [-0.35600591, -0.16159757, 0.25744177, -1.81287052, 0.00821057, 1.68553400, 0.76692049],
+  },
+  "11" : {
+    "X" : [-0.30584792, -0.23630214, 0.21218826, -1.80156498, 0.02300520, 1.60533143, 0.01613235],
+    "Y" : [-0.32420151, -0.17218358, 0.21090511, -1.71296490, 0.03375126, 1.55140290, 0.51921676],
+  },
+  "12" : {
+    "X" : [-0.29576385, -0.16584597, 0.28066389, -1.79689273, 0.02170473, 1.63896001, 0.57205689],
+    "Y" : [-0.36313028, -0.07106410, 0.26736304, -1.65453560, 0.05581303, 1.60219679, 0.98449366],
+  },
+  "13" : {
+    "X" : [-0.38268714, -0.17334462, 0.25190128, -1.75094423, 0.02115341, 1.60080303, -0.10838403],
+    "Y" : [-0.39380599, -0.21599194, 0.26370762, -1.76823717, 0.01376883, 1.54905783, 0.94912473],
+  },
+  "14" : {
+    "X" : [-0.36262683, -0.26403562, 0.22354563, -1.89834482, 0.05074495, 1.69882611, -0.06355997],
+    "Y" : [-0.31142471, -0.21162924, 0.14801621, -1.82123772, 0.04136386, 1.65757537, 0.62377793],
+  },
+  "15" : {
+    "X" : [-0.33771638, -0.21299671, 0.23698876, -1.82735471, -0.02304901, 1.63979386, -0.11648936],
+    "Y" : [-0.31621413, -0.25791378, 0.24425740, -1.83870807, 0.01254511, 1.59059062, 0.99776312],
+  },
+  "16" : {
+    "X" : [-0.33679335, -0.34140686, 0.22445922, -2.03388591, -0.00107697, 1.77158404, -0.36154753],
+    "Y" : [-0.33196573, -0.27557177, 0.23241505, -1.96176534, 0.01486781, 1.71198869, 1.22303114],
+  },
+  "17" : {
+    "X" : [-0.29675181, -0.18481637, 0.21264090, -1.81129553, 0.00802373, 1.63940282, -0.12847656],
+    "Y" : [-0.32448044, -0.17954766, 0.20391652, -1.78247072, 0.01073538, 1.65693519, 0.74255822],
+  },
+  "18" : {
+    "X" : [-0.31437765, -0.19000428, 0.23935730, -1.80991998, 0.00796538, 1.64650864, 0.11709083],
+    "Y" : [-0.29382356, -0.27631468, 0.22512111, -1.91730250, 0.01264919, 1.68636882, 1.37271891],
+  },
+}
+
+hardcoded_object_force_measuring_ycb_90 = {
   "1" : {
     "X" : [-0.36822848, -0.24370299, 0.26221085, -1.82266134, 0.00660396, 1.63084830, 0.04742342],
     "Y" : [-0.34878434, -0.19379540, 0.22452411, -1.77025586, 0.00845984, 1.60588533, 0.03239621],
   },
   "2" : {
-    "X" : [-0.38450723, -0.22466786, 0.20677137, -1.80347613, 0.00808250, 1.59558190, -0.20617687],
+    "X" : [-0.38390961, -0.26403382, 0.22008348, -1.88910792, 0.01785224, 1.65932388, -0.22037707],
     "Y" : [-0.38588158, -0.26815959, 0.21133655, -1.87695387, 0.00599765, 1.65332900, -0.06383842],
   },
   "3" : {
@@ -2839,6 +2944,105 @@ hardcoded_object_force_measuring_ycb_75_90 = {
   },
 }
 
+hardcoded_object_force_measuring_real_75 = {
+  "1" : {
+    "X" : [-0.27649857, -0.30481042, 0.12870562, -1.84229571, 0.00566956, 1.62088073, -0.05379286],
+    "Y" : [-0.28385119, -0.28109942, 0.20936098, -1.87619905, 0.00442138, 1.64797026, 1.31113449],
+  },
+  "2" : {
+    "X" : [-0.27659958, -0.25807233, 0.18223296, -1.86220670, 0.02012058, 1.66530508, -0.09174734],
+    "Y" : [-0.35025554, -0.28954370, 0.24307625, -1.88797442, 0.03407807, 1.66905653, 1.40179282],
+  },
+  "3" : {
+    "X" : [-0.28058892, -0.26267312, 0.18811212, -1.87907066, 0.00508611, 1.67138317, -0.06796507],
+    "Y" : [-0.32928225, -0.30272388, 0.24304518, -1.91818811, 0.00571746, 1.68710506, 1.37629471],
+  },
+  "4" : {
+    "X" : [-0.32373072, -0.28759583, 0.20340990, -1.88103818, -0.01296378, 1.67216065, 0.17323079],
+    "Y" : [-0.30330684, -0.26249495, 0.22161379, -1.87137518, 0.00091024, 1.65463281, 1.26840677],
+  },
+  "5" : {
+    "X" : [-0.28476477, -0.26281615, 0.16200064, -1.87290754, -0.00043330, 1.67564424, -0.06047017],
+    "Y" : [-0.31717030, -0.26379464, 0.22030387, -1.88753155, 0.01487678, 1.67004564, 1.34261111],
+  },
+  "6" : {
+    "X" : [-0.29421326, -0.23422381, 0.20705129, -1.88215403, 0.00385067, 1.70395416, 0.08146413],
+    "Y" : [-0.30522503, -0.25243160, 0.21108089, -1.89171318, -0.02724753, 1.69565274, -0.40671328],
+  },
+  "7" : {
+    "X" : [-0.30706469, -0.27138224, 0.22112356, -1.88032015, 0.00209966, 1.68104305, 0.09810539],
+    "Y" : [-0.30409105, -0.27741021, 0.21668744, -1.87471084, -0.00303987, 1.66250979, 0.49023280],
+  },
+  "8" : {
+    "X" : [-0.30254811, -0.27418804, 0.20350336, -1.86416349, -0.00133767, 1.66199809, -0.14451309],
+    "Y" : [-0.24646385, -0.29043384, 0.32688097, -1.85229246, -0.02036699, 1.65192928, 1.62894437],
+  },
+  "9" : {
+    "X" : [-0.33349361, -0.25919090, 0.26067347, -1.87795146, -0.00093199, 1.67518678, -0.10648907],
+    "Y" : [-0.31734292, -0.24272252, 0.19830098, -1.88008781, 0.06438919, 1.71459916, 0.72760195],
+  },
+  "10" : {
+    "X" : [-0.27964565, -0.23121693, 0.24206170, -1.86104470, 0.00470656, 1.68006133, 0.01975617],
+    "Y" : [-0.27561972, -0.18454311, 0.23121401, -1.78734755, 0.00672498, 1.62205664, 0.55942615],
+  },
+  "11" : {
+    "X" : [-0.34514577, -0.28441984, 0.18188490, -1.86340089, 0.02207654, 1.65558260, -0.03187031],
+    "Y" : [-0.29360641, -0.30993407, 0.33376411, -1.86430512, -0.01020714, 1.63388076, 1.84146701],
+  },
+  "12" : {
+    "X" : [-0.27198654, -0.27614282, 0.24550023, -1.89178888, 0.00549009, 1.63843162, -0.12870993],
+    "Y" : [-0.27121689, -0.25520379, 0.21255739, -1.86961103, 0.05526044, 1.68609157, 0.56794397],
+  },
+  "13" : {
+    "X" : [-0.27685416, -0.28755689, 0.13141928, -1.85788936, 0.02386211, 1.64395771, -0.11359426],
+    "Y" : [-0.27681047, -0.32964000, 0.26695402, -1.90912702, 0.13889985, 1.68838250, 1.57506638],
+  },
+  "14" : {
+    "X" : [-0.35103285, -0.35680398, 0.20683384, -1.98175425, 0.07114502, 1.75339288, 0.04606467],
+    "Y" : [-0.27616593, -0.34088941, 0.15764836, -1.94100299, 0.10933066, 1.69582333, 1.52848690],
+  },
+  "15" : {
+    "X" : [-0.27898129, -0.28505436, 0.24691871, -1.87651730, 0.00514049, 1.69692208, -0.20999282],
+    "Y" : [-0.27990932, -0.28874870, 0.23870540, -1.88319361, 0.00998816, 1.63248015, 0.36912449],
+  },
+  "16" : {
+    "X" : [-0.25901405, -0.24003751, 0.26454544, -1.86615614, 0.02804889, 1.70921970, 0.01508442],
+    "Y" : [-0.29247865, -0.24981414, 0.18216865, -1.85531841, 0.05145710, 1.69705614, 0.85586331],
+  },
+  "17" : {
+    "X" : [-0.26895525, -0.28120433, 0.22454693, -1.88936618, 0.00448548, 1.69579716, 0.02550395],
+    "Y" : [-0.28121323, -0.24988447, 0.20848852, -1.87065009, 0.01098428, 1.64186374, 0.34784535],
+  },
+  "18" : {
+    "X" : [-0.29258067, -0.23498500, 0.20891962, -1.87264063, 0.00908518, 1.68387824, -0.15530568],
+    "Y" : [-0.31912337, -0.26325562, 0.24531378, -1.87926550, 0.03983948, 1.63884333, 0.95329321],
+  },
+  "19" : {
+    "X" : [-0.26784355, -0.20935243, 0.16592696, -1.85870059, 0.04038038, 1.69245630, 0.06569082],
+    "Y" : [-0.28043412, -0.23554960, 0.22984978, -1.88298400, 0.00725674, 1.71608740, 0.72476550],
+  },
+  "20" : {
+    "X" : [-0.27678538, -0.23732434, 0.23838102, -1.86997805, 0.00778393, 1.71013026, -0.12919516],
+    "Y" : [-0.28062905, -0.24525714, 0.19686863, -1.88644242, 0.00571564, 1.72559549, 0.82639365],
+  },
+  "21" : {
+    "X" : [-0.27563147, -0.27751306, 0.25361043, -1.82492483, 0.00963690, 1.62925872, -0.08202733],
+    "Y" : [-0.27248146, -0.30261744, 0.29131932, -1.90766921, 0.03165086, 1.65344970, 1.04158427],
+  },
+  "22" : {
+    "X" : [-0.30257947, -0.27287296, 0.20112113, -1.85344833, 0.00449891, 1.65407293, -0.14119633],
+    "Y" : [-0.21523580, -0.36933251, 0.49246672, -1.84166364, -0.03604501, 1.62841197, 1.60475875],
+  },
+  "23" : {
+    "X" : [-0.32446201, -0.26199624, 0.26733050, -1.85514258, 0.00057074, 1.66538524, 0.02945803],
+    "Y" : [-0.29608051, -0.30354399, 0.13736088, -1.89517770, 0.07720706, 1.62726862, 1.03688417],
+  },
+  "24" : {
+    "X" : [-0.28085360, -0.26205123, 0.23768758, -1.88911434, 0.00515108, 1.66737064, 0.12664337],
+    "Y" : [-0.28572853, -0.25357834, 0.25838191, -1.87605183, 0.01406326, 1.67920457, 0.66542567],
+  },
+}
+
 # ----- scripting to initialise and run node ----- #
 
 if __name__ == "__main__":
@@ -2891,7 +3095,7 @@ if __name__ == "__main__":
   SI_sensor_pub.publish(NormalisedSensor())
 
   # user set - what do we load by default
-  if use_devel and not use_MAT and True:
+  if use_devel and not use_MAT and False:
 
     rospy.logwarn("Loading DEVEL policy")
 
@@ -2952,25 +3156,29 @@ if __name__ == "__main__":
 
   elif use_MAT:
 
+    print("LOADING A MAT MODEL")
+
     # load a MAT training
     load = LoadModel()
     load.folderpath = "/home/luke/mujoco-devel/rl/models"
     load.run_id = "best"
 
-    # full_mat (liftonly)
-    load.timestamp = "08-04-24_17-27"
-    load.job_number = 13 # best: 94.4%
-    action_delay = 0.25 # slow things down due to larger action steps
+    # # full_mat (liftonly)
+    # load.timestamp = "08-04-24_17-27"
+    # load.job_number = 13 # best: 94.4%
+    # action_delay = 0.25 # slow things down due to larger action steps
+    # panda_reset_height_mm = 5 # lower gripper, as no Z action
+    # panda_reset_noise_mm = 0 # no noise on z position
 
-    # shaped_mat_2 using my PPO
-    load.timestamp = "09-04-24_17-04"
-    load.job_number = 10 # best with my PPO: 91.8%
+    # # shaped_mat_2 using my PPO
+    # load.timestamp = "09-04-24_17-04"
+    # load.job_number = 10 # best with my PPO: 91.8%
 
     # shaped_mat_2 using MAT PPO
-    # load.timestamp = "10-04-24_13-51"
-    # load.job_number = 16 # best with MAT PPO: 80.9% (first PC run)
-    load.timestamp = "12-04-24_16-07"
-    load.job_number = 24 # best with MAT PPO: 85.7%
+    load.timestamp = "10-04-24_13-51"
+    load.job_number = 16 # best with MAT PPO: 80.9% (first PC run, good transfer)
+    # load.timestamp = "12-04-24_16-07"
+    # load.job_number = 24 # best with MAT PPO: 85.7% (poor transfer)
 
     load_model(load)
 
@@ -2985,6 +3193,7 @@ if __name__ == "__main__":
 
     # make forwards compatible
     model.trainer.env.params.use_rgb_in_observation = False
+    model.trainer.env.params.Z_base_rotation = False
 
   else:
 
@@ -2998,10 +3207,10 @@ if __name__ == "__main__":
     # make forwards compatible
     model.trainer.env.params.use_rgb_in_observation = False
 
-  override_fingers = True
+  override_fingers = False
   if override_fingers:
     t = 1.0e-3
-    w = 28e-3
+    w = 24e-3
     model.trainer.env.load(finger_width=w, finger_thickness=t)
 
   if log_level >= 3:

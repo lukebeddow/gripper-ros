@@ -144,11 +144,9 @@ if __name__ == "__main__":
     gripper_serial_hz = 20
     gripper_gauge_hz = 80
     gripper_motor_hz = 100000
-    gripper_xy_speed_rpm = 200
-    gripper_z_speed_rpm = 400
     gripper_timed_action_s = 0.3
     gripper_timed_action_early_pub_s = 0.0
-    gripper_xy_rpm = 200
+    gripper_xy_rpm = 150
     gripper_z_rpm = 400
 
     rate = rospy.Rate(gripper_publish_hz) # 10Hz
