@@ -130,6 +130,7 @@ class GraspTestData:
     avg_f_frc: float = 0
     avg_p_frc: float = 0
     avg_SR_per_obj: float = 0
+    max_finger_frc: float = 0
 
   def __init__(self):
     """
@@ -377,6 +378,8 @@ class GraspTestData:
     cum_Y_frc_under_threshold = 0
     cum_Y_frc_saturated = 0
 
+    max_finger_force = 0
+
     if len(data.trials) == 0:
       print("WARNING: get_test_results() found 0 trials")
       return None
@@ -447,6 +450,8 @@ class GraspTestData:
           new_entry.finger2_force *= trial.stable_height # set to zero if no stable height
           new_entry.finger3_force *= trial.stable_height # set to zero if no stable height
           new_entry.palm_force *= trial.stable_height # set to zero if no stable height
+          this_max_f = max([trial.finger1_force, trial.finger2_force, trial.finger3_force]) * trial.stable_height
+          if this_max_f > max_finger_force: max_finger_force = this_max_f
         entries.append(new_entry)
         object_nums.append(trial.object_num)
         num_steps_successful_grasps += len(trial.steps) * trial.stable_height
@@ -478,6 +483,8 @@ class GraspTestData:
           entries[j].finger2_force += trial.finger2_force * trial.stable_height
           entries[j].finger3_force += trial.finger3_force * trial.stable_height
           entries[j].palm_force += trial.palm_force * trial.stable_height
+          this_max_f = max([trial.finger1_force, trial.finger2_force, trial.finger3_force]) * trial.stable_height
+          if this_max_f > max_finger_force: max_finger_force = this_max_f
         entries[j].info += trial.info
         num_steps_successful_grasps += len(trial.steps) * trial.stable_height
 
@@ -559,6 +566,7 @@ class GraspTestData:
     result.avg_out_of_bounds /= result.num_trials
     result.avg_exceed_palm /= result.num_trials
     result.avg_SR_per_obj /= result.num_objects
+    result.max_finger_frc = max_finger_force
 
     # determine palm force tolerances
     if result.num_Z_probe > 0:
@@ -676,6 +684,7 @@ class GraspTestData:
       info_str += f"avg_out_of_bounds = {results.avg_out_of_bounds:.4f}\n"
       info_str += f"avg_exceed_palm = {results.avg_exceed_palm:.4f}\n"
       info_str += f"avg_SR_per_obj = {results.avg_SR_per_obj:.4f}\n"
+      info_str += f"max_finger_frc = {results.max_finger_frc:.4f}N\n"
     if detailed >= 1:
       info_str += "\n"
       info_str += f"num_palm_probes = {results.num_Z_probe} out of {results.avg_stable_height * results.num_trials:.0f} (s.h)\n"
