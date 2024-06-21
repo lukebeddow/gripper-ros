@@ -19,7 +19,7 @@ from geometry_msgs.msg import Wrench
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import GripperOutput, GripperRequest
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
-from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda
+from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda, SetFloat
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
 from gripper_dqn.srv import PandaMoveToInt, Demo, PandaMoveZ, ForceTest
 from cv_bridge import CvBridge
@@ -56,7 +56,7 @@ use_MAT = False                  # use MAT baseline grasping
 # grasp stability evaluation settings
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
 use_palm_force_test = True      # test grasp stability with palm disturbance
-extra_gripper_measuring = True  # use a second gripper for measurements
+extra_gripper_measuring = False  # use a second gripper for measurements
 palm_force_target = 10          # maximum force at which palm force test ends
 XY_force_target = 10            # maximum force at which XY force test ends
 reset_probe_after = True        # do we reset the second gripper after probe measurements
@@ -1270,8 +1270,8 @@ def reset_panda(request=None, allow_noise=False):
     cal_90_mm = [-0.26065998, -0.07420020, 0.29957523, -1.68188725, 0.00825537, 1.61942467, 0.83311926]
     cal_100_mm = [-0.25974838, -0.06776345, 0.29957022, -1.64890949, 0.00631284, 1.59253614, 0.83427676]
   
-  # code not used anywhere else, only kept for reference currently
-  using_uncertainty_matrix = False # do not set true
+  # set to True only if using the uncertainty matrix acrylic under the gripper
+  using_uncertainty_matrix = False
   if using_uncertainty_matrix:
     touch_height_mm += 4
       
@@ -1496,44 +1496,71 @@ def load_model(request):
     model_loaded = True
     if log_level > 0: rospy.loginfo("Model loaded successfully")
 
-    model.trainer.env.mj.set.set_use_noise(False) # disable all noise
-    model.trainer.env.reset()
-
-    # IMPORTANT: have to run calibration function to setup real sensors
-    model.trainer.env.mj.calibrate_real_sensors()
-
-    if abs(scale_actions_on_load - 1.0) > 1e-5:
-      rospy.logwarn(f"Model actions are being scaled by {scale_actions_on_load}")
-      model.trainer.env.mj.set.gripper_prismatic_X.value *= scale_actions_on_load
-      model.trainer.env.mj.set.gripper_revolute_Y.value *= scale_actions_on_load
-      model.trainer.env.mj.set.gripper_Z.value *= scale_actions_on_load
-      model.trainer.env.mj.set.base_X.value *= scale_actions_on_load
-      model.trainer.env.mj.set.base_Y.value *= scale_actions_on_load
-      model.trainer.env.mj.set.base_Z.value *= scale_actions_on_load
-      to_print = "New action values are:\n"
-      to_print += f"gripper_prismatic_X = {model.trainer.env.mj.set.gripper_prismatic_X.value}\n"
-      to_print += f"gripper_revolute_Y = {model.trainer.env.mj.set.gripper_revolute_Y.value}\n"
-      to_print += f"gripper_Z = {model.trainer.env.mj.set.gripper_Z.value}\n"
-      to_print += f"base_X = {model.trainer.env.mj.set.base_X.value}\n"
-      to_print += f"base_Y = {model.trainer.env.mj.set.base_Y.value}\n"
-      to_print += f"base_Z = {model.trainer.env.mj.set.base_Z.value}\n"
-      rospy.logwarn(to_print)
-
-    if abs(scale_gauge_data - 1.0) > 1e-5:
-      rospy.logwarn(f"Gauge data is being scaled by: {scale_gauge_data}")
-    if abs(scale_wrist_data - 1.0) > 1e-5:
-      rospy.logwarn(f"Wrist data is being scaled by: {scale_wrist_data}")
-    if abs(scale_palm_data - 1.0) > 1e-5:
-      rospy.logwarn(f"Palm data is being scaled by: {scale_palm_data}")
-
-    return True
-
   except Exception as e:
 
     rospy.logerr(e)
     rospy.logerr("Failed to load model in rl_grasping_node")
 
-    return False
+    # try:
+
+    # make an empty agent and default model
+    empty_width = 24e-3
+    empty_thickness = 1.0e-3
+    model.settings["env"]["finger_width"] = empty_width
+    model.settings["env"]["finger_thickness"] = empty_thickness
+    env = model.make_env()
+    model.trainer = model.make_trainer(agent=None, env=env)
+    model_loaded = True
+    rospy.loginfo(f"Initialised with an empty model (no agent), with finger dimension thickness x width = ({empty_thickness} x {empty_width})")
+
+    # except Exception as e:
+    #   rospy.logerr("Failed to initialise with an empty model")
+    #   return False
+
+  model.trainer.env.mj.set.set_use_noise(False) # disable all noise
+  model.trainer.env.reset()
+
+  # IMPORTANT: have to run calibration function to setup real sensors
+  model.trainer.env.mj.calibrate_real_sensors()
+
+  if abs(scale_actions_on_load - 1.0) > 1e-5:
+    rospy.logwarn(f"Model actions are being scaled by {scale_actions_on_load}")
+    model.trainer.env.mj.set.gripper_prismatic_X.value *= scale_actions_on_load
+    model.trainer.env.mj.set.gripper_revolute_Y.value *= scale_actions_on_load
+    model.trainer.env.mj.set.gripper_Z.value *= scale_actions_on_load
+    model.trainer.env.mj.set.base_X.value *= scale_actions_on_load
+    model.trainer.env.mj.set.base_Y.value *= scale_actions_on_load
+    model.trainer.env.mj.set.base_Z.value *= scale_actions_on_load
+    to_print = "New action values are:\n"
+    to_print += f"gripper_prismatic_X = {model.trainer.env.mj.set.gripper_prismatic_X.value}\n"
+    to_print += f"gripper_revolute_Y = {model.trainer.env.mj.set.gripper_revolute_Y.value}\n"
+    to_print += f"gripper_Z = {model.trainer.env.mj.set.gripper_Z.value}\n"
+    to_print += f"base_X = {model.trainer.env.mj.set.base_X.value}\n"
+    to_print += f"base_Y = {model.trainer.env.mj.set.base_Y.value}\n"
+    to_print += f"base_Z = {model.trainer.env.mj.set.base_Z.value}\n"
+    rospy.logwarn(to_print)
+
+  if abs(scale_gauge_data - 1.0) > 1e-5:
+    rospy.logwarn(f"Gauge data is being scaled by: {scale_gauge_data}")
+  if abs(scale_wrist_data - 1.0) > 1e-5:
+    rospy.logwarn(f"Wrist data is being scaled by: {scale_wrist_data}")
+  if abs(scale_palm_data - 1.0) > 1e-5:
+    rospy.logwarn(f"Palm data is being scaled by: {scale_palm_data}")
+
+  return True
+
+  # except Exception as e:
+
+  #   rospy.logerr(e)
+  #   rospy.logerr("Failed to load model in rl_grasping_node")
+
+  #   # make an empty agent and default model
+  #   model.settings["env"]["finger_width"] = 24e-3
+  #   model.settings["env"]["finger_thickness"] = 1.0e-3
+  #   env = model.make_env()
+  #   model.trainer = model.trainer.make_trainer(agent=None, env=env)
+
+  #   return False
 
 def apply_settings(request):
   """
@@ -1695,24 +1722,23 @@ def save_trial(request):
 
   # special behaviour for automatically filling in force tolerated values, wipe these variables below!
   global trial_object_axis, trial_object_num, axis_force_tol
-  if extra_gripper_measuring:
-    # stop any current trial if proceeding
-    stop_force_test()
-    time.sleep(0.3)
-    if request.s_h:
-      if trial_object_axis is not None and axis_force_tol is not None:
-        if trial_object_axis.lower() == "x" and request.XFTol < 1e-4:
-          rospy.logwarn(f"Auto recording X AXIS force as {axis_force_tol:.1f}N")
-          request.XFTol = axis_force_tol
-        elif trial_object_axis.lower() == "y" and request.YFTol < 1e-4:
-          rospy.logwarn(f"Auto recording Y AXIS force as {axis_force_tol:.1f}N")
-          request.YFTol = axis_force_tol
-        elif trial_object_axis.lower() == "z" and request.pFTol < 1e-4:
-          rospy.logwarn(f"Auto recording Z AXIS force as {axis_force_tol:.1f}N")
-          request.pFTol = axis_force_tol
-      rospy.loginfo(f"Tolerated forces: X={request.XFTol:.1f} Y={request.YFTol:.1f} Z={request.pFTol:.1f}")
-    else:
-      rospy.loginfo("Tolerated forces: NONE as stable height = False")
+  # stop any current trial if proceeding
+  stop_force_test()
+  time.sleep(0.3)
+  if request.s_h:
+    if trial_object_axis is not None and axis_force_tol is not None:
+      if trial_object_axis.lower() == "x" and request.XFTol < 1e-4:
+        rospy.logwarn(f"Auto recording X AXIS force as {axis_force_tol:.1f}N")
+        request.XFTol = axis_force_tol
+      elif trial_object_axis.lower() == "y" and request.YFTol < 1e-4:
+        rospy.logwarn(f"Auto recording Y AXIS force as {axis_force_tol:.1f}N")
+        request.YFTol = axis_force_tol
+      elif trial_object_axis.lower() == "z" and request.pFTol < 1e-4:
+        rospy.logwarn(f"Auto recording Z AXIS force as {axis_force_tol:.1f}N")
+        request.pFTol = axis_force_tol
+    rospy.loginfo(f"Tolerated forces: X={request.XFTol:.1f} Y={request.YFTol:.1f} Z={request.pFTol:.1f}")
+  else:
+    rospy.loginfo("Tolerated forces: NONE as stable height = False")
 
   # wipe local data, added for XYZ force measurement (marked as global above!)
   trial_object_num = None
@@ -2604,25 +2630,39 @@ def force_measurement_program(request=None):
 
   global demand_pub
 
-  constrict = False # if false, do tilt
+  constrict = False # if false, do tilt (unless palm=True)
+  palm = True # if True, do palm (takes priority)
 
-  if constrict:
+  if palm:
+    XY_positions = np.arange(start=60, stop=80, step=0.25)
+    wait_1 = 3.0
+    wait_2 = 0.25
+  elif constrict:
     XY_positions = list(range(130, 56, -2))
+    wait_1 = 3.0
+    wait_2 = 0.5
   else:
     XY_positions = np.arange(start=100, stop=95, step=-0.25)
+    wait_1 = 3.0
+    wait_2 = 0.5
   force_matrix = np.zeros((len(XY_positions), 3))
 
   for i, xy in enumerate(XY_positions):
 
     # send the gripper to the target position
     new_demand = GripperDemand()
-    if constrict:
+    if palm:
+      new_demand.state.pose.x = 130e-3
+      new_demand.state.pose.y = 130e-3
+      new_demand.state.pose.z = xy * 1e-3
+    elif constrict:
       new_demand.state.pose.x = xy * 1e-3
       new_demand.state.pose.y = xy * 1e-3
+      new_demand.state.pose.z = 5e-3
     else:
       new_demand.state.pose.x = XY_positions[0] * 1e-3
       new_demand.state.pose.y = xy * 1e-3
-    new_demand.state.pose.z = 5e-3
+      new_demand.state.pose.z = 5e-3
 
     if log_level > 0: rospy.loginfo(f"force_measurement_program() is publishing a new gripper demand for xy = {xy}")
     demand_pub.publish(new_demand)
@@ -2633,28 +2673,68 @@ def force_measurement_program(request=None):
     # while not gripper_target_reached:
     #   time.sleep(0.01)
     if i == 0:
-      time.sleep(3.0)
+      time.sleep(wait_1)
     else:
-      time.sleep(0.5)
+      time.sleep(wait_2)
 
     # now save the forces, taking an average of num readings
     num = 5
     time.sleep((1/20) * num) # sleep to get num new readings
-    force_matrix[i][0] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger1_gauge(num)))
-    force_matrix[i][1] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger2_gauge(num)))
-    force_matrix[i][2] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger3_gauge(num)))
-    # force_matrix[i][0] = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
-    # force_matrix[i][1] = model.trainer.env.mj.real_sensors.SI.read_finger2_gauge()
-    # force_matrix[i][2] = model.trainer.env.mj.real_sensors.SI.read_finger3_gauge()
+    
+    if palm:
+      force_matrix[i][0] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_palm_sensor(num)))
+      if force_matrix[i][0] > 15:
+        break
+    else:
+      force_matrix[i][0] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger1_gauge(num)))
+      force_matrix[i][1] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger2_gauge(num)))
+      force_matrix[i][2] = np.average(np.array(model.trainer.env.mj.real_sensors.SI.readN_finger3_gauge(num)))
+      # force_matrix[i][0] = model.trainer.env.mj.real_sensors.SI.read_finger1_gauge()
+      # force_matrix[i][1] = model.trainer.env.mj.real_sensors.SI.read_finger2_gauge()
+      # force_matrix[i][2] = model.trainer.env.mj.real_sensors.SI.read_finger3_gauge()
 
-  header = f"""{"XY pos":<8} | {"Gauge1":<8} | {"Gauge2":<8} | {"Gauge3":<8} | {"Avg":<8}"""
-  lines = "{:<8} | {:<8.3f} | {:<8.3f} | {:<8.3f} | {:<8.3f}"
+  if palm:
 
-  # print a table of forces
-  print(header)
-  for i, xy in enumerate(XY_positions):
-    print(lines.format(xy, force_matrix[i][0], force_matrix[i][1], force_matrix[i][2],
-                       np.average(force_matrix[i][:])))
+    header = f"""{"Z pos":<8} | {"Palm":<8}"""
+    lines = "{:<8} | {:<8.3f}"
+
+    # print a table of forces
+    print(header)
+    for i, xy in enumerate(XY_positions):
+      print(lines.format(xy, force_matrix[i][0]))
+
+  else:
+
+    header = f"""{"XY pos":<8} | {"Gauge1":<8} | {"Gauge2":<8} | {"Gauge3":<8} | {"Avg":<8}"""
+    lines = "{:<8} | {:<8.3f} | {:<8.3f} | {:<8.3f} | {:<8.3f}"
+
+    # print a table of forces
+    print(header)
+    for i, xy in enumerate(XY_positions):
+      print(lines.format(xy, force_matrix[i][0], force_matrix[i][1], force_matrix[i][2],
+                        np.average(force_matrix[i][:])))
+
+def set_gauge_scaling(request):
+  """
+  Set the scale factor to multiply onto incoming gauge sensor data
+  """
+
+  global scale_gauge_data
+  if log_level > 1: rospy.loginfo(f"scale_gauge_data was previously set to: {scale_gauge_data:.3f}")
+  scale_gauge_data = request.value
+  if log_level > 0: rospy.loginfo(f"scale_gauge_data is now set to: {scale_gauge_data:.3f}")
+  return []
+
+def set_palm_scaling(request):
+  """
+  Set the scale factor to multiply onto incoming palm sensor data
+  """
+
+  global scale_palm_data
+  if log_level > 1: rospy.loginfo(f"scale_palm_data was previously set to: {scale_palm_data:.3f}")
+  scale_palm_data = request.value
+  if log_level > 0: rospy.loginfo(f"scale_palm_data is now set to: {scale_palm_data:.3f}")
+  return []
 
 hardcoded_object_force_measuring_green = {
   "2" : {
@@ -2817,7 +2897,7 @@ hardcoded_object_force_measuring_ycb_75 = {
   },
   "6" : {
     "X" : [-0.36108359, -0.23270150, 0.18886534, -1.87060478, 0.00476651, 1.65578579, -0.26902519],
-    "Y" : [-0.47188434, -0.24101510, 0.33414932, -1.86161499, 0.04030649, 1.67544178, 0.46611812], #[-0.41136685, -0.22161917, 0.29456255, -1.85602569, -0.02080486, 1.63182559, 1.29868556],
+    "Y" : [-0.46809692, -0.27315079, 0.33276859, -1.86250581, 0.03560479, 1.65637356, 0.25779801], #[-0.47188434, -0.24101510, 0.33414932, -1.86161499, 0.04030649, 1.67544178, 0.46611812],
   },
   "7" : {
     "X" : [-0.46441629, -0.23208175, 0.31465964, -1.80422963, 0.03132587, 1.61427766, -0.32375088],
@@ -3118,16 +3198,16 @@ if __name__ == "__main__":
 
     # Program: palm_vs_no_palm_1, second batch
     # git checkout luke-devel
-    load.timestamp = "12-02-24_17-29"
+    # load.timestamp = "12-02-24_17-29"
     # load.job_number = 81 # no palm, 45deg, E2
     # load.job_number = 100 # no palm, 60deg, E2
-    load.job_number = 102 # no palm, 75deg, E2
+    # load.job_number = 102 # no palm, 75deg, E2
     # load.job_number = 116 # no palm, 90deg, E2
     # load.job_number = 126 # palm, 45deg, E2
 
-    # load.timestamp = "12-02-24_17-39"
+    load.timestamp = "12-02-24_17-39"
     # load.job_number = 134 # palm, 60deg, E2
-    # load.job_number = 150 # palm, 75deg, E2
+    load.job_number = 150 # palm, 75deg, E2
     # load.job_number = 159 # palm, 90deg, E2
     
     # load.timestamp = "16-02-24_16-44"
@@ -3253,6 +3333,8 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/print_panda_state", Empty, print_panda_state)
   rospy.Service(f"/{node_ns}/stop_force_test", Empty, stop_force_test)
   rospy.Service(f"/{node_ns}/force_measure_program", Empty, force_measurement_program)
+  rospy.Service(f"/{node_ns}/set_gauge_scaling", SetFloat, set_gauge_scaling)
+  rospy.Service(f"/{node_ns}/set_palm_scaling", SetFloat, set_palm_scaling)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests

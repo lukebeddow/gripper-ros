@@ -1,7 +1,9 @@
 import numpy as np
 from collections import namedtuple
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
+from math import sqrt
 
 global palm_force_threshold, X_force_threshold, Y_force_threshold
 palm_force_threshold = 5
@@ -131,6 +133,16 @@ class GraspTestData:
     avg_p_frc: float = 0
     avg_SR_per_obj: float = 0
     max_finger_frc: float = 0
+    std_dev_sr_per_obj: float = 0
+    std_dev_s5N_per_obj: float = 0
+    CI_95: float = 0
+    CI_95_max: float = 0
+    CI_95_min: float = 0
+    CI_95_s5N: float = 0
+    CI_95_s5N_max: float = 0
+    CI_95_s5N_min: float = 0
+    palm_variation: float = 0
+    object_sr: List[float] = field(default_factory=lambda: [0.0] * 25)
 
   def __init__(self):
     """
@@ -138,6 +150,8 @@ class GraspTestData:
     """
 
     self.add_palm_start_force = False
+    self.calc_grasp_froce = True
+    self.per_object_success_rates = [0 for i in range(50)]
     pass
 
   def capture_depth_image(self):
@@ -446,10 +460,11 @@ class GraspTestData:
           new_entry.X_tol_grasp += (trial.X_frc_tol > X_force_threshold - 1e-5) * trial.stable_height
           new_entry.Y_frc_tol *= trial.stable_height # set to zero if no stable height
           new_entry.Y_tol_grasp += (trial.Y_frc_tol > Y_force_threshold - 1e-5) * trial.stable_height
-          new_entry.finger1_force *= trial.stable_height # set to zero if no stable height
-          new_entry.finger2_force *= trial.stable_height # set to zero if no stable height
-          new_entry.finger3_force *= trial.stable_height # set to zero if no stable height
-          new_entry.palm_force *= trial.stable_height # set to zero if no stable height
+          if not self.calc_grasp_froce:
+            new_entry.finger1_force *= trial.stable_height # set to zero if no stable height
+            new_entry.finger2_force *= trial.stable_height # set to zero if no stable height
+            new_entry.finger3_force *= trial.stable_height # set to zero if no stable height
+            new_entry.palm_force *= trial.stable_height # set to zero if no stable height
           this_max_f = max([trial.finger1_force, trial.finger2_force, trial.finger3_force]) * trial.stable_height
           if this_max_f > max_finger_force: max_finger_force = this_max_f
         entries.append(new_entry)
@@ -523,7 +538,10 @@ class GraspTestData:
         result.avg_f3_frc += entries[i].finger3_force
         result.avg_p_frc += entries[i].palm_force
       if entries[i].stable_height > 0:
-        result.avg_SR_per_obj += float(entries[i].stable_height) / float(entries[i].trial_num)
+        sr = float(entries[i].stable_height) / float(entries[i].trial_num)
+        result.avg_SR_per_obj += sr
+        result.object_sr[entries[i].object_num - 1] = sr
+        
 
       if (entries[i].object_num >= self.sphere_min and
           entries[i].object_num <= self.sphere_max):
@@ -598,6 +616,33 @@ class GraspTestData:
           result.avg_Y_frc_under = cum_Y_frc_under_threshold / num_Y_frc_under_threshold
         result.avg_Y_frc_saturated = cum_Y_frc_saturated / result.num_Y_probe
         result.rate_Y_frc_tol = result.num_Y_frc_tol / result.num_Y_probe
+
+    # apply the Wilson score interval to calculate the 95% confidence interval
+    z = 0.975
+    n = result.num_trials
+    p = result.avg_SR_per_obj
+    ci_max = (1.0 / (1+(z**2 / n))) * ((p + (z**2 / (2*n))) + (z / (2*n)) * sqrt(4*n*p*(1-p) + z**2))
+    ci_min = (1.0 / (1+(z**2 / n))) * ((p + (z**2 / (2*n))) - (z / (2*n)) * sqrt(4*n*p*(1-p) + z**2))
+    ci_up = ci_max - p
+    ci_down = p - ci_min
+    result.CI_95 = max(ci_up, ci_down)
+    result.CI_95_max = ci_max
+    result.CI_95_min = ci_min
+    # print(f"SR%: p={p:.3f} in [{ci_min:.3f}, {ci_max:.3f}], which is +{ci_up:.3f} and -{ci_down:.3f}, giving result {result.CI_95:.3f}")
+
+    # do the same for the 5N stable
+    z = 0.975
+    n = result.num_trials
+    p = result.rate_palm_frc_tol
+    ci_max = (1.0 / (1+(z**2 / n))) * ((p + (z**2 / (2*n))) + (z / (2*n)) * sqrt(4*n*p*(1-p) + z**2))
+    ci_min = (1.0 / (1+(z**2 / n))) * ((p + (z**2 / (2*n))) - (z / (2*n)) * sqrt(4*n*p*(1-p) + z**2))
+    ci_up = ci_max - p
+    ci_down = p - ci_min
+    result.CI_95_s5N = max(ci_up, ci_down)
+    result.CI_95_s5N_max = ci_max
+    result.CI_95_s5N_min = ci_min
+    # print(f"S5N%: p={p:.3f} in [{ci_min:.3f}, {ci_max:.3f}], which is +{ci_up:.3f} and -{ci_down:.3f}, giving result {result.CI_95_s5N:.3f}")
+
 
     # get average forces from the end of stable grasps
     if num_stable_height > 0:

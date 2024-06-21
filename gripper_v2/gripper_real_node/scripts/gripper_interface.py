@@ -97,13 +97,13 @@ if __name__ == "__main__":
 
   gripper_initialised = False
 
-  use_both_grippers = True
+  use_both_grippers = False
 
   try:
 
     # establish connection with the gripper
     bt_port = "/dev/rfcomm0"
-    usb_port = "/dev/ttyACM1"
+    usb_port = "/dev/ttyACM0"
 
     if use_both_grippers:
       othergripper = Gripper()
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     gripper_timed_action_s = 0.3
     gripper_timed_action_early_pub_s = 0.0
     gripper_xy_rpm = 150
-    gripper_z_rpm = 400
+    gripper_z_rpm = 250 #400
 
     rate = rospy.Rate(gripper_publish_hz) # 10Hz
  
