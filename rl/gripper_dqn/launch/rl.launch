@@ -11,6 +11,12 @@
 				pkg="gripper_dqn"
 				output="screen"
 	/>
+
+	<node name="localisation_node"
+				type="localise_objects.py"
+				pkg="gripper_dqn"
+				output="screen"
+	/>
 	
 	<include file="$(find gripper_real_node)/launch/monitor.launch"/>
 	

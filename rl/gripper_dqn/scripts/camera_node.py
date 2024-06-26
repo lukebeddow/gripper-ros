@@ -3,6 +3,7 @@
 import rospy
 from gripper_msgs.msg import RGBD
 from sensor_msgs.msg import Image
+from std_msgs.msg import Bool
 
 # try:
 #   depth_camera_connected = True
@@ -12,7 +13,7 @@ from sensor_msgs.msg import Image
 #   rospy.logerr(f"Depth camera error message: {e}")
 #   depth_camera_connected = False
 
-run_this_node = False
+run_this_node = True
 if not run_this_node:
   print("CAMERA_NODE.PY QUITTING BEFORE STARTING, run_this_node = False")
   exit()
@@ -102,9 +103,9 @@ def get_depth_image(arg1=None, arg2=None, arg3=None):
 
 if __name__ == "__main__":
 
-  if not depth_camera_connected:
-    rospy.logwarn("Camera node failed to start, no depth camera connected")
-    exit()
+  # if not depth_camera_connected:
+  #   rospy.logwarn("Camera node failed to start, no depth camera connected")
+  #   exit()
 
   # initilise ros
   rospy.init_node("camera_node")
@@ -112,20 +113,29 @@ if __name__ == "__main__":
 
   bridge = CvBridge()
   
-  # create the publisher
+  # create the publishers
   node_ns = "camera" # gripper/camera
   rgb_pub = rospy.Publisher(f"/{node_ns}/rgb", Image, queue_size=10)
   depth_pub = rospy.Publisher(f"/{node_ns}/depth", Image, queue_size=10)
+  connected_pub = rospy.Publisher(f"/{node_ns}/connected", Bool, queue_size=10)
+
+  is_connected = Bool()
+  is_connected.data = depth_camera_connected
 
   r = rospy.Rate(20) # 20hz 
 
   while not rospy.is_shutdown():
 
-    rgb, depth = get_depth_image()
-    img_msg = bridge.cv2_to_imgmsg(rgb, encoding="rgb8")
-    depth_msg = bridge.cv2_to_imgmsg(depth, encoding="16UC1")
+    is_connected.data = depth_camera_connected
 
-    rgb_pub.publish(img_msg)
-    depth_pub.publish(depth_msg)
+    if depth_camera_connected:
+      rgb, depth = get_depth_image()
+      img_msg = bridge.cv2_to_imgmsg(rgb, encoding="rgb8")
+      depth_msg = bridge.cv2_to_imgmsg(depth, encoding="16UC1")
+
+      rgb_pub.publish(img_msg)
+      depth_pub.publish(depth_msg)
+
+    connected_pub.publish(is_connected)
 
     r.sleep()

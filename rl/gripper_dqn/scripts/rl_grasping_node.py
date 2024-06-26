@@ -19,9 +19,11 @@ from geometry_msgs.msg import Wrench
 from gripper_msgs.msg import GripperState, GripperDemand, GripperInput
 from gripper_msgs.msg import GripperOutput, GripperRequest
 from gripper_msgs.msg import NormalisedState, NormalisedSensor
+from gripper_dqn.msg import object_positions
 from gripper_dqn.srv import LoadModel, ApplySettings, ResetPanda, SetFloat
 from gripper_dqn.srv import StartTest, StartTrial, SaveTrial, LoadBaselineModel
-from gripper_dqn.srv import PandaMoveToInt, Demo, PandaMoveZ, ForceTest
+from gripper_dqn.srv import PandaMoveToInt, Demo, PandaMoveZ, ForceTest, BinPick
+from gripper_dqn.srv import PickXY
 from cv_bridge import CvBridge
 
 # import the test data structure class
@@ -55,7 +57,7 @@ use_MAT = False                  # use MAT baseline grasping
 
 # grasp stability evaluation settings
 use_forces_stable_grasp = True  # use force limits and gripper height to detect stable grasp
-use_palm_force_test = True      # test grasp stability with palm disturbance
+use_palm_force_test = False      # test grasp stability with palm disturbance
 extra_gripper_measuring = False  # use a second gripper for measurements
 palm_force_target = 10          # maximum force at which palm force test ends
 XY_force_target = 10            # maximum force at which XY force test ends
@@ -135,6 +137,8 @@ prevent_force_test = False      # cancel signal to stop a force test from procee
 lift_termination_done = False   # have we done a lift termination to end grasping
 frc_reading_avgs = [[],[],[],[]]# vector [g1, g2, g3, palm] for running averages of 10 samples
 raw_reading_avgs = [[],[],[],[]]# vector [g1, g2, g3, palm] for running averages of 10 samples
+in_bin_camera_position = False  # are we in position to take images of a bin for picking
+object_centroids_m = []          # centroids in metres of objects
 
 # insert the mymujoco path for TrainDQN.py and ModelSaver.py files
 sys.path.insert(0, mymujoco_rl_path)
@@ -214,6 +218,14 @@ def depth_callback(msg):
   global depth_image
   cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
   depth_image = np.array(cv_image, dtype=np.float32)
+
+def localisation_callback(msg):
+  """
+  Triggered when new object localisation positions arrive
+  """
+
+  global object_centroids_m
+  object_centroids_m = msg.xyz
 
 def data_callback(state):
   """
@@ -1323,18 +1335,18 @@ def reset_panda(request=None, allow_noise=False):
 
   return True
 
-def set_panda_joints(target_state):
+def set_panda_joints(target_state, sleep_for=0.1, speed_factor=0.1):
   """
   Set the panda joints to a particular state
   """
 
   rospy.loginfo(f"About to set panda to target joints: {target_state}")
 
-  # move the joints slowly to the reset position - this could be dangerous!
-  speed_factor = 0.1 # 0.1 is slow movements, 0.05 very slow
+  # # move the joints slowly to the reset position - this could be dangerous!
+  # speed_factor = 0.1 # 0.1 is slow movements, 0.05 very slow
 
-  # to prevent 'attempted to start multiple motions'
-  time.sleep(0.1)
+  # to prevent 'attempted to start multiple motions' use 0.1
+  time.sleep(sleep_for)
 
   global panda_in_motion
   panda_in_motion = True
@@ -1354,6 +1366,148 @@ def set_panda_joints(target_state):
   panda_in_motion = False
 
   rospy.loginfo("Panda set to the target joint state")
+
+  return True
+
+def set_gripper_joints(x=133e-3, y=133e-3, z=4e-3, wait=False, home=False):
+  """
+  Send a command to move the gripper to the specified joints
+  """
+
+  global gripper_target_reached
+
+  if x > 1.0 or y > 1.0 or z > 1.0:
+    rospy.logerr("set_gripper_joints() received xyz greater than 1.0. Check units! Should be mm. Cancelling")
+    return False
+
+  new_demand = GripperDemand()
+  new_demand.state.pose.x = x
+  new_demand.state.pose.y = y
+  new_demand.state.pose.z = z
+  new_demand.home = home
+
+  # has the gripper reported that it has NOT reached it's target yet
+  initial_target_reached = gripper_target_reached
+
+  if log_level > 0: rospy.loginfo(f"set_gripper_joints() is publishing a new gripper demand xyz = ({x:.3f}, {y:.3f}, {z:.3f}) metres")
+  for i in range(number_gripper_demands):
+    demand_pub.publish(new_demand)
+
+  if wait:
+    if log_level > 0: rospy.loginfo(f"set_gripper_joints() is waiting for command to complete, initial_target_reached = {initial_target_reached}")
+    timeout = 5
+    rate = rospy.Rate(20)
+    start_time = time.time()
+    while time.time() < start_time + timeout and not rospy.is_shutdown():
+      if initial_target_reached:
+        if not gripper_target_reached:
+          initial_target_reached = False
+      elif gripper_target_reached:
+        if log_level > 0: rospy.loginfo(f"set_gripper_joints() returning, target now reached, wait = True")
+        return True
+    rate.sleep()
+  
+  if log_level > 0: 
+    if wait: rospy.loginfo(f"set_gripper_joints() returning after {timeout}s timeout")
+    else: rospy.loginfo(f"set_gripper_joints() returning, wait set to False")
+
+  return True
+
+def set_panda_cartesian(x, y, z=0.75, zrotdeg=0, duration=5, sleep_for=0.1):
+  """
+  Send panda to particular xyz position (ABSOLUTE CO-ORDINATES). 
+
+  Orientation locked to vertical, with zrotation being possible to set
+  """
+
+  # cartesian position limits
+  xmin = 0.2
+  xmax = 0.8
+  ymin = -0.2
+  ymax = 0.2
+  zmin = 0.5
+  zmax = 0.8
+  zrotmin = 60
+  zrotmax = -60
+  zrotoffset = 135
+
+  # apply offset for simplicity to zrot
+  zrotdeg += zrotoffset
+
+  # constrain zrotdeg to be in the range 
+  while zrotdeg > zrotmax: zrotdeg -= 120
+  while zrotdeg < zrotmin: zrotdeg += 120
+
+  # constrain z height to sensible range
+  if x < xmin: x = xmin
+  if x > xmax: x = xmax
+
+  # constrain z height to sensible range
+  if y < ymin: y = ymin
+  if y > ymax: y = ymax
+
+  # constrain z height to sensible range
+  if z < zmin: z = zmin
+  if z > zmax: z = zmax
+
+  # create identity matrix (must be floats!)
+  transform = np.array(
+    [[1,0,0,0],
+    [0,1,0,0],
+    [0,0,1,0],
+    [0,0,0,1]],
+    dtype=np.float32
+  )
+
+  # apply the xyz positions in absolute space
+  transform[0, 3] = x
+  transform[1, 3] = y
+  transform[2, 3] = z
+
+  # set orientation to vertically downwards
+  transform[2, 2] = -1
+
+  # set orientation to zrot specified
+  transform[0,0] = np.cos(zrotdeg * (np.pi/180))
+  transform[0,1] = np.sin(zrotdeg * (np.pi/180))
+  transform[1,0] = np.sin(zrotdeg * (np.pi/180))
+  transform[1,1] = -np.cos(zrotdeg * (np.pi/180))
+
+  # ensure signs are correct, constraint possible angles
+  tol = 1e-5
+  if transform[1, 0] > 0 and zrotdeg < 180 + tol:
+    transform[:2, :2] *= -1
+  elif zrotdeg > 180 - tol:
+    if transform[0, 0] < 0:
+      transform[:2, :2] *= -1
+  if zrotdeg < 90 or zrotdeg > 195:
+    rospy.logerr(f"zrotdeg = {zrotdeg} outside 90-195 safe limits. Aborting")
+    return False
+  
+  if log_level > 0:
+    rospy.loginfo(f"Setting panda to cartesian xyz = ({x:.3f}, {y:.3f}, {z:.3f}) and zrot = {zrotdeg} deg")
+
+  # to prevent 'attempted to start multiple motions' use 0.1
+  time.sleep(sleep_for)
+
+  global panda_in_motion
+  panda_in_motion = True
+
+  if use_panda_threads:
+    process = Process(target=franka_instance.move, args=("absolute", transform, duration))
+    process.start()
+    process.join()
+    process.close()
+    if process.exception:
+      rospy.logwarn(f"Panda movement exception. Cancelling grasping. Error message: {process.exception}")
+      cancel_grasping_callback()
+      return False
+  else:
+    franka_instance.move("absolute", transform, duration)
+
+  panda_in_motion = False
+
+  rospy.loginfo("Panda set to the target cartesian state")
 
   return True
 
@@ -2736,6 +2890,444 @@ def set_palm_scaling(request):
   if log_level > 0: rospy.loginfo(f"scale_palm_data is now set to: {scale_palm_data:.3f}")
   return []
 
+def go_in_to_bin_camera_position(request=None):
+  """
+  Move to the camera position for bin picking
+  """
+
+  bin_pick_camera_sequence(go_in=True, go_out=False)
+
+  return []
+
+def go_out_of_bin_camera_position(request=None):
+  """
+  Move to the camera position for bin picking
+  """
+
+  bin_pick_camera_sequence(go_in=False, go_out=True)
+
+  return []
+
+def bin_pick_camera_sequence(go_in=True, go_out=True):
+  """
+  Move the gripper into position to take pictures of the bin
+  """
+
+  global in_bin_camera_position
+
+  camera_sequence = [
+    # gripper joints: x=110mm, y=130mm, overlooking bin
+    [-0.38154769, -0.23222204, 0.29172773, -1.78685710, 0.42341105, 1.52417625, 0.73060460],
+    # transition to vertical orientation
+    # [-0.38118336, -0.23231364, 0.41147124, -1.78681521, 0.29164558, 1.56990163, 0.84120683],
+    # [-0.37963573, -0.25167965, 0.50942685, -1.77085599, 0.20468855, 1.57759119, 0.92477864],
+    [-0.38080224, -0.25862325, 0.60248531, -1.77125124, 0.14256476, 1.57756903, 1.01133587],
+    # lift up to prepare for gripper homing
+    # [-0.38138898, -0.25240082, 0.59158531, -1.67755285, 0.14258119, 1.50636371, 1.01062951],
+    [-0.38156794, -0.21909391, 0.58025007, -1.55936750, 0.14285254, 1.40292759, 1.02373480],
+    # now home
+    # next move to initial position over bin
+    [-0.08894655, -0.03994745, 0.47738154, -1.33025209, 0.01123709, 1.30227450, 1.20926677],
+  ]
+
+  end = len(camera_sequence) - 1
+
+  if go_in:
+
+    if in_bin_camera_position:
+      rospy.logerr("bin_pick_camera_sequence() already in position! go_in should be FALSE, aborting")
+      return None, None
+
+    # move panda to initial pose
+    set_panda_joints(camera_sequence[end])
+
+    # now set the gripper
+    set_gripper_joints(x=110e-3, y=130e-3, z=4e-3, wait=True)
+
+    # now move the panda through the sequence to the camera location
+    for i in range(end, -1, -1):
+      keep_going = set_panda_joints(camera_sequence[i])
+      if not keep_going:
+        rospy.logwarn("bin_pick_camera_sequence() error: panda movement exception")
+        return None, None
+
+    in_bin_camera_position = True
+
+  rgb, depth = get_depth_image()
+
+  if go_out:
+
+    if not in_bin_camera_position:
+      rospy.logerr("bin_pick_camera_sequence() NOT in position! go_out should be False, aborting")
+      return None, None
+
+    for i in range(0, end + 1):
+      keep_going = set_panda_joints(camera_sequence[i])
+      if not keep_going:
+        rospy.logwarn("bin_pick_camera_sequence() error: panda movement exception")
+        return None, None
+
+    # now home the gripper
+    set_gripper_joints(home=True, wait=True)
+
+    # move panda back to starting pose
+    set_panda_joints(camera_sequence[end])
+
+    in_bin_camera_position = False
+
+  return rgb, depth
+
+def bin_pick_callback(request):
+  """
+  Callback for bin picking, request should say which object to pick
+  """
+  bin_pick_hardcode(object=request.object_num, objtype=request.object_name)
+  return []
+
+def bin_pick_reset(request):
+  """
+  Reset from the bin-picking scenario
+  """
+  bin_pick_hardcode(reset_only=True)
+
+  return []
+
+def bin_pick_XY_callback(request):
+  """
+  Pick from the bin at a specified XY point. Z is automatically set
+  """
+
+  success = set_panda_cartesian(x=request.xy.x,
+                                y=request.xy.y,
+                                z=0.534,
+                                zrotdeg=0)
+
+  if not success: return False
+
+  return True
+
+def full_bin_pick(request=None):
+  """
+  Perform a bin pick
+  """
+
+  global panda_z_height
+
+  grasp_z = 0.54
+  pre_grasp_z_extra = 100e-3
+
+  mid_bin = [-0.33367821, -0.01665442, 0.05201553, -0.89291023, 0.07480084, 0.92470018, 1.34294130]
+  over_bin = [-0.08894655, -0.03994745, 0.47738154, -1.33025209, 0.01123709, 1.30227450, 1.20926677]
+  drop_points = [
+    [-0.47637972, 0.28640286, 0.00239318, -0.95857105, 0.02273513, 1.30219896, 1.07643319],
+    [-0.64722301, 0.03869550, -0.00166240, -1.32935030, 0.03013371, 1.37469246, 1.14660456],
+    [-0.71214424, -0.28302352, -0.08419079, -1.60481471, -0.01076476, 1.32726064, 0.74823064],
+  ]
+
+  max_checks = 5
+
+  for check_num in range(max_checks):
+
+    # start by going to object detection position
+    a, b = go_in_to_bin_camera_position()
+    if a == None or b == None:
+      rospy.logwarn("full_bin_pick() stopping: error in 'go_in_to_bin_camera_position'")
+
+    time.sleep(0.5)
+
+    centroids = object_centroids_m
+
+    if len(centroids) == 0:
+      rospy.logwarn(f"full_bin_pick(): no objects detected. Finished")
+      return True
+
+    # determine the closest centroid
+    closest_ind = 0
+    closest_dist = 1e5
+    for i in range(len(centroids)):
+      dist = np.sqrt(centroids[i].x**2 + centroids[i].y**2)
+      if dist < closest_dist:
+        closest_dist = dist
+        closest_ind = i
+
+    # pick up this object
+    a, b = go_out_of_bin_camera_position()
+    if a == None or b == None:
+      rospy.logwarn("full_bin_pick() stopping: error in 'go_out_of_bin_camera_position'")
+
+    # get in position and reset
+    set_panda_joints(over_bin)
+    reset_all(skip_panda=True)
+    panda_z_height = 0 # reset panda relative height tracker
+
+    # approach the object NEEDS WORK:
+    # - account for salad, tilt in fingers, then descend, then tilt out
+    # - determine orientation based on walls
+    # - determine approach and xy compensation based on walls
+    # - account for other nearby object positions, may affect rotation
+    # - idea, use mask and 2D collision approach to try and fit triangle, with nudges
+    keep_going = set_panda_cartesian(x=centroids[closest_ind].x,
+                                  y=centroids[closest_ind].y,
+                                  z=grasp_z + pre_grasp_z_extra,
+                                  zrotdeg=0,
+                                  duration=5)
+    if not keep_going or continue_grasping:
+      rospy.logwarn(f"full_bin_pick() stopping: {'panda movement exception' if not keep_going else 'grasping cancelled'}")
+      return False
+    keep_going = set_panda_cartesian(x=centroids[closest_ind].x,
+                                  y=centroids[closest_ind].y,
+                                  z=grasp_z,
+                                  zrotdeg=0,
+                                  duration=5)
+    if not keep_going or continue_grasping:
+      rospy.logwarn(f"full_bin_pick() stopping: {'panda movement exception' if not keep_going else 'grasping cancelled'}")
+      return False
+    
+    # now perform the grasp
+    execute_grasping_callback(reset=False)
+
+    # now return to over bin position
+    keep_going = set_panda_joints(over_bin)
+    if not keep_going or continue_grasping:
+      rospy.logwarn(f"full_bin_pick() stopping: {'panda movement exception' if not keep_going else 'grasping cancelled'}")
+      return False
+    set_panda_joints(mid_bin)
+
+    # drop the object into the other bin
+    set_panda_joints(drop_points[(len(centroids) % 3)])
+    set_gripper_joints(x=90e-3, y=105e-3, z=4e-3, wait=True)
+
+    # now finish
+    set_panda_joints(mid_bin)
+    reset_all(skip_panda=True)
+    panda_z_height = 0 # reset panda relative height tracker
+
+  if log_level > 0: rospy.loginfo("full_bin_pick() has finished")
+
+  return True
+  
+def bin_pick_hardcode(object=None, objtype=None, reset_only=False):
+  """
+  Perform a hardcoded bin pick for objects:
+    - 1 = top of pair
+    - 2 = bottom of pair
+    - 3 = end of container
+  """
+
+  global panda_z_height
+
+  if log_level > 0: rospy.loginfo(f"bin_pick_hardcode() has started, object = {object}")
+
+  if use_palm_force_test:
+    rospy.logerr("bin_pick_hardcode() found use_palm_force_test=True, aborting")
+    return
+  if extra_gripper_measuring:
+    rospy.logerr("bin_pick_hardcode() found extra_gripper_measuring=True, aborting")
+    return
+  
+  mid_bin = [-0.33367821, -0.01665442, 0.05201553, -0.89291023, 0.07480084, 0.92470018, 1.34294130]
+  over_bin = [-0.08894655, -0.03994745, 0.47738154, -1.33025209, 0.01123709, 1.30227450, 1.20926677]
+  drop_points = [
+    [-0.47637972, 0.28640286, 0.00239318, -0.95857105, 0.02273513, 1.30219896, 1.07643319],
+    [-0.64722301, 0.03869550, -0.00166240, -1.32935030, 0.03013371, 1.37469246, 1.14660456],
+    [-0.71214424, -0.28302352, -0.08419079, -1.60481471, -0.01076476, 1.32726064, 0.74823064],
+  ]
+
+  # get in position
+  set_panda_joints(over_bin)
+  reset_all(skip_panda=True)
+  panda_z_height = 0 # reset panda relative height tracker
+
+  if reset_only: return
+  
+  if objtype not in ["generic", "limes", "mango", "punnet", "salad", "cucumber"]:
+    rospy.logerr(f"bin_pick_hardcode() object type = {objtype} not valid. Aborting")
+    return
+  
+  if objtype in ["limes", "mango"]: objtype = "generic"
+  
+  waypoints_dict = {
+
+    "generic" : [
+      # top pair (generic)
+      [
+        [-0.11343590, -0.39501575, 0.26782212, -1.97232796, 0.13235843, 1.59995121, 0.43436539], # 100mm
+        [-0.08701149, -0.41422887, 0.26785898, -2.22048724, 0.14136600, 1.82738660, 0.42677948], # 10mm
+      ],
+
+      # bottom pair (generic)
+      [
+        [-0.12396377, -0.21197824, 0.56550295, -1.76527032, 0.08660594, 1.57551668, 0.63068036], # 100mm
+        [-0.10508873, -0.23595477, 0.56541616, -2.01826228, 0.10177453, 1.80545001, 0.62416116], # 10mm
+      ],
+
+      # end grasp (generic)
+      [
+        [0.25135198, 0.31009478, -0.00087972, -1.22432321, 0.00121842, 1.60410850, 0.49549798], # above
+        [0.27176940, 0.52305102, -0.02750686, -1.05737524, 0.00430891, 1.57391222, 0.53126934], # 10mm
+      ],
+    ],
+
+    "punnet" : [
+      # top pair (generic)
+      [
+        [-0.11343590, -0.39501575, 0.26782212, -1.97232796, 0.13235843, 1.59995121, 0.43436539], # 100mm
+        [-0.08701149, -0.41422887, 0.26785898, -2.22048724, 0.14136600, 1.82738660, 0.42677948], # 10mm
+      ],
+
+      # bottom pair (generic)
+      [
+        [-0.12396377, -0.21197824, 0.56550295, -1.76527032, 0.08660594, 1.57551668, 0.63068036], # 100mm
+        [-0.10508873, -0.23595477, 0.56541616, -2.01826228, 0.10177453, 1.80545001, 0.62416116], # 10mm
+      ],
+
+      # end grasp sliding fingers into position to avoid drop in collision
+      [
+        [0.30516107, 0.27516582, 0.08352250, -1.20859780, 0.00735288, 1.51219959, 1.27570446], # high up
+        [0.29994762, 0.21838209, 0.08376261, -1.46734554, 0.01198926, 1.71629403, 1.26948229], # drops in
+        [0.24662381, 0.21565374, 0.01668248, -1.47130969, 0.01171936, 1.70900860, 0.54556614], # spins into position
+        [0.27176940, 0.52305102, -0.02750686, -1.05737524, 0.00430891, 1.57391222, 0.53126934], # slides to 10mm
+      ],
+    ],
+
+    "salad" : [
+      # first salad
+      [
+        [-0.03189191, -0.43506531, 0.35994019, -2.04364213, 0.16487269, 1.65280171, 1.66665644], # above
+        # change gripper state to x=120e-3, y=130e-3, z=4e-3
+        [-0.01927294, -0.55115991, 0.37167839, -2.30902832, 0.21441023, 1.79804757, 1.55982933], # drop
+        [-0.07372700, -0.65348358, 0.29239902, -2.40446340, 0.20704772, 1.78961989, 1.46748159], # 10mm
+        [-0.01160602, -0.87121385, 0.28776015, -2.53446599, 0.23082154, 1.70780897, 1.50344751], # 10mm rotated
+      ],
+
+      # second salad
+      [
+        [-0.03189191, -0.43506531, 0.35994019, -2.04364213, 0.16487269, 1.65280171, 1.66665644], # above
+        # change gripper state to x=120e-3, y=130e-3, z=4e-3
+        [-0.01927294, -0.55115991, 0.37167839, -2.30902832, 0.21441023, 1.79804757, 1.55982933], # drop
+        [-0.03718728, -0.46064546, 0.53919836, -2.21196987, 0.21977483, 1.81096547, 1.69542458], # 10mm
+      ],
+
+      # end salad
+      [
+        [0.25263197, 0.34140200, -0.00086621, -1.22167002, 0.00120751, 1.59050021, 0.50444435], # above
+        # change gripper state to x=120e-3, y=130e-3, z=4e-3
+        [0.24279943, 0.31368832, 0.00325725, -1.36489756, 0.00303599, 1.70768605, 0.51060020], # drop
+        [0.27176940, 0.52305102, -0.02750686, -1.05737524, 0.00430891, 1.57391222, 0.53126934], # 10mm
+      ],
+    ],
+
+    "cucumber" : [
+      # first cucumber
+      [
+        [-0.12602760, -0.31491779, 0.52789382, -1.96866458, 0.14265217, 1.70856128, 2.21392502], # above
+        [-0.10620091, -0.31875674, 0.53943314, -2.10339711, 0.13269599, 1.83181826, 2.21360206], # drop
+        [-0.16340835, -0.33297696, 0.58013433, -2.05531342, -0.08805222, 1.71326368, 2.22761021], # split
+        [-0.15457559, -0.28226379, 0.61077089, -2.04320603, -0.11321968, 1.88344764, 1.19696653], # rotate
+        [-0.15885031, 0.00627562, 0.48438993, -1.79061527, -0.01511599, 1.78721813, 0.60419304], # 10mm
+      ],
+
+      # second cucumber
+      [
+        [-0.19551673, -0.43959795, 0.51504872, -1.95726926, 0.18425581, 1.55873357, 0.49422065], # 100mm
+        [-0.14408853, -0.45731222, 0.51515846, -2.20647995, 0.19713960, 1.78556328, 0.49749546], # 10mm
+      ],
+
+      # no end grasp
+    ],
+
+  }
+
+  waypoints = [
+    # top pair
+    [
+      [-0.11343590, -0.39501575, 0.26782212, -1.97232796, 0.13235843, 1.59995121, 0.43436539], # 100mm
+      [-0.08701149, -0.41422887, 0.26785898, -2.22048724, 0.14136600, 1.82738660, 0.42677948], # 10mm
+    ],
+
+    # bottom pair
+    [
+      [-0.12396377, -0.21197824, 0.56550295, -1.76527032, 0.08660594, 1.57551668, 0.63068036], # 100mm
+      [-0.10508873, -0.23595477, 0.56541616, -2.01826228, 0.10177453, 1.80545001, 0.62416116], # 10mm
+    ],
+
+    # end grasp two fingers at wall
+    [
+      [0.30516107, 0.27516582, 0.08352250, -1.20859780, 0.00735288, 1.51219959, 1.27570446], # high up
+      [0.29994762, 0.21838209, 0.08376261, -1.46734554, 0.01198926, 1.71629403, 1.26948229], # drops in
+      [0.24662381, 0.21565374, 0.01668248, -1.47130969, 0.01171936, 1.70900860, 0.54556614], # spins into position
+      [0.27176940, 0.52305102, -0.02750686, -1.05737524, 0.00430891, 1.57391222, 0.53126934], # slides to 10mm
+    ],
+
+    # first cucumber
+    [
+      [-0.12602760, -0.31491779, 0.52789382, -1.96866458, 0.14265217, 1.70856128, 2.21392502], # above
+      [-0.10620091, -0.31875674, 0.53943314, -2.10339711, 0.13269599, 1.83181826, 2.21360206], # drop
+      [-0.16340835, -0.33297696, 0.58013433, -2.05531342, -0.08805222, 1.71326368, 2.22761021], # split
+      [-0.15457559, -0.28226379, 0.61077089, -2.04320603, -0.11321968, 1.88344764, 1.19696653], # rotate
+      [-0.15885031, 0.00627562, 0.48438993, -1.79061527, -0.01511599, 1.78721813, 0.60419304], # 10mm
+    ],
+
+    # second cucumber
+    [
+      [-0.19551673, -0.43959795, 0.51504872, -1.95726926, 0.18425581, 1.55873357, 0.49422065], # 100mm
+      [-0.14408853, -0.45731222, 0.51515846, -2.20647995, 0.19713960, 1.78556328, 0.49749546], # 10mm
+    ],
+
+    # first salad
+    [
+      [-0.03189191, -0.43506531, 0.35994019, -2.04364213, 0.16487269, 1.65280171, 1.66665644], # above
+      # change gripper state to x=120e-3, y=130e-3, z=4e-3
+      [-0.01927294, -0.55115991, 0.37167839, -2.30902832, 0.21441023, 1.79804757, 1.55982933], # drop
+      [-0.08701149, -0.41422887, 0.26785898, -2.22048724, 0.14136600, 1.82738660, 0.42677948], # 10mm
+    ],
+
+    # second salad
+    [
+      [-0.03189191, -0.43506531, 0.35994019, -2.04364213, 0.16487269, 1.65280171, 1.66665644], # above
+      # change gripper state to x=120e-3, y=130e-3, z=4e-3
+      [-0.01927294, -0.55115991, 0.37167839, -2.30902832, 0.21441023, 1.79804757, 1.55982933], # drop
+      [-0.10508873, -0.23595477, 0.56541616, -2.01826228, 0.10177453, 1.80545001, 0.62416116], # 10mm
+    ],
+  ]
+
+  if object is None:
+    rospy.logerr("bin_pick_hardcode() error: object=None, this must be user set. Aborting")
+    return
+  if object not in [list(range(1, len(waypoints_dict[objtype])))]:
+    rospy.logerr(f"bin_pick_hardcode() error: object not in {list(range(1, len(waypoints_dict[objtype])))}. Object was = {object}, object type = {objtype}")
+
+  # go through the waypoints to this grasp location
+  for i, js in enumerate(waypoints_dict[objtype][object - 1]):
+    keep_going = set_panda_joints(js)
+    if not keep_going:
+      rospy.logerr("bin_pick_hardcode() error: panda movement issue, aborting")
+      return
+    if objtype == "salad":
+      if i == 0: set_gripper_joints(x=120e-3, y=130e-3, z=4e-3, wait=True)
+      elif i == 1: set_gripper_joints(home=True, wait=True)
+
+  # now perform the grasp
+  execute_grasping_callback(reset=False)
+
+  # now return to over bin position
+  keep_going = set_panda_joints(over_bin)
+  if not keep_going:
+    rospy.logerr("bin_pick_hardcode() error: panda movement issue, aborting")
+    return
+  set_panda_joints(mid_bin)
+
+  # drop the object into the other bin
+  set_panda_joints(drop_points[(object % 3)])
+  set_gripper_joints(x=90e-3, y=105e-3, z=4e-3, wait=True)
+
+  # now finish
+  set_panda_joints(mid_bin)
+  reset_all(skip_panda=True)
+  panda_z_height = 0 # reset panda relative height tracker
+
+  if log_level > 0: rospy.loginfo("bin_pick_hardcode() has finished")
+
 hardcoded_object_force_measuring_green = {
   "2" : {
     "X" : [-0.28069337, -0.18465624, 0.11252855, -1.79308801, 0.00557113, 1.63109549, 0.22820591],
@@ -3158,6 +3750,7 @@ if __name__ == "__main__":
   # subscribers for image topics
   rospy.Subscriber("/camera/rgb", Image, rgb_callback)
   rospy.Subscriber("/camera/depth", Image, depth_callback)
+  rospy.Subscriber("/rl/objects", object_positions, localisation_callback)
 
   # publishers for displaying normalised nn input values
   norm_state_pub = rospy.Publisher(f"/{node_ns}/state", NormalisedState, queue_size=10)
@@ -3335,6 +3928,12 @@ if __name__ == "__main__":
   rospy.Service(f"/{node_ns}/force_measure_program", Empty, force_measurement_program)
   rospy.Service(f"/{node_ns}/set_gauge_scaling", SetFloat, set_gauge_scaling)
   rospy.Service(f"/{node_ns}/set_palm_scaling", SetFloat, set_palm_scaling)
+  rospy.Service(f"/{node_ns}/go_in_to_camera_position", Empty, go_in_to_bin_camera_position)
+  rospy.Service(f"/{node_ns}/go_out_of_camera_position", Empty, go_out_of_bin_camera_position)
+  rospy.Service(f"/{node_ns}/bin_pick", BinPick, bin_pick_callback)
+  rospy.Service(f"/{node_ns}/bin_reset", Empty, bin_pick_reset)
+  rospy.Service(f"/{node_ns}/pick_bin_xy", PickXY, bin_pick_XY_callback)
+  rospy.Service(f"/{node_ns}/full_bin_pick", Empty, full_bin_pick)
 
   try:
     while not rospy.is_shutdown(): rospy.spin() # and wait for service requests

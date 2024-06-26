@@ -1,0 +1,4 @@
+int32 object_num
+string object_name
+---
+bool success
