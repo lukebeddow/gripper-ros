@@ -72,6 +72,7 @@ add_service_files(
   SetFloat.srv
   BinPick.srv
   PickXY.srv
+  BinPickAuto.srv
 )
 
 ## Generate actions in the 'action' folder
