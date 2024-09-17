@@ -1,16 +1,18 @@
 # luke-gripper-ros
 
-This repository contains ros and gazebo integration for my gripper design.
+This repository contains Robot Operating System (ROS) integration for my gripper design.
+* rl/ contains reinforcement learning packages, with the main implementation in ```gripper_dqn```, which can implement any RL algorithm depending on the model, not just DQN.
+* gripper_v2 contains the gripper interface packages (```gripper_real_node/gripper_msgs```), robot models (```gripper_description```), packages to configure it for use with moveit and gazebo, and more.
+* grasp_test is depreciated, and contains old development scripts.
+* gz_link is depreciated, and contains old gazebo simulator plugins.
 
-The gazebo_models folder contains models which should be added to .gazebo (these may be out of date).
+Launch the main reinforcement learning grasping pipeline with ```roslaunch gripper_dqn rl.launch```. However, this has the following dependencies:
+* Loading and evaluating models requires the codebase https://github.com/RPL-CS-UCL/luke-gripper-mujoco to be accessible in Python.
+* A saved model and compatible compilation of the above codebase must also be accessible.
+* The hardware must be configured, for best results connect the gripper to power first, then plug the USB-C cable into the computer.
+* A compiled version of https://github.com/RPL-CS-UCL/franka_interface, with libranka.so exposed, must be accessible in Python.
 
-The remaining folders are ros packages which can be built with: $ catkin build
-
-gripper_v2 contains the robot model, both the Franka Emika Panda arm and my gripper, as well as packages to configure it for use with moveit and gazebo.
-
-grasp_test is a package to communicate with moveit and pass instructions to the robot.
-
-gz_link is a package to communicate between gazebo and ros.
+Deploying a trained model for grasping will require examination of ```rl/gripper_dqn/scripts/rl_grasping_node.py```, which contains important paths to all of the above items.
 
 ## no catkin build
 
