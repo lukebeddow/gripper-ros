@@ -6,7 +6,7 @@ This repository contains Robot Operating System (ROS) integration for my gripper
 * grasp_test is depreciated, and contains old development scripts.
 * gz_link is depreciated, and contains old gazebo simulator plugins.
 
-![](https://github.com/lukebeddow/gifs-and-resources/limes-with-pics-5x-speed.gif)
+<img src="https://github.com/lukebeddow/gifs-and-resources/blob/main/limes-with-pics-5x-speed.gif" width="40%" height="40%"/>
 
 Launch the main reinforcement learning grasping pipeline with ```roslaunch gripper_dqn rl.launch```. However, this has the following dependencies:
 * Loading and evaluating models requires the codebase https://github.com/RPL-CS-UCL/luke-gripper-mujoco to be accessible in Python.
