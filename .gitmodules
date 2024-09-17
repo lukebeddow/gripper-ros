@@ -1,3 +1,3 @@
 [submodule "gripper_v2/gripper_description"]
 	path = gripper_v2/gripper_description
-	url = https://github.com/RPL-CS-UCL/luke-gripper-description.git
+	url = git@github.com:lukebeddow/gripper-description.git
