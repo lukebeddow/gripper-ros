@@ -12,6 +12,7 @@ Launch the main reinforcement learning grasping pipeline with ```roslaunch gripp
 * Loading and evaluating models requires the codebase https://github.com/RPL-CS-UCL/luke-gripper-mujoco to be accessible in Python.
 * A saved model and compatible compilation of the above codebase must also be accessible.
 * The hardware must be configured, for best results connect the gripper to power first, then plug the USB-C cable into the computer.
+* The gripper must be compiled with a compatible version of: https://github.com/RPL-CS-UCL/luke-gripper-arduino
 * A compiled version of https://github.com/RPL-CS-UCL/franka_interface, with libranka.so exposed, must be accessible in Python.
 
 Deploying a trained model for grasping will require examination of ```rl/gripper_dqn/scripts/rl_grasping_node.py```, which contains important paths to all of the above items.
